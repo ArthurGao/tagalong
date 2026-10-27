@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 import { AdminRoleService } from './admin-role.service.js';
 import { AdminSignInService } from './admin-sign-in.service.js';
 import { ClerkAdminApi, ClerkSdkAdminApi, ClerkSdkVerifier, ClerkVerifier } from './clerk.js';
@@ -11,6 +12,7 @@ import { UserSyncService } from './user-sync.service.js';
 // Global so @Auth() works on controllers in any module.
 @Global()
 @Module({
+  imports: [NotificationsModule],
   controllers: [MeController, ClerkWebhookController],
   providers: [
     { provide: ClerkVerifier, useClass: ClerkSdkVerifier },

@@ -56,6 +56,63 @@
         "SUSPENDED": "该商家已暂停销售。",
         "CANCELLED": "这条接龙已取消。"
       }
+    },
+    "checkout": {
+      "title": "参加接龙",
+      "quantity": "数量",
+      "decrease": "减少{name}",
+      "increase": "增加{name}",
+      "maxPerOrder": "每单最多 {max} 份",
+      "pickup": "取货点",
+      "choosePickup": "请选择取货点",
+      "name": "姓名",
+      "email": "邮箱",
+      "phone": "手机号",
+      "note": "给商家的备注（可选）",
+      "anonymous": "在接龙名单上匿名显示",
+      "subtotal": "小计 {amount}",
+      "pay": "去付款",
+      "paying": "正在打开付款页…",
+      "secure": "由 Stripe 安全收款，价格含 GST。",
+      "close": "关闭",
+      "soldOutRefreshed": "刚才有名额被订走，已刷新剩余数量。",
+      "validation": {
+        "items": "请至少选择一项",
+        "pickup": "请选择取货点",
+        "name": "请填写姓名",
+        "email": "请填写有效的邮箱",
+        "phone": "请填写有效的手机号"
+      }
+    },
+    "order": {
+      "title": "订单 {code}",
+      "status": {
+        "PENDING_PAYMENT": "待付款",
+        "PAID": "已付款",
+        "CONFIRMED": "已报名",
+        "FULFILLED": "已取货",
+        "EXPIRED": "预留已结束",
+        "CANCELLED": "已取消",
+        "REFUNDED": "已退款",
+        "PARTIALLY_REFUNDED": "部分退款",
+        "NO_SHOW": "未到"
+      },
+      "confirming": "正在确认付款…",
+      "submitted": "付款已提交，确认后会发邮件通知你。",
+      "paidHeadline": "接龙成功！你是第 {seq} 位",
+      "held": "名额为你保留到 {time}。",
+      "expiredBody": "预留已结束，可以回到接龙重新下单。",
+      "autoRefunded": "付款到账时名额已满，已为你全额退款。",
+      "itemsTitle": "明细",
+      "total": "合计 {amount}",
+      "refunded": "已退款 {amount}",
+      "pickupTitle": "取货",
+      "backToListing": "返回接龙",
+      "cancel": "取消订单",
+      "cancelTitle": "确定取消订单？",
+      "cancelBody": "预留的名额会被释放。",
+      "cancelConfirm": "确认取消",
+      "keep": "保留"
     }
   },
   "admin": {
@@ -81,6 +138,7 @@
     "ALREADY_REGISTERED": "该邮箱已报名，确认邮件已重新发送。",
     "QTY_EXCEEDS_LIMIT": "超过单笔数量上限，请减少数量。",
     "INVALID_STATE_TRANSITION": "状态已经变化，请刷新查看最新情况。",
+    "ORDER_IN_PROGRESS": "订单还在创建中，请稍等片刻再试。",
     "FIELD_LOCKED_AFTER_PUBLISH": "发布后不能修改这个字段。",
     "CAPACITY_BELOW_SOLD": "容量不能低于已售出和已预留的数量。",
     "OPTION_HAS_ORDERS": "这个规格已有订单，请改为停用，不能删除。",

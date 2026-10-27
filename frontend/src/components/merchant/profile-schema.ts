@@ -1,10 +1,10 @@
 import { z } from 'zod';
+import { PHONE } from '@/lib/validation';
 
 // Same patterns as backend CreateMerchantDto (profile-schema.test.ts checks they stay identical);
 // the backend stays the authority.
 export const SLUG = /^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/;
 export const GST = /^\d{2,3}-?\d{3}-?\d{3}$/;
-export const PHONE = /^\+?[0-9 ()-]{6,20}$/;
 
 export type ValidationKey = 'slug' | 'required' | 'email' | 'phone' | 'gst';
 

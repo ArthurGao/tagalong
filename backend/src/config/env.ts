@@ -35,6 +35,16 @@ export const envSchema = z
     S3_ACCESS_KEY_ID: z.string().default(''),
     S3_SECRET_ACCESS_KEY: z.string().default(''),
     S3_PUBLIC_BASE_URL: z.string().default(''),
+    // Orders (DESIGN §7, §8.2). Stripe Checkout sessions last at least 30 minutes.
+    PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(10_000).default(300),
+    PLATFORM_FEE_FIXED_CENTS: z.coerce.number().int().min(0).default(0),
+    RESERVATION_MINUTES: z.coerce.number().int().min(30).max(1440).default(30),
+    // Email (DESIGN §12): Mailpit over SMTP locally, Resend in production.
+    EMAIL_PROVIDER: z.enum(['mailpit', 'resend']).default('mailpit'),
+    EMAIL_FROM: z.string().default(''),
+    RESEND_API_KEY: z.string().default(''),
+    SMTP_HOST: z.string().default('localhost'),
+    SMTP_PORT: z.coerce.number().int().positive().default(1026),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== 'production') return;
@@ -50,7 +60,12 @@ export const envSchema = z
       S3_ACCESS_KEY_ID: env.S3_ACCESS_KEY_ID,
       S3_SECRET_ACCESS_KEY: env.S3_SECRET_ACCESS_KEY,
       S3_PUBLIC_BASE_URL: env.S3_PUBLIC_BASE_URL,
+      EMAIL_FROM: env.EMAIL_FROM,
+      RESEND_API_KEY: env.EMAIL_PROVIDER === 'resend' ? env.RESEND_API_KEY : 'not used',
     };
+    if (env.EMAIL_PROVIDER !== 'resend') {
+      ctx.addIssue({ code: 'custom', path: ['EMAIL_PROVIDER'], message: 'must be resend in production' });
+    }
     for (const [key, value] of Object.entries(required)) {
       if (!value) ctx.addIssue({ code: 'custom', path: [key], message: 'required in production' });
     }

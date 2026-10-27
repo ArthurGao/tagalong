@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
 import { Fulfilment, ListingStatus, ListingType, Pricing } from '../../generated/prisma/enums.js';
@@ -8,6 +8,7 @@ import { AVAILABILITY, type Availability } from '../listings/availability.js';
 // Public responses are explicit allow-lists (DESIGN §10): no ids, no merchant contact details, no buyer PII.
 
 export class PublicOptionDto {
+  @ApiProperty({ description: 'What an order refers to' }) id!: string;
   @ApiProperty() name!: string;
   @ApiProperty() priceCents!: number;
   @ApiProperty({ type: Number, nullable: true, description: 'Places left; null = unlimited' }) remaining!: number | null;
@@ -16,7 +17,7 @@ export class PublicOptionDto {
   @ApiProperty({ type: String, nullable: true }) location!: string | null;
 }
 
-export class PublicPickupPointDto extends OmitType(PickupPointDto, ['id'] as const) {}
+export class PublicPickupPointDto extends PickupPointDto {}
 
 export class PublicMerchantDto {
   @ApiProperty() slug!: string;

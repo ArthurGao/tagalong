@@ -1,12 +1,12 @@
 import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import { IsEmail, IsOptional, IsString, IsUrl, Length, Matches } from 'class-validator';
+import { PHONE } from '../../common/validation.js';
 import { MerchantStatus } from '../../generated/prisma/enums.js';
 
 // 3–30 chars, lowercase letters, digits and inner hyphens: it becomes the public /m/{slug} link.
 const SLUG = /^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/;
 // NZ GST numbers are 8 or 9 digits, often written 123-456-789.
 const GST = /^\d{2,3}-?\d{3}-?\d{3}$/;
-const PHONE = /^\+?[0-9 ()-]{6,20}$/;
 
 export class CreateMerchantDto {
   @ApiProperty({ example: 'xiaolin-farm' })

@@ -4,7 +4,7 @@ import { maskName } from '../../common/mask.js';
 import type { OrderStatus } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { readFormFields } from '../listings/form-fields.js';
-import { isTakenDown, listingAvailability, remainingPlaces } from '../listings/availability.js';
+import { availabilityOf, isTakenDown, remainingPlaces } from '../listings/availability.js';
 import type { ParticipantPageDto, PublicListingDto } from './public-listing.dto.js';
 
 // Orders that hold a place on the sign-up sheet. Cancelled, refunded, expired and no-show rows drop out;
@@ -30,6 +30,7 @@ export class PublicListingsService {
     });
     if (!l) throw new AppError('NOT_FOUND', 'Listing not found');
     const options = l.options.map((o) => ({
+      id: o.id,
       name: o.name,
       priceCents: o.priceCents,
       remaining: remainingPlaces(o.capacity, o.soldCount, o.reservedCount),
@@ -47,10 +48,7 @@ export class PublicListingsService {
       pricing: l.pricing,
       fulfilment: l.fulfilment,
       status: l.status,
-      availability: listingAvailability(
-        { ...l, merchantStatus: l.merchant.status, totalRemaining, optionRemaining: options.map((o) => o.remaining) },
-        new Date(),
-      ),
+      availability: availabilityOf(l, new Date()),
       opensAt: l.opensAt,
       closesAt: l.closesAt,
       maxQtyPerOrder: l.maxQtyPerOrder,
@@ -63,6 +61,7 @@ export class PublicListingsService {
       formFields: readFormFields(l.formFields),
       options,
       pickupPoints: l.pickupPoints.map((p) => ({
+        id: p.id,
         label: p.label,
         address: p.address,
         windowStart: p.windowStart,

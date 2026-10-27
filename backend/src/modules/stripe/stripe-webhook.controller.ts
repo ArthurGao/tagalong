@@ -6,6 +6,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { CheckoutWebhooksService } from '../orders/checkout-webhooks.service.js';
 import { MerchantStripeService } from './merchant-stripe.service.js';
 import { StripeClient } from './stripe-client.js';
 
@@ -21,6 +22,7 @@ export class StripeWebhookController {
     private readonly stripe: StripeClient,
     private readonly prisma: PrismaService,
     private readonly merchants: MerchantStripeService,
+    private readonly checkout: CheckoutWebhooksService,
   ) {}
 
   @Post('connect')
@@ -58,8 +60,12 @@ export class StripeWebhookController {
         if (!merchant) this.logger.warn(`account.updated for unknown account ${accountId}`);
         return;
       }
+      case 'checkout.session.completed':
+        return this.checkout.completed(event.data.object);
+      case 'checkout.session.expired':
+        return this.checkout.expired(event.data.object);
       default:
-        return; // recorded; checkout / refund / dispute handlers arrive in M5–M6
+        return; // recorded; refund and dispute handlers arrive in M6
     }
   }
 

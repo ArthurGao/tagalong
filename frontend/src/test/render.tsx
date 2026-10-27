@@ -86,7 +86,7 @@ export function publicListingFixture(over: Partial<PublicListing> = {}): PublicL
     totalCapacity: null,
     totalRemaining: null,
     formFields: [],
-    options: [{ name: '2kg', priceCents: 3900, remaining: null, startsAt: null, endsAt: null, location: null }],
+    options: [{ id: 'opt-2kg', name: '2kg', priceCents: 3900, remaining: null, startsAt: null, endsAt: null, location: null }],
     pickupPoints: [],
     merchant: { slug: 'farm', displayName: 'Farm', logoUrl: null, verified: true },
     ...over,

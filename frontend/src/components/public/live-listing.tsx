@@ -48,10 +48,12 @@ export function useServerListing(): PublicListing {
   return useInitial().listing;
 }
 
+export const liveListingKey = (shortCode: string) => ['public-listing', shortCode] as const;
+
 export function useLiveListing(): PublicListing {
   const { listing } = useInitial();
   const { data } = useQuery({
-    queryKey: ['public-listing', listing.shortCode],
+    queryKey: liveListingKey(listing.shortCode),
     queryFn: async () => {
       const fresh = await fetchPublicListing(listing.shortCode);
       // A published listing never becomes unknown; treat it as a failed poll and keep the last data.

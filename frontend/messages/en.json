@@ -56,6 +56,63 @@
         "SUSPENDED": "This seller has paused sales.",
         "CANCELLED": "This listing was cancelled."
       }
+    },
+    "checkout": {
+      "title": "Join this group buy",
+      "quantity": "Quantity",
+      "decrease": "Fewer {name}",
+      "increase": "More {name}",
+      "maxPerOrder": "Up to {max} per order",
+      "pickup": "Pickup point",
+      "choosePickup": "Choose a pickup point",
+      "name": "Name",
+      "email": "Email",
+      "phone": "Phone",
+      "note": "Note for the seller (optional)",
+      "anonymous": "Show me as anonymous on the list",
+      "subtotal": "Subtotal {amount}",
+      "pay": "Continue to payment",
+      "paying": "Opening payment…",
+      "secure": "Payment is handled by Stripe. Prices include GST.",
+      "close": "Close",
+      "soldOutRefreshed": "Some places just went. What's left has been refreshed.",
+      "validation": {
+        "items": "Choose at least one item",
+        "pickup": "Choose a pickup point",
+        "name": "Enter your name",
+        "email": "Enter a valid email",
+        "phone": "Enter a valid phone number"
+      }
+    },
+    "order": {
+      "title": "Order {code}",
+      "status": {
+        "PENDING_PAYMENT": "Awaiting payment",
+        "PAID": "Paid",
+        "CONFIRMED": "Registered",
+        "FULFILLED": "Collected",
+        "EXPIRED": "Reservation ended",
+        "CANCELLED": "Cancelled",
+        "REFUNDED": "Refunded",
+        "PARTIALLY_REFUNDED": "Partly refunded",
+        "NO_SHOW": "Marked as no-show"
+      },
+      "confirming": "Confirming your payment…",
+      "submitted": "Payment submitted. We'll email you once it's confirmed.",
+      "paidHeadline": "You're in! You're #{seq}",
+      "held": "Your places are held until {time}.",
+      "expiredBody": "This reservation has ended. You can order again from the listing.",
+      "autoRefunded": "This payment arrived after the places sold out, so it has been refunded in full.",
+      "itemsTitle": "Items",
+      "total": "Total {amount}",
+      "refunded": "Refunded {amount}",
+      "pickupTitle": "Pickup",
+      "backToListing": "Back to the listing",
+      "cancel": "Cancel order",
+      "cancelTitle": "Cancel this order?",
+      "cancelBody": "Your held places will be released.",
+      "cancelConfirm": "Yes, cancel",
+      "keep": "Keep it"
     }
   },
   "admin": {
@@ -81,6 +138,7 @@
     "ALREADY_REGISTERED": "This email is already registered. The confirmation email has been resent.",
     "QTY_EXCEEDS_LIMIT": "That is more than one order allows. Lower the quantity.",
     "INVALID_STATE_TRANSITION": "This changed in the meantime. Reload to see the latest state.",
+    "ORDER_IN_PROGRESS": "Your order is still being set up. Try again in a moment.",
     "FIELD_LOCKED_AFTER_PUBLISH": "This field cannot change after publishing.",
     "CAPACITY_BELOW_SOLD": "Capacity cannot go below what is already sold or reserved.",
     "OPTION_HAS_ORDERS": "This option has orders. Turn it off instead of deleting it.",

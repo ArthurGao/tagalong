@@ -79,6 +79,11 @@ frontend/
   - Handle `SOLD_OUT` by refreshing the options and showing a toast.
   - Generate an `Idempotency-Key` (UUID) when the buyer form mounts, send it on every submit of that form, and regenerate only after a successful response.
   - After returning from Stripe with `paid=1`, the order page polls `GET /public/orders/:code` every 2 s for up to 60 s while the status is `PENDING_PAYMENT`, showing a "confirming payment" state. It never shows "unpaid" during that window.
+  - Implemented in `components/public/OrderSheet.tsx`, opened from `StickyBuyBar` (paid listings).
+    - The key is held in `useState` for the life of the form.
+    - `SOLD_OUT` invalidates the live listing query.
+    - Redirects go through `lib/navigate.ts` `goTo()`, so tests can mock them.
+  - The order page is `app/[locale]/(public)/o/[publicCode]` with `components/public/OrderView.tsx` (noindex, dynamic).
   - Free listings get `{ kind: 'confirmed', publicCode, accessToken }`. Navigate to `/o/{publicCode}?t={accessToken}`, which shows "报名成功" (registered). Branch on `kind`, never on price.
   - Handle `ALREADY_REGISTERED` by showing "该邮箱已报名，确认邮件已重新发送" (this email is already registered; the confirmation email has been resent).
   - Every public order form includes the Cloudflare Turnstile widget, and its token is sent with the request.
@@ -105,6 +110,11 @@ frontend/
 - **Privacy:** the frontend never receives buyer PII on public pages, so don't add fields for it. The order page requires the `t` token.
 - **Accessibility:** use semantic HTML, give inputs labels, and keep contrast at WCAG AA. shadcn/ui defaults are fine.
 - Generic UI pieces go in `components/ui`, and only shadcn/ui-generated components live there. Write feature components by hand.
+  - `ui/dialog.tsx` is adapted from shadcn:
+    - it portals into the page's `[data-surface]` element, so surface tokens and fonts apply;
+    - it uses an inline close icon (no lucide-react) and a `closeLabel` prop (i18n).
+  - The current shadcn registry imports `cn` from an npm package `cn`; use `@/lib/utils` instead.
+  - When a second portaled primitive arrives (popover, select, toast), replace the `querySelector('[data-surface]')` lookup with a `SurfaceRoot` that renders the surface element and provides it through context to every portal.
 - **Surface isolation:** `components/public`, `components/merchant` and `components/admin` must never import from each other. They may only share `components/ui` and `lib`. Enforced by ESLint `import/no-restricted-paths` in `eslint.config.mjs`, which checks the resolved file, so `@/` aliases and any relative path are covered.
 - **Fonts:** load them with `next/font/google` in the surface's layout only. For CJK text, use the system font stack from UI-STYLE.md; never load web CJK fonts.
 - **Mobile-first applies to public and merchant.** Admin is desktop-first (≥1280px) and only needs to degrade gracefully on smaller screens.

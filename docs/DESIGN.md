@@ -143,6 +143,7 @@ Merchant 1──* MerchantNote (admin 内部备注)
 - `isFree` (bool)：下单时根据接龙的 `pricing` 写入，作为快照
 - `onePerEmail` (bool)：下单时复制接龙的 `onePerEmail`，作为快照；部分唯一索引需要它（索引条件不能引用 listing 表）
 - `idempotencyKey?` (unique)：客户端生成的 UUID，防止重复提交
+- `locale`：下单时买家界面语言（`zh-CN` / `en`），之后由 outbox 发送的邮件按它选择语言
 - `status`：`PENDING_PAYMENT | PAID | CONFIRMED | FULFILLED | EXPIRED | CANCELLED | REFUNDED | PARTIALLY_REFUNDED | NO_SHOW`，状态流转见第 6 节
 - 金额：`subtotalCents`, `platformFeeCents`, `totalCents`, `refundedCents`
 - `sequenceNo?`（付款成功后才分配，对应「#12」）
@@ -399,17 +400,17 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - `POST /uploads/presign` {contentType, contentLength} → {uploadUrl, publicUrl}（S3 / R2 预签名 **PUT**，限 jpeg / png / webp，最大 5MB）。R2 不支持带 POST policy 的表单上传，所以把 `Content-Length` 一起签进 URL：实际上传大小与声明不符时签名失效，以此在服务端强制 5MB 上限。对象键为 `listings/{merchantId}/{uuid}.{ext}`；接龙的 `images` 只接受本商家通过该接口拿到的 URL（最多 9 张）：解析并规范化后须与存储同源、不带查询串，路径恰好是 `listings/{merchantId}/{uuid}.{jpg|png|webp}`，`../` 之类无法绕过
 
 **公开接口 (Public)，无需登录**
-- `GET /public/listings/:shortCode`：返回接龙详情、各 option 的剩余数量、商家公开信息
+- `GET /public/listings/:shortCode`：返回接龙详情、各 option 的剩余数量、商家公开信息；option 和取货点带 `id`（下单时引用），接龙和商家的内部 id 不返回
 - `GET /public/listings/:shortCode/participants?cursor=`：返回 `[{seq, displayName, summary, paidAt}]`，其中姓名已脱敏
 - `POST /public/listings/:shortCode/orders`：提交 {items[{optionId, qty, attendeeName?}], buyer{name, email, phone}, pickupPointId?, note?, anonymous}，返回以下二者之一：
   - 付费接龙：`{ kind: 'checkout', checkoutUrl }`
   - 免费接龙：`{ kind: 'confirmed', publicCode, accessToken }`
   - 请求体中额外包含 `formAnswers`、`items[].attendeeAnswers`、`turnstileToken`
   - 服务端会按接龙的 `formFields` 校验答案：必填项、类型、选项是否合法
-- `GET /public/orders/:publicCode?t=token`：返回订单状态；`PENDING_PAYMENT` 且带有 `stripeCheckoutSessionId` 时，前端据此显示「正在确认付款」
+- `GET /public/orders/:publicCode`（请求头 `X-Order-Token: {accessToken}`）：返回订单状态；`PENDING_PAYMENT` 且带有 `stripeCheckoutSessionId` 时，前端据此显示「正在确认付款」
 - `POST /public/orders/recover` {email, turnstileToken}：**找回订单**。把该邮箱最近 90 天内所有有效订单（PAID / CONFIRMED / FULFILLED）的链接汇总成一封邮件发送；无论邮箱是否存在，接口都返回相同的成功响应；限流为同一邮箱每小时 3 次
 - **Origin 校验（CSRF 补充防线，全局 `OriginGuard`）**：所有公开写接口，以及所有带 cookie 的写请求（POST/PUT/PATCH/DELETE），`Origin` 请求头都必须是我们自己的域名（`APP_URL` 和 `CLERK_AUTHORIZED_PARTIES`），否则返回 403。Clerk 的 `__session` 是 SameSite=Lax，但 admin 子域名与主站同站，所以仍需这道检查；不带 cookie 的调用（webhook、Bearer 客户端）不受影响
-- `POST /public/orders/:publicCode/cancel?t=token`
+- `POST /public/orders/:publicCode/cancel`（同样用 `X-Order-Token` 请求头）。买家看到的链接仍是 `/o/{publicCode}?t=`，但 API 不接受查询串里的 token，避免它出现在代理和平台的请求日志里；订单页设置 `Referrer-Policy: no-referrer`
   - 付费订单：仅限 `PENDING_PAYMENT` 状态
   - 免费订单：`CONFIRMED` 状态，且 `allowSelfCancel` 为 true、当前时间早于 `selfCancelUntil`
 - `POST /merchants/me/orders/:id/cancel` {reason}：商家取消免费报名，并通知买家
@@ -565,7 +566,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 
 ## 12. 通知
 
-- **Outbox 机制（D16）**：业务代码只调用 `notifications.enqueue(type, recipient, payload, dedupeKey)`，在业务事务内写入 `NotificationOutbox`。`outbox.job.ts` 每 10 秒取一批 `PENDING` 记录（`FOR UPDATE SKIP LOCKED`）发送：成功写 `sentAt`，失败则 `attempts += 1` 并按 1、5、30 分钟、2 小时、12 小时退避，5 次后标记 `FAILED` 并上报 Sentry。`dedupeKey` 保证重复的 webhook 不会发两封邮件。
+- **Outbox 机制（D16）**：业务代码只调用 `notifications.enqueue(type, recipient, payload, dedupeKey)`，在业务事务内写入 `NotificationOutbox`。`outbox.job.ts` 每 10 秒取一批 `PENDING` 记录（`FOR UPDATE SKIP LOCKED`）发送：成功写 `sentAt`，失败则 `attempts += 1` 并按 1、5、30 分钟、2 小时、12 小时退避（首次发送 + 5 次重试），第 6 次仍失败才标记 `FAILED` 并上报 Sentry；没有对应模板的类型直接 `FAILED`，不重试。发送前用租约认领（把 `nextAttemptAt` 推后 5 分钟），发送本身不在事务里，进程中途崩溃的行租约到期后会被重发（至少一次）。`dedupeKey` 保证重复的 webhook 不会发两封邮件。
 - 使用 `EmailService` 抽象层：开发环境用 Mailpit，生产环境用 Resend 或 AWS SES。
 - 邮件模板使用 React Email 或 MJML，支持中英双语。
 - 需要发送的邮件：
@@ -665,7 +666,8 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 | `UNAUTHENTICATED` | 401 | 无有效会话 |
 | `FORBIDDEN` | 403 | 角色不符或不是资源所有者 |
 | `NOT_FOUND` | 404 | 资源不存在，或 token 不匹配（订单页统一返回 404，不区分） |
-| `LISTING_NOT_PUBLISHED` | 409 | 接龙不在 PUBLISHED 状态 |
+| `LISTING_NOT_PUBLISHED` | 409 | 接龙不在 PUBLISHED 状态，或还没到 `opensAt` |
+| `ORDER_IN_PROGRESS` | 409 | 同一 `Idempotency-Key` 的第一次下单还在进行中，稍后重试 |
 | `LISTING_CLOSED` | 409 | 已截止或已取消 |
 | `MERCHANT_SUSPENDED` | 409 | 商家已停用 |
 | `MERCHANT_PROFILE_EXISTS` | 409 | 该账号已经创建过商家资料 |

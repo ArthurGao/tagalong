@@ -100,6 +100,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/listings/{shortCode}/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["PublicOrdersController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/orders/{publicCode}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PublicOrdersController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/orders/{publicCode}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["PublicOrdersController_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uploads/presign": {
         parameters: {
             query?: never;
@@ -310,7 +358,7 @@ export interface components {
         };
         ErrorBodyDto: {
             /** @enum {string} */
-            code: "VALIDATION_FAILED" | "TURNSTILE_FAILED" | "BAD_REQUEST" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "LISTING_NOT_PUBLISHED" | "LISTING_CLOSED" | "MERCHANT_SUSPENDED" | "MERCHANT_PROFILE_EXISTS" | "SLUG_TAKEN" | "MERCHANT_NOT_CHARGEABLE" | "SOLD_OUT" | "ALREADY_REGISTERED" | "QTY_EXCEEDS_LIMIT" | "INVALID_STATE_TRANSITION" | "FIELD_LOCKED_AFTER_PUBLISH" | "CAPACITY_BELOW_SOLD" | "OPTION_HAS_ORDERS" | "PICKUP_POINT_HAS_ORDERS" | "LISTING_STALE" | "SELF_CANCEL_WINDOW_PASSED" | "REFUND_EXCEEDS_TOTAL" | "PRICE_OUT_OF_RANGE" | "RATE_LIMITED" | "STRIPE_ERROR" | "INTERNAL";
+            code: "VALIDATION_FAILED" | "TURNSTILE_FAILED" | "BAD_REQUEST" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "LISTING_NOT_PUBLISHED" | "LISTING_CLOSED" | "MERCHANT_SUSPENDED" | "MERCHANT_PROFILE_EXISTS" | "SLUG_TAKEN" | "MERCHANT_NOT_CHARGEABLE" | "SOLD_OUT" | "ALREADY_REGISTERED" | "QTY_EXCEEDS_LIMIT" | "INVALID_STATE_TRANSITION" | "ORDER_IN_PROGRESS" | "FIELD_LOCKED_AFTER_PUBLISH" | "CAPACITY_BELOW_SOLD" | "OPTION_HAS_ORDERS" | "PICKUP_POINT_HAS_ORDERS" | "LISTING_STALE" | "SELF_CANCEL_WINDOW_PASSED" | "REFUND_EXCEEDS_TOTAL" | "PRICE_OUT_OF_RANGE" | "RATE_LIMITED" | "STRIPE_ERROR" | "INTERNAL";
             message: string;
             details?: Record<string, never>;
         };
@@ -326,6 +374,75 @@ export interface components {
         };
         StripeLinkDto: {
             url: string;
+        };
+        OrderItemInputDto: {
+            optionId: string;
+            quantity: number;
+        };
+        BuyerInputDto: {
+            name: string;
+            email: string;
+            phone: string;
+        };
+        CreateOrderDto: {
+            items: components["schemas"]["OrderItemInputDto"][];
+            buyer: components["schemas"]["BuyerInputDto"];
+            pickupPointId?: string;
+            note?: string;
+            /** @description Show as "anonymous" on the public sign-up sheet */
+            anonymous: boolean;
+            /**
+             * @description Buyer UI language, used for emails
+             * @enum {string}
+             */
+            locale?: "zh-CN" | "en";
+        };
+        CreateOrderResultDto: {
+            /** @enum {string} */
+            kind: "checkout" | "confirmed";
+            /** @description Paid listings: Stripe Checkout URL to redirect to */
+            checkoutUrl?: string;
+        };
+        /** @enum {string} */
+        OrderStatus: "PENDING_PAYMENT" | "PAID" | "CONFIRMED" | "FULFILLED" | "EXPIRED" | "CANCELLED" | "REFUNDED" | "PARTIALLY_REFUNDED" | "NO_SHOW";
+        PublicOrderItemDto: {
+            name: string;
+            quantity: number;
+            unitPriceCents: number;
+        };
+        PublicOrderPickupDto: {
+            label: string;
+            address: string;
+            /** Format: date-time */
+            windowStart: string | null;
+            /** Format: date-time */
+            windowEnd: string | null;
+            notes: string | null;
+        };
+        PublicOrderListingDto: {
+            shortCode: string;
+            title: string;
+        };
+        PublicOrderDto: {
+            publicCode: string;
+            status: components["schemas"]["OrderStatus"];
+            isFree: boolean;
+            /** @description The buyer may cancel it now */
+            canCancel: boolean;
+            sequenceNo: number | null;
+            buyerName: string;
+            items: components["schemas"]["PublicOrderItemDto"][];
+            subtotalCents: number;
+            totalCents: number;
+            refundedCents: number;
+            pickupPoint: components["schemas"]["PublicOrderPickupDto"] | null;
+            listing: components["schemas"]["PublicOrderListingDto"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            paidAt: string | null;
+            /** Format: date-time */
+            reservationExpiresAt: string | null;
         };
         PresignUploadDto: {
             /** @enum {string} */
@@ -509,6 +626,8 @@ export interface components {
         /** @enum {string} */
         Availability: "OPEN" | "NOT_YET_OPEN" | "CLOSED" | "CANCELLED" | "TAKEN_DOWN" | "SUSPENDED" | "SOLD_OUT";
         PublicOptionDto: {
+            /** @description What an order refers to */
+            id: string;
             name: string;
             priceCents: number;
             /** @description Places left; null = unlimited */
@@ -520,6 +639,7 @@ export interface components {
             location: string | null;
         };
         PublicPickupPointDto: {
+            id: string;
             label: string;
             address: string;
             /** Format: date-time */
@@ -786,6 +906,109 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MerchantDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    PublicOrdersController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description UUID generated when the form opens (DESIGN §7.2) */
+                "Idempotency-Key": string;
+            };
+            path: {
+                shortCode: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOrderDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateOrderResultDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    PublicOrdersController_get: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Access token from the order link */
+                "X-Order-Token": string;
+            };
+            path: {
+                publicCode: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicOrderDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    PublicOrdersController_cancel: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Access token from the order link */
+                "X-Order-Token": string;
+            };
+            path: {
+                publicCode: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicOrderDto"];
                 };
             };
             /** @description Error (code from DESIGN §17) */

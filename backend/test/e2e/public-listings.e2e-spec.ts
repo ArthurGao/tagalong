@@ -127,6 +127,9 @@ describe('public listing API (DESIGN §9, §10, M4)', () => {
       ['2kg', 7],
       ['5kg', null],
     ]);
+    // Option and pickup point ids are what an order refers to (M5); listing and merchant ids stay private.
+    expect(res.body.options.map((o: { id: string }) => o.id)).toEqual(listing.options.filter((o) => o.active).map((o) => o.id));
+    expect(res.body.pickupPoints[0].id).toEqual(expect.any(String));
     const json = JSON.stringify(res.body);
     for (const leak of [listing.id, merchant.id, merchant.contactEmail, merchant.contactPhone]) {
       expect(json).not.toContain(leak);

@@ -1,15 +1,19 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { formatCents, priceSpan } from '@/lib/money';
 import { useLiveListing } from './live-listing';
+import { OrderSheet } from './OrderSheet';
 
-// Always visible at the bottom (UI-STYLE §2). Ordering arrives in M5; until then the button stays disabled.
+// Always visible at the bottom (UI-STYLE §2). Paid listings order here; free registration arrives in M5b.
 export function StickyBuyBar() {
   const t = useTranslations('public.listing');
   const l = useLiveListing();
+  const [sheetOpen, setSheetOpen] = useState(false);
   const open = l.availability === 'OPEN';
+  const canOrder = open && l.pricing === 'PAID';
   const span = priceSpan(l.options.map((o) => o.priceCents));
   const priceLabel =
     l.pricing === 'FREE' || !span
@@ -22,12 +26,13 @@ export function StickyBuyBar() {
       <div className="mx-auto flex max-w-[480px] items-center justify-between gap-4 px-4 py-3">
         <div className="flex flex-col">
           <span className="font-display text-2xl font-bold tabular-nums">{priceLabel}</span>
-          {open && <span className="text-xs text-muted-foreground">{t('orderingSoon')}</span>}
+          {open && !canOrder && <span className="text-xs text-muted-foreground">{t('orderingSoon')}</span>}
         </div>
-        <Button size="lg" className="min-w-32" disabled>
+        <Button size="lg" className="min-w-32" disabled={!canOrder} onClick={() => setSheetOpen(true)}>
           {open ? t(`buy.${l.pricing}`) : t(`state.${l.availability}`)}
         </Button>
       </div>
+      {canOrder && <OrderSheet open={sheetOpen} onOpenChange={setSheetOpen} />}
     </div>
   );
 }

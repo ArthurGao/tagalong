@@ -15,19 +15,19 @@ describe('StickyBuyBar', () => {
   afterEach(cleanup);
 
   it.each([
-    ['PAID', 'OPEN', t.buy.PAID],
-    ['FREE', 'OPEN', t.buy.FREE],
-    ['PAID', 'SOLD_OUT', t.state.SOLD_OUT],
-    ['FREE', 'CLOSED', t.state.CLOSED],
-    ['PAID', 'SUSPENDED', t.state.SUSPENDED],
-    ['PAID', 'TAKEN_DOWN', t.state.TAKEN_DOWN],
-    ['FREE', 'CANCELLED', t.state.CANCELLED],
-    ['PAID', 'NOT_YET_OPEN', t.state.NOT_YET_OPEN],
-  ] as const)('%s × %s → "%s", disabled until ordering ships (M5)', (pricing, availability, label) => {
+    ['PAID', 'OPEN', t.buy.PAID, true],
+    ['FREE', 'OPEN', t.buy.FREE, false], // free registration arrives in M5b
+    ['PAID', 'SOLD_OUT', t.state.SOLD_OUT, false],
+    ['FREE', 'CLOSED', t.state.CLOSED, false],
+    ['PAID', 'SUSPENDED', t.state.SUSPENDED, false],
+    ['PAID', 'TAKEN_DOWN', t.state.TAKEN_DOWN, false],
+    ['FREE', 'CANCELLED', t.state.CANCELLED, false],
+    ['PAID', 'NOT_YET_OPEN', t.state.NOT_YET_OPEN, false],
+  ] as const)('%s × %s → "%s", enabled: %s', (pricing, availability, label, enabled) => {
     renderBar(publicListingFixture({ pricing, availability }));
     const button = screen.getByRole('button');
     expect(button.textContent).toBe(label);
-    expect(button).toHaveProperty('disabled', true);
+    expect(button).toHaveProperty('disabled', !enabled);
   });
 
   it('shows "from" the lowest price when options differ, and "Free" for free listings', () => {

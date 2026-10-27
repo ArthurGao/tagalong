@@ -4,6 +4,8 @@ import { shortCode } from '../../common/ids.js';
 import type { Listing, ListingOption, PickupPoint, Prisma } from '../../generated/prisma/client.js';
 import { isForeignKeyViolation, isUniqueViolation } from '../../prisma/errors.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
+import type { PickupPointChangedPayload } from '../notifications/templates.js';
 import { type AuthUser, requireMerchantId } from '../auth/auth-user.js';
 import { ObjectStorage } from '../uploads/object-storage.js';
 import { formFieldIssues, readFormFields, sensitiveFieldKeys, toFormFieldsJson } from './form-fields.js';
@@ -117,6 +119,7 @@ export class ListingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: ObjectStorage,
+    private readonly notifications: NotificationsService,
   ) {}
 
   list(user: AuthUser) {
@@ -255,24 +258,24 @@ export class ListingsService {
           data: dto.pickupPoints.filter((p) => !p.id).map((p) => ({ ...toData(p), listingId: id })),
         });
         if (!moved.size) return;
-        // DESIGN §5b: buyers who chose a moved point are told the new address (sent by outbox.job, M5).
+        // DESIGN §5b: buyers who chose a moved point are told the new address, in their language (outbox.job).
         const orders = await tx.order.findMany({
           where: { pickupPointId: { in: [...moved.keys()] } },
-          select: { id: true, buyerEmail: true, pickupPointId: true },
+          select: { id: true, buyerEmail: true, pickupPointId: true, locale: true },
         });
-        await tx.notificationOutbox.createMany({
-          data: orders.map((o) => {
+        await this.notifications.enqueue(
+          tx,
+          ...orders.map((o) => {
             const point = moved.get(o.pickupPointId!)!;
             return {
               type: 'PICKUP_POINT_CHANGED',
               recipient: o.buyerEmail,
-              locale: 'zh-CN',
-              payload: { orderId: o.id, listingId: id, label: point.label, address: point.address },
+              locale: o.locale,
+              payload: { label: point.label, address: point.address } satisfies PickupPointChangedPayload,
               dedupeKey: `PICKUP_POINT_CHANGED:${o.id}:${point.address}`,
             };
           }),
-          skipDuplicates: true,
-        });
+        );
       });
     } catch (e) {
       if (isForeignKeyViolation(e)) throw new AppError('PICKUP_POINT_HAS_ORDERS', 'Orders use this pickup point');

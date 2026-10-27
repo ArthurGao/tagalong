@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
-import type { StripeAccountState, StripeClient } from '../../../src/modules/stripe/stripe-client.js';
+import { AppError } from '../../../src/common/errors/app-error.js';
+import type { CheckoutRequest, StripeAccountState, StripeClient } from '../../../src/modules/stripe/stripe-client.js';
 
 // Webhook signing/verification is pure HMAC in the SDK; no network and no real key involved.
 const sdk = new Stripe('sk_test_fake_for_webhook_signing');
@@ -17,8 +18,18 @@ export class FakeStripeClient implements StripeClient {
   /** Per-call delays (ms) for retrieveAccount; the state is read when the call starts, like a real request. */
   readonly retrieveDelays: number[] = [];
   failNextRetrieve = false;
+  readonly sessions: CheckoutRequest[] = [];
+  readonly expired: { accountId: string; sessionId: string }[] = [];
+  readonly refunds: { accountId: string; paymentIntentId: string; amountCents: number; idempotencyKey: string }[] = [];
+  failCheckout = false;
+  failExpire = false;
 
   reset(): void {
+    this.sessions.length = 0;
+    this.expired.length = 0;
+    this.refunds.length = 0;
+    this.failCheckout = false;
+    this.failExpire = false;
     this.createdFor.length = 0;
     this.links.length = 0;
     this.retrieveCalls.length = 0;
@@ -50,6 +61,28 @@ export class FakeStripeClient implements StripeClient {
     const snapshot = { ...account };
     await new Promise((resolve) => setTimeout(resolve, this.retrieveDelays.shift() ?? 0));
     return snapshot;
+  }
+
+  async createCheckoutSession(request: CheckoutRequest): Promise<{ id: string; url: string }> {
+    if (this.failCheckout) throw new AppError('STRIPE_ERROR', 'Stripe request failed', { stripeCode: 'api_error' });
+    // Like Stripe: reusing an idempotency key (checkout:{orderId}) with different parameters is an error.
+    const earlier = this.sessions.find((s) => s.orderId === request.orderId);
+    if (earlier && JSON.stringify(earlier) !== JSON.stringify(request)) {
+      throw new AppError('STRIPE_ERROR', 'Stripe request failed', { stripeCode: 'idempotency_error' });
+    }
+    this.sessions.push(request);
+    const id = `cs_test_${request.orderId.replace(/-/g, '').slice(-16)}`;
+    return { id, url: `https://checkout.stripe.test/${id}` };
+  }
+
+  async expireCheckoutSession(accountId: string, sessionId: string): Promise<void> {
+    if (this.failExpire) throw new AppError('STRIPE_ERROR', 'Stripe request failed', { stripeCode: 'api_error' });
+    this.expired.push({ accountId, sessionId });
+  }
+
+  async refundPayment(accountId: string, paymentIntentId: string, amountCents: number, idempotencyKey: string) {
+    this.refunds.push({ accountId, paymentIntentId, amountCents, idempotencyKey });
+    return { id: `re_${idempotencyKey.replace(/[^a-z0-9]/gi, '').slice(-16)}`, status: 'succeeded' };
   }
 
   constructEvent(rawBody: Buffer | string, signature: string, secret: string): Stripe.Event {

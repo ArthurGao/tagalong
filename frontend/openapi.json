@@ -276,6 +276,163 @@
         ]
       }
     },
+    "/api/v1/public/listings/{shortCode}/orders": {
+      "post": {
+        "operationId": "PublicOrdersController_create",
+        "parameters": [
+          {
+            "name": "shortCode",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID generated when the form opens (DESIGN §7.2)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateOrderResultDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/api/v1/public/orders/{publicCode}": {
+      "get": {
+        "operationId": "PublicOrdersController_get",
+        "parameters": [
+          {
+            "name": "publicCode",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Order-Token",
+            "in": "header",
+            "description": "Access token from the order link",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicOrderDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/api/v1/public/orders/{publicCode}/cancel": {
+      "post": {
+        "operationId": "PublicOrdersController_cancel",
+        "parameters": [
+          {
+            "name": "publicCode",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Order-Token",
+            "in": "header",
+            "description": "Access token from the order link",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicOrderDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
+    },
     "/api/v1/uploads/presign": {
       "post": {
         "operationId": "UploadsController_presign",
@@ -1053,6 +1210,7 @@
               "ALREADY_REGISTERED",
               "QTY_EXCEEDS_LIMIT",
               "INVALID_STATE_TRANSITION",
+              "ORDER_IN_PROGRESS",
               "FIELD_LOCKED_AFTER_PUBLISH",
               "CAPACITY_BELOW_SOLD",
               "OPTION_HAS_ORDERS",
@@ -1112,6 +1270,265 @@
         },
         "required": [
           "url"
+        ]
+      },
+      "OrderItemInputDto": {
+        "type": "object",
+        "properties": {
+          "optionId": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "required": [
+          "optionId",
+          "quantity"
+        ]
+      },
+      "BuyerInputDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "phone"
+        ]
+      },
+      "CreateOrderDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItemInputDto"
+            }
+          },
+          "buyer": {
+            "$ref": "#/components/schemas/BuyerInputDto"
+          },
+          "pickupPointId": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "anonymous": {
+            "type": "boolean",
+            "description": "Show as \"anonymous\" on the public sign-up sheet"
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "zh-CN",
+              "en"
+            ],
+            "description": "Buyer UI language, used for emails"
+          }
+        },
+        "required": [
+          "items",
+          "buyer",
+          "anonymous"
+        ]
+      },
+      "CreateOrderResultDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "checkout",
+              "confirmed"
+            ]
+          },
+          "checkoutUrl": {
+            "type": "string",
+            "description": "Paid listings: Stripe Checkout URL to redirect to"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "OrderStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING_PAYMENT",
+          "PAID",
+          "CONFIRMED",
+          "FULFILLED",
+          "EXPIRED",
+          "CANCELLED",
+          "REFUNDED",
+          "PARTIALLY_REFUNDED",
+          "NO_SHOW"
+        ]
+      },
+      "PublicOrderItemDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitPriceCents": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "quantity",
+          "unitPriceCents"
+        ]
+      },
+      "PublicOrderPickupDto": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "windowStart": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "windowEnd": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "label",
+          "address",
+          "windowStart",
+          "windowEnd",
+          "notes"
+        ]
+      },
+      "PublicOrderListingDto": {
+        "type": "object",
+        "properties": {
+          "shortCode": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "shortCode",
+          "title"
+        ]
+      },
+      "PublicOrderDto": {
+        "type": "object",
+        "properties": {
+          "publicCode": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderStatus"
+              }
+            ]
+          },
+          "isFree": {
+            "type": "boolean"
+          },
+          "canCancel": {
+            "type": "boolean",
+            "description": "The buyer may cancel it now"
+          },
+          "sequenceNo": {
+            "type": "number",
+            "nullable": true
+          },
+          "buyerName": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicOrderItemDto"
+            }
+          },
+          "subtotalCents": {
+            "type": "number"
+          },
+          "totalCents": {
+            "type": "number"
+          },
+          "refundedCents": {
+            "type": "number"
+          },
+          "pickupPoint": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PublicOrderPickupDto"
+              }
+            ]
+          },
+          "listing": {
+            "$ref": "#/components/schemas/PublicOrderListingDto"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "reservationExpiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "publicCode",
+          "status",
+          "isFree",
+          "canCancel",
+          "sequenceNo",
+          "buyerName",
+          "items",
+          "subtotalCents",
+          "totalCents",
+          "refundedCents",
+          "pickupPoint",
+          "listing",
+          "createdAt",
+          "paidAt",
+          "reservationExpiresAt"
         ]
       },
       "PresignUploadDto": {
@@ -1823,6 +2240,10 @@
       "PublicOptionDto": {
         "type": "object",
         "properties": {
+          "id": {
+            "type": "string",
+            "description": "What an order refers to"
+          },
           "name": {
             "type": "string"
           },
@@ -1850,6 +2271,7 @@
           }
         },
         "required": [
+          "id",
           "name",
           "priceCents",
           "remaining",
@@ -1861,6 +2283,9 @@
       "PublicPickupPointDto": {
         "type": "object",
         "properties": {
+          "id": {
+            "type": "string"
+          },
           "label": {
             "type": "string"
           },
@@ -1883,6 +2308,7 @@
           }
         },
         "required": [
+          "id",
           "label",
           "address",
           "windowStart",

@@ -1,0 +1,39 @@
+import { escapeHtml, renderEmail, UnknownTemplateError } from './templates.js';
+
+const confirmed = {
+  publicCode: 'TA-K7M2Q9',
+  listingTitle: '<b>Cherries</b> & more',
+  seq: 12,
+  items: [{ name: '2kg', quantity: 2, unitPriceCents: 3900 }],
+  totalCents: 7800,
+  orderUrl: 'https://tagalong.test/o/TA-K7M2Q9?t=abc&paid=1',
+  pickup: { label: 'Albany', address: '1 Main St' },
+};
+
+describe('email templates', () => {
+  it('renders the confirmation in the buyer language with the amounts and the order link', () => {
+    const zh = renderEmail('ORDER_CONFIRMED', 'zh-CN', 'amy@example.test', confirmed);
+    expect(zh.subject).toBe('接龙成功 #12：<b>Cherries</b> & more');
+    expect(zh.text).toContain('2kg ×2  $78.00');
+    expect(zh.text).toContain('合计 $78.00（含 GST）');
+    expect(zh.text).toContain('取货：Albany，1 Main St');
+    expect(zh.text).toContain(confirmed.orderUrl);
+    const en = renderEmail('ORDER_CONFIRMED', 'en', 'amy@example.test', confirmed);
+    expect(en.subject).toBe("You're in (#12): <b>Cherries</b> & more");
+  });
+
+  it('escapes merchant- and buyer-written text in the HTML body', () => {
+    const { html } = renderEmail('ORDER_CONFIRMED', 'en', 'amy@example.test', {
+      ...confirmed,
+      items: [{ name: '<script>x</script>', quantity: 1, unitPriceCents: 100 }],
+    });
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;x&lt;/script&gt; ×1');
+    expect(html).toContain('href="https://tagalong.test/o/TA-K7M2Q9?t=abc&amp;paid=1"');
+    expect(escapeHtml(`<a href="x">'&'</a>`)).toBe('&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;');
+  });
+
+  it('throws for a type without a template', () => {
+    expect(() => renderEmail('NOPE', 'en', 'a@example.test', {})).toThrow(UnknownTemplateError);
+  });
+});

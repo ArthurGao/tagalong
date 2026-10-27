@@ -58,11 +58,41 @@ backend/
 
 - Pure rules live next to the module: `listing-state-machine.ts` (§5b transitions), `publish-rules.ts` (locked fields, capacity, option deletion, price ranges, publish checks, defaults), `form-fields.ts` (≤10 fields, sensitive-label warnings). The service only loads data and calls them.
 - Every change to an existing listing goes through `ListingsService.mutate()`: `SELECT … FOR UPDATE` on the row, `LISTING_STALE` if the request's `revision` is older, validation against the locked state, then the write with `revision + 1`. The close job bumps `revision` too.
-- `availability.ts` (listings module) is the one answer to "can this listing take orders now?" (`OPEN | NOT_YET_OPEN | SOLD_OUT | CLOSED | CANCELLED | TAKEN_DOWN | SUSPENDED`) plus `remainingPlaces()`. The public read API (`modules/public/`) returns it, and M5 order creation must use it too, not a second copy.
+- `availability.ts` (listings module) is the one answer to "can this listing take orders now?" (`OPEN | NOT_YET_OPEN | SOLD_OUT | CLOSED | CANCELLED | TAKEN_DOWN | SUSPENDED`) plus `remainingPlaces()`. The public read API (`modules/public/`) and order creation both use it.
 - `reopen` accepts only CLOSED and re-runs the publish checks. Pickup point deletion relies on the `RESTRICT` foreign key (P2003 → `PICKUP_POINT_HAS_ORDERS`).
 - `listing-close.job.ts` is one conditional UPDATE every minute. Jobs know nothing about tests: `createTestApp` stops every registered cron after init, and tests call the job method (`closeDue()`) directly.
 - `ObjectStorage` (`modules/uploads/object-storage.ts`) presigns a PUT with `Content-Length` signed (R2 has no POST policies) and owns the key layout (`merchantImageKey`, `isMerchantImage`); e2e tests use `test/e2e/support/storage-fake.ts`.
 - `formFields` is a Json column: cross that boundary only through `readFormFields` / `toFormFieldsJson` in `form-fields.ts`.
+
+## Orders and notifications
+
+- `modules/orders/`:
+  - `order-state-machine.ts`: `transitionOrder(tx, order, to, data)` is the only status write. It is a conditional `updateMany` on the expected status, so a concurrent change fails instead of overwriting.
+  - `reservation.ts`: `reserve` / `release` / `sell` are raw conditional UPDATEs. Options are locked in id order. Listing counters (`sold_count`, `reserved_count`) always move with the options, and `sell` returns the next `paid_seq`.
+  - `order-ops.ts`: the shared steps. `orderDetail` include, `lockOrder` (FOR UPDATE + load), `endUnpaid` (→ EXPIRED/CANCELLED + release), `sessionsToEnd` / `expireSessions`, and `checkoutRequest(env, order)`, which builds the Checkout request from the stored order only, so a replay is byte-identical.
+  - `reservation.ts`: `sellAfresh` owns the savepoint for a late payment and returns null when sold out.
+  - `availability.ts`: `assertOrderable` maps each non-OPEN state to its error code (exhaustive).
+  - `orders.service.ts`: create, replay, status and cancel.
+  - `checkout-webhooks.service.ts`: `completed` / `expired`.
+  - `expiry.job.ts`.
+- **Order creation:**
+  - validate against the DB (prices from options only);
+  - in one tx: expire the same email's unpaid order, reserve, create;
+  - **after commit**, create the Checkout session (Stripe idempotency key `checkout:{orderId}`).
+  - If Stripe fails, the order is expired, its stock released and its `idempotencyKey` cleared, so the buyer's retry starts afresh.
+  - A replayed key calls `createCheckoutSession` again with the identical request: Stripe returns the original session, so no URL is stored.
+- **Webhooks:** each one locks the order row and applies only the transition that still applies.
+  - **EXPIRED + completed:** `sell(…, fromReserved=false)` inside a savepoint.
+    - Places still free → PAID.
+    - SOLD_OUT → full refund after the tx (`late-refund:{orderId}`), recorded once via the Refund row; the order stays EXPIRED.
+  - **CANCELLED + completed:** refunded the same way.
+- **Notifications:**
+  - `NotificationsService.enqueue(tx, …)` writes `notification_outbox` with `skipDuplicates`. The dedupe key is `TYPE:{id}`.
+  - `outbox.job.ts` claims a batch with a 5-minute lease (`SKIP LOCKED`) and sends outside the tx.
+  - Retries follow 1/5/30 min, 2 h, 12 h; the 6th failure → FAILED. A missing template → FAILED at once.
+  - `EmailService`: SMTP (Mailpit) or Resend by `EMAIL_PROVIDER`. e2e tests use `test/e2e/support/email-fake.ts`.
+  - Templates live in `templates.ts`, are short and bilingual, and escape everything. The buyer's language is `order.locale`.
+- `StripeClient` lives in `StripeClientModule`, so orders and the Stripe module can both inject it without a cycle.
 
 ## Security
 
@@ -199,6 +229,8 @@ RESERVATION_MINUTES=30
 EMAIL_PROVIDER=mailpit        # mailpit | resend
 RESEND_API_KEY=
 EMAIL_FROM=
+SMTP_HOST=localhost           # Mailpit
+SMTP_PORT=1026
 S3_ENDPOINT=
 S3_BUCKET=
 S3_ACCESS_KEY_ID=

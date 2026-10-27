@@ -257,6 +257,7 @@ model Order {
   isFree                  Boolean     @map("is_free")
   onePerEmail             Boolean     @default(false) @map("one_per_email") // snapshot of listing.onePerEmail
   idempotencyKey          String?     @unique @map("idempotency_key")
+  locale                  String      @default("zh-CN") // buyer's UI language, for emails sent later (outbox)
   status                  OrderStatus
   subtotalCents           Int         @map("subtotal_cents")
   platformFeeCents        Int         @map("platform_fee_cents")

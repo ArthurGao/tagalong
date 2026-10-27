@@ -1,10 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
+import type { AdminSignInPayload } from '../notifications/templates.js';
 
 // DESIGN §10: every admin sign-in is audited and every admin is alerted (Hobby tier has no MFA).
 @Injectable()
 export class AdminSignInService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async record(sessionId: string, clerkUserId: string): Promise<void> {
     const user = await this.prisma.user.findUnique({
@@ -23,16 +28,16 @@ export class AdminSignInService {
       if (count === 0) return;
       const admins = await tx.user.findMany({ where: { role: 'ADMIN', deletedAt: null }, select: { id: true, email: true } });
       // Sent by outbox.job (M5); the dedupeKey keeps one alert per admin per session.
-      await tx.notificationOutbox.createMany({
-        data: admins.map((admin) => ({
+      await this.notifications.enqueue(
+        tx,
+        ...admins.map((admin) => ({
           type: 'ADMIN_SIGN_IN',
           recipient: admin.email,
           locale: 'en',
-          payload: { adminEmail: user.email, sessionId, signedInAt },
+          payload: { adminEmail: user.email, sessionId, signedInAt } satisfies AdminSignInPayload,
           dedupeKey: `ADMIN_SIGN_IN:${sessionId}:${admin.id}`,
         })),
-        skipDuplicates: true,
-      });
+      );
     });
   }
 }

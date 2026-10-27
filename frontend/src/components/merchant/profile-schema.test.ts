@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { GST, PHONE, SLUG, profileSchema } from './profile-schema';
+import { PHONE } from '@/lib/validation';
+import { GST, SLUG, profileSchema } from './profile-schema';
 
 const schema = profileSchema((key) => key);
 const valid = {
@@ -33,11 +34,9 @@ describe('profileSchema (mirrors backend CreateMerchantDto)', () => {
 });
 
 describe('parity with the backend DTO', () => {
-  const dto = readFileSync(
-    fileURLToPath(new URL('../../../../backend/src/modules/merchants/merchant.dto.ts', import.meta.url)),
-    'utf8',
-  );
-  const backendPattern = (name: string) => dto.match(new RegExp(`^const ${name} = (/.+/);$`, 'm'))?.[1];
+  const backend = (path: string) => readFileSync(fileURLToPath(new URL(`../../../../backend/src/${path}`, import.meta.url)), 'utf8');
+  const sources = backend('modules/merchants/merchant.dto.ts') + backend('common/validation.ts');
+  const backendPattern = (name: string) => sources.match(new RegExp(`^(?:export )?const ${name} = (/.+/);$`, 'm'))?.[1];
 
   it.each([
     ['SLUG', SLUG],
