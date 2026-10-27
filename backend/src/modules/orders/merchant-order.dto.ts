@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, Length, MaxLength } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Length, MaxLength, Min } from 'class-validator';
 import { ListingStatus, OrderStatus, Pricing } from '../../generated/prisma/enums.js';
 
 import { ANSWERS } from './order.dto.js';
@@ -7,6 +7,11 @@ import { ANSWERS } from './order.dto.js';
 export class MerchantOrdersQueryDto {
   @ApiPropertyOptional({ enum: OrderStatus, enumName: 'OrderStatus' }) @IsOptional() @IsIn(Object.values(OrderStatus)) status?: OrderStatus;
   @ApiPropertyOptional({ description: 'Name, email, phone or order code' }) @IsOptional() @IsString() @MaxLength(100) q?: string;
+}
+
+export class RefundOrderDto {
+  @ApiProperty({ description: 'Integer NZD cents, at most what is still refundable' }) @IsInt() @Min(1) amountCents!: number;
+  @ApiProperty({ description: 'Told to the buyer' }) @IsString() @Length(1, 500) reason!: string;
 }
 
 export class MerchantCancelOrderDto {
@@ -44,6 +49,7 @@ export class MerchantOrderDto {
   @ApiProperty({ description: 'Check in (free) or mark collected (paid) is possible now' }) canFulfil!: boolean;
   @ApiProperty({ description: 'Cancel with a reason (free registrations only)' }) canCancel!: boolean;
   @ApiProperty({ description: 'Mark no-show (free, once the event has started)' }) canNoShow!: boolean;
+  @ApiProperty({ description: 'Paid: what can still be refunded (total less refunded and refunds in flight)' }) refundableCents!: number;
 }
 
 export class MerchantOrderListingDto {

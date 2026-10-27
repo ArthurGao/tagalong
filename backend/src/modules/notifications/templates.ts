@@ -37,6 +37,26 @@ export type RegistrationCancelledPayload = {
   reason: string;
   listingUrl: string;
 };
+export type OrderRefundedPayload = {
+  publicCode: string;
+  listingTitle: string;
+  amountCents: number;
+  refundedCents: number;
+  totalCents: number;
+  reason: string | null;
+  orderUrl: string;
+};
+export type MerchantDisputePayload = {
+  publicCode: string;
+  listingTitle: string;
+  amountCents: number;
+  reason: string;
+};
+export type CancellationFinishedPayload = {
+  listingTitle: string;
+  succeeded: number;
+  failed: number;
+};
 export type PickupPointChangedPayload = {
   label: string;
   address: string;
@@ -126,6 +146,35 @@ export function renderEmail(type: string, locale: string, to: string, payload: u
         ],
         { label: zh ? '查看接龙' : 'View the listing', url: p.listingUrl },
       );
+    }
+    case 'ORDER_REFUNDED': {
+      const p = payload as OrderRefundedPayload;
+      const full = p.refundedCents >= p.totalCents;
+      return email(
+        to,
+        zh ? `已退款 ${money(p.amountCents)}：${p.listingTitle}` : `Refund of ${money(p.amountCents)}: ${p.listingTitle}`,
+        [
+          zh ? `商家已为订单 ${p.publicCode} 退款 ${money(p.amountCents)}${full ? '（全额）' : ''}。` : `The seller refunded ${money(p.amountCents)}${full ? ' (in full)' : ''} for order ${p.publicCode}.`,
+          ...(p.reason ? [zh ? `原因：${p.reason}` : `Reason: ${p.reason}`] : []),
+          zh ? '退款通常在 5–10 个工作日内回到原支付方式。' : 'Refunds usually reach your card within 5–10 business days.',
+        ],
+        { label: zh ? '查看订单' : 'View your order', url: p.orderUrl },
+      );
+    }
+    case 'MERCHANT_DISPUTE': {
+      const p = payload as MerchantDisputePayload;
+      return email(to, zh ? `付款争议：订单 ${p.publicCode}` : `Payment dispute: order ${p.publicCode}`, [
+        zh
+          ? `买家对「${p.listingTitle}」的订单 ${p.publicCode}（${money(p.amountCents)}）提出了付款争议，原因：${p.reason}。请尽快在 Stripe Dashboard 提交证据。`
+          : `A buyer disputed order ${p.publicCode} (${money(p.amountCents)}) for "${p.listingTitle}", reason: ${p.reason}. Submit evidence in your Stripe Dashboard soon.`,
+      ]);
+    }
+    case 'CANCELLATION_FINISHED': {
+      const p = payload as CancellationFinishedPayload;
+      return email(to, zh ? `接龙已取消：${p.listingTitle}` : `Listing cancelled: ${p.listingTitle}`, [
+        zh ? `退款完成 ${p.succeeded} 笔，失败 ${p.failed} 笔。` : `${p.succeeded} refund(s) done, ${p.failed} failed.`,
+        ...(p.failed ? [zh ? '失败的退款会由平台跟进处理。' : 'The platform will follow up on the failed refunds.'] : []),
+      ]);
     }
     case 'PICKUP_POINT_CHANGED': {
       const p = payload as PickupPointChangedPayload;

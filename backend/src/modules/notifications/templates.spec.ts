@@ -65,3 +65,16 @@ describe('registration emails', () => {
     expect(html).toContain('Reason: &lt;b&gt;rain&lt;/b&gt;');
   });
 });
+
+describe('refund email', () => {
+  it('says how much, whether it is the whole amount, and why', () => {
+    const base = { publicCode: 'TA-1', listingTitle: 'Cherries', amountCents: 1000, refundedCents: 1000, totalCents: 3900, reason: 'Short', orderUrl: 'https://x' };
+    const part = renderEmail('ORDER_REFUNDED', 'zh-CN', 'a@example.test', base);
+    expect(part.subject).toBe('已退款 $10.00：Cherries');
+    expect(part.text).not.toContain('全额');
+    expect(part.text).toContain('原因：Short');
+    const full = renderEmail('ORDER_REFUNDED', 'en', 'a@example.test', { ...base, amountCents: 2900, refundedCents: 3900, reason: null });
+    expect(full.text).toContain('$29.00 (in full)');
+    expect(full.text).not.toContain('Reason');
+  });
+});

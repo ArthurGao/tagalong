@@ -7,12 +7,14 @@ import type { OrderStatus } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { type AuthUser, requireMerchantId } from '../auth/auth-user.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import type { RegistrationCancelledPayload } from '../notifications/templates.js';
+import { StripeClient } from '../stripe/stripe-client.js';
 import type { MerchantOrderDto, MerchantOrderListDto, MerchantOrdersQueryDto } from './merchant-order.dto.js';
 import { canTransition, transitionOrder } from './order-state-machine.js';
+import { readFormFields } from '../listings/form-fields.js';
+import { ordersCsv } from './orders-csv.js';
+import { confirmRefund, pendingByOrder, refundable, refundableCents } from './refunds.js';
 import { eventStarted } from '../listings/availability.js';
-import { cancelFree, lockOrder, type OrderDetail, orderDetail } from './order-ops.js';
-import { listingUrl } from './urls.js';
+import { cancelFreeWithEmail, lockOrder, type OrderDetail, orderDetail } from './order-ops.js';
 
 // Orders a merchant sees: everything except unpaid checkouts that never completed.
 const HIDDEN: OrderStatus[] = ['PENDING_PAYMENT', 'EXPIRED'];
@@ -29,8 +31,13 @@ export class MerchantOrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly stripe: StripeClient,
     @Inject(ENV) private readonly env: Env,
   ) {}
+
+  private get deps() {
+    return { notifications: this.notifications, env: this.env };
+  }
 
   /** GET /merchants/me/listings/:id/orders (DESIGN §9): newest sign-up first; M6 adds CSV and refunds. */
   async list(user: AuthUser, listingId: string, query: MerchantOrdersQueryDto): Promise<MerchantOrderListDto> {
@@ -57,7 +64,8 @@ export class MerchantOrdersService {
       orderBy: [{ sequenceNo: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       include: merchantDetail,
     });
-    return { listing, orders: orders.map((o) => toMerchantOrder(o)) };
+    const pending = await pendingByOrder(this.prisma, orders.map((o) => o.id));
+    return { listing, orders: orders.map((o) => toMerchantOrder(o, pending.get(o.id) ?? 0)) };
   }
 
   /** Check-in (free) or hand-over (paid): DESIGN §6 → FULFILLED. */
@@ -71,18 +79,7 @@ export class MerchantOrdersService {
   cancel(user: AuthUser, orderId: string, reason: string): Promise<MerchantOrderDto> {
     return this.change(user, orderId, async (tx, order) => {
       if (!order.isFree) throw new AppError('INVALID_STATE_TRANSITION', 'Paid orders are refunded, not cancelled', { from: order.status, to: 'CANCELLED' });
-      await cancelFree(tx, order);
-      await this.notifications.enqueue(tx, {
-        type: 'REGISTRATION_CANCELLED',
-        recipient: order.buyerEmail,
-        locale: order.locale,
-        payload: {
-          listingTitle: order.listing.title,
-          reason,
-          listingUrl: listingUrl(this.env, order.locale, order.listing.shortCode),
-        } satisfies RegistrationCancelledPayload,
-        dedupeKey: `REGISTRATION_CANCELLED:${order.id}`,
-      });
+      await cancelFreeWithEmail(tx, this.deps, order, reason);
     });
   }
 
@@ -97,6 +94,49 @@ export class MerchantOrdersService {
     });
   }
 
+  /**
+   * A merchant refund (DESIGN §8.4), full or partial. Decided under the order lock (a PENDING Refund row, so two refunds
+   * cannot exceed the total), sent to Stripe with the row id as idempotency key, then settled. A Stripe error leaves
+   * the row FAILED and nothing refunded.
+   */
+  async refund(user: AuthUser, orderId: string, amountCents: number, reason: string): Promise<MerchantOrderDto> {
+    const merchantId = requireMerchantId(user);
+    const decided = await this.prisma.$transaction(async (tx) => {
+      const order = await lockOrder(tx, { id: orderId });
+      if (!order || order.merchantId !== merchantId) throw new AppError('NOT_FOUND', 'Order not found');
+      if (order.isFree || !REFUNDABLE.includes(order.status) || !order.stripePaymentIntentId) {
+        throw new AppError('INVALID_STATE_TRANSITION', 'Only paid orders can be refunded', { from: order.status, to: 'REFUNDED' });
+      }
+      const left = await refundableCents(tx, order);
+      if (amountCents > left) throw new AppError('REFUND_EXCEEDS_TOTAL', 'More than is left to refund', { refundableCents: left });
+      const refund = await tx.refund.create({ data: { orderId, amountCents, reason, status: 'PENDING' } });
+      return { refund, accountId: order.merchant.stripeAccountId!, paymentIntentId: order.stripePaymentIntentId };
+    });
+    let stripeRefund: { id: string; status: string };
+    try {
+      stripeRefund = await this.stripe.refundPayment(decided.accountId, decided.paymentIntentId, amountCents, `refund:${decided.refund.id}`);
+    } catch (e) {
+      await this.prisma.refund.update({ where: { id: decided.refund.id }, data: { status: 'FAILED' } });
+      throw e;
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await confirmRefund(tx, this.deps, (await lockOrder(tx, { id: orderId }))!, decided.refund, stripeRefund.id);
+    });
+    return this.read(orderId);
+  }
+
+  /** GET /merchants/me/listings/:id/orders.csv — every order with its answers, for spreadsheets. */
+  async csv(user: AuthUser, listingId: string): Promise<{ filename: string; body: string }> {
+    const { listing, orders } = await this.list(user, listingId, {});
+    const fields = readFormFields((await this.prisma.listing.findUniqueOrThrow({ where: { id: listingId }, select: { formFields: true } })).formFields);
+    return { filename: `orders-${listing.id.slice(0, 8)}.csv`, body: ordersCsv(fields, orders) };
+  }
+
+  private async read(orderId: string): Promise<MerchantOrderDto> {
+    const order = await this.prisma.order.findUniqueOrThrow({ where: { id: orderId }, include: merchantDetail });
+    return toMerchantOrder(order, (await pendingByOrder(this.prisma, [orderId])).get(orderId) ?? 0);
+  }
+
   /** Locks the merchant's own order, applies the change, and returns the updated order. Another merchant's is 404. */
   private async change(
     user: AuthUser,
@@ -109,13 +149,15 @@ export class MerchantOrdersService {
       if (!order || order.merchantId !== merchantId) throw new AppError('NOT_FOUND', 'Order not found');
       await apply(tx, order);
     });
-    return toMerchantOrder(await this.prisma.order.findUniqueOrThrow({ where: { id: orderId }, include: merchantDetail }));
+    return this.read(orderId);
   }
 }
 
 const started = (o: MerchantDetail, now: Date) => eventStarted(o.items.map((i) => i.option.startsAt), o.listing.closesAt, now);
 
-function toMerchantOrder(o: MerchantDetail, now = new Date()): MerchantOrderDto {
+const REFUNDABLE: OrderStatus[] = ['PAID', 'PARTIALLY_REFUNDED', 'FULFILLED'];
+
+function toMerchantOrder(o: MerchantDetail, pendingRefundCents: number, now = new Date()): MerchantOrderDto {
   const confirmed = o.isFree && o.status === 'CONFIRMED';
   return {
     id: o.id,
@@ -145,5 +187,6 @@ function toMerchantOrder(o: MerchantDetail, now = new Date()): MerchantOrderDto 
     canFulfil: canTransition(o.isFree, o.status, 'FULFILLED'),
     canCancel: confirmed,
     canNoShow: confirmed && started(o, now),
+    refundableCents: !o.isFree && REFUNDABLE.includes(o.status) ? refundable(o, pendingRefundCents) : 0,
   };
 }

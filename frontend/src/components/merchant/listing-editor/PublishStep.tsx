@@ -9,6 +9,7 @@ import { api } from '@/lib/api/client';
 import { formatNzDateTime, nzInputToIso } from '@/lib/time';
 import type { Listing, StepProps } from './types';
 import { useSave } from '@/lib/api/use-save';
+import { CancelListing, CancellationProgress, type Progress } from '../CancelListing';
 
 // Backend publish-check details → listings.missing.* keys (next-intl keys cannot contain dots).
 const MISSING_KEYS: Record<string, string> = {
@@ -27,6 +28,8 @@ export function PublishStep({ listing, onSaved }: StepProps) {
   const save = useSave();
   const tListings = useTranslations('listings');
   const [reopenUntil, setReopenUntil] = useState('');
+  // What the cancel answered, so the progress line shows at once instead of after a first fetch.
+  const [cancelled, setCancelled] = useState<Progress>();
   const reopenAt = reopenUntil ? nzInputToIso(reopenUntil) : null;
   const reopenInvalid = Boolean(reopenUntil) && reopenAt === null; // a time skipped by daylight saving
   const path = { params: { path: { id: listing.id } } };
@@ -103,7 +106,18 @@ export function PublishStep({ listing, onSaved }: StepProps) {
           </Button>
         </>
       )}
-      {listing.status === 'CANCELLED' && <p>{t('cancelled')}</p>}
+      {(listing.status === 'PUBLISHED' || listing.status === 'CLOSED') && (
+        <CancelListing listingId={listing.id} title={listing.title} onCancelled={(p) => {
+            setCancelled(p);
+            onSaved({ ...listing, status: 'CANCELLED' });
+          }} />
+      )}
+      {listing.status === 'CANCELLED' && (
+        <>
+          <p>{t('cancelled')}</p>
+          <CancellationProgress listingId={listing.id} initial={cancelled} />
+        </>
+      )}
       {save.error && (
         <div role="alert" className="text-sm text-destructive">
           <p>{save.error}</p>

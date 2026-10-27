@@ -11,6 +11,7 @@ import { api } from '@/lib/api/client';
 import type { components } from '@/lib/api/schema';
 import { useSave } from '@/lib/api/use-save';
 import { statusKey } from '@/lib/order-status';
+import { centsToDollarsInput, dollarsToCents, formatCents } from '@/lib/money';
 import { formatNzDateTime } from '@/lib/time';
 
 type OrderListData = components['schemas']['MerchantOrderListDto'];
@@ -32,6 +33,8 @@ export function OrderList({ initial }: { initial: OrderListData }) {
   const [query, setQuery] = useState('');
   const [cancelling, setCancelling] = useState<Order | null>(null);
   const [reason, setReason] = useState('');
+  const [refunding, setRefunding] = useState<Order | null>(null);
+  const [refundAmount, setRefundAmount] = useState('');
   const free = initial.listing.pricing === 'FREE';
 
   const replace = (updated: Order) => setOrders((list) => list.map((o) => (o.id === updated.id ? updated : o)));
@@ -48,6 +51,25 @@ export function OrderList({ initial }: { initial: OrderListData }) {
       replace(updated);
       setCancelling(null);
       setReason('');
+    }
+  };
+  const openRefund = (o: Order) => {
+    setRefunding(o);
+    setRefundAmount(centsToDollarsInput(o.refundableCents));
+    setReason('');
+  };
+  const refundCents = dollarsToCents(refundAmount);
+  const refund = async () => {
+    if (!refunding || refundCents === null) return;
+    const updated = await save.run(() =>
+      api.POST('/api/v1/merchants/me/orders/{id}/refund', {
+        params: { path: { id: refunding.id } },
+        body: { amountCents: refundCents, reason: reason.trim() },
+      }),
+    );
+    if (updated) {
+      replace(updated);
+      setRefunding(null);
     }
   };
   const search = async (e: React.FormEvent) => {
@@ -73,6 +95,9 @@ export function OrderList({ initial }: { initial: OrderListData }) {
           {t('searchButton')}
         </Button>
       </form>
+      <a href={`/api/v1/merchants/me/listings/${initial.listing.id}/orders.csv`} download className="self-start text-sm underline">
+        {t('csv')}
+      </a>
       {save.error && (
         <p role="alert" className="text-sm text-destructive">
           {save.error}
@@ -102,7 +127,11 @@ export function OrderList({ initial }: { initial: OrderListData }) {
                 </p>
               ))}
               {o.buyerNote && <p className="text-sm italic">{o.buyerNote}</p>}
-              <p className="text-xs text-muted-foreground tabular-nums">{formatNzDateTime(o.paidAt ?? o.createdAt, locale)}</p>
+              <p className="text-xs text-muted-foreground tabular-nums">
+                {formatNzDateTime(o.paidAt ?? o.createdAt, locale)}
+                {!o.isFree && ` · ${formatCents(o.totalCents)}`}
+                {o.refundedCents > 0 && ` · ${t('refunded', { amount: formatCents(o.refundedCents) })}`}
+              </p>
               <div className="flex flex-wrap gap-2">
                 {o.canFulfil && (
                   <Button size="sm" disabled={save.saving} onClick={() => act(o, 'fulfil')}>
@@ -112,6 +141,11 @@ export function OrderList({ initial }: { initial: OrderListData }) {
                 {o.canNoShow && (
                   <Button size="sm" variant="outline" disabled={save.saving} onClick={() => act(o, 'no-show')}>
                     {t('noShow')}
+                  </Button>
+                )}
+                {o.refundableCents > 0 && (
+                  <Button size="sm" variant="outline" disabled={save.saving} onClick={() => openRefund(o)}>
+                    {t('refund')}
                   </Button>
                 )}
                 {o.canCancel && (
@@ -124,6 +158,29 @@ export function OrderList({ initial }: { initial: OrderListData }) {
           ))}
         </ul>
       )}
+      <Dialog open={refunding !== null} onOpenChange={(open) => !open && setRefunding(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('refundTitle', { name: refunding?.buyerName ?? '' })}</DialogTitle>
+            <DialogDescription>{t('refundBody', { amount: formatCents(refunding?.refundableCents ?? 0) })}</DialogDescription>
+          </DialogHeader>
+          <Label htmlFor="refundAmount">{t('refundAmount')}</Label>
+          <Input id="refundAmount" inputMode="decimal" value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} />
+          <Label htmlFor="refundReason">{t('reason')}</Label>
+          <Textarea id="refundReason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRefunding(null)}>
+              {t('keep')}
+            </Button>
+            <Button
+              disabled={save.saving || !reason.trim() || refundCents === null || refundCents < 1 || refundCents > (refunding?.refundableCents ?? 0)}
+              onClick={refund}
+            >
+              {t('confirmRefund', { amount: formatCents(refundCents ?? 0) })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={cancelling !== null} onOpenChange={(open) => !open && setCancelling(null)}>
         <DialogContent>
           <DialogHeader>

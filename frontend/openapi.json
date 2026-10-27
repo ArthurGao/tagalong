@@ -433,6 +433,244 @@
         ]
       }
     },
+    "/api/v1/merchants/me/listings/{id}/orders.csv": {
+      "get": {
+        "operationId": "MerchantOrdersController_csv",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/listings/{id}/cancellation/preview": {
+      "get": {
+        "operationId": "MerchantOrdersController_cancelPreview",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancellationPreviewDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/listings/{id}/cancel": {
+      "post": {
+        "operationId": "MerchantOrdersController_cancelListing",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelListingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancellationProgressDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/listings/{id}/cancellation": {
+      "get": {
+        "operationId": "MerchantOrdersController_cancellation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancellationProgressDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/orders/{id}/refund": {
+      "post": {
+        "operationId": "MerchantOrdersController_refund",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOrderDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
     "/api/v1/merchants/me/listings/{id}/orders": {
       "get": {
         "operationId": "MerchantOrdersController_list",
@@ -1771,51 +2009,111 @@
           "selfCancelUntil"
         ]
       },
-      "Pricing": {
-        "type": "string",
-        "enum": [
-          "FREE",
-          "PAID"
-        ]
-      },
-      "ListingStatus": {
-        "type": "string",
-        "enum": [
-          "DRAFT",
-          "PUBLISHED",
-          "CLOSED",
-          "CANCELLED"
-        ]
-      },
-      "MerchantOrderListingDto": {
+      "CancellationPreviewDto": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "string"
+          "paidOrders": {
+            "type": "number",
+            "description": "Paid orders that will be refunded"
           },
-          "title": {
-            "type": "string"
+          "refundTotalCents": {
+            "type": "number",
+            "description": "What they will get back, in cents (Stripe fees are not returned to the merchant)"
           },
-          "pricing": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Pricing"
-              }
-            ]
+          "registrations": {
+            "type": "number",
+            "description": "Free registrations that will be cancelled"
           },
-          "status": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ListingStatus"
-              }
-            ]
+          "unpaidOrders": {
+            "type": "number",
+            "description": "Unpaid checkouts that will be ended"
           }
         },
         "required": [
-          "id",
-          "title",
-          "pricing",
-          "status"
+          "paidOrders",
+          "refundTotalCents",
+          "registrations",
+          "unpaidOrders"
+        ]
+      },
+      "CancelListingDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Told to every buyer"
+          },
+          "confirmTitle": {
+            "type": "string",
+            "description": "The listing title, typed by the merchant to confirm (DESIGN §8.5)"
+          }
+        },
+        "required": [
+          "reason",
+          "confirmTitle"
+        ]
+      },
+      "CancellationStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "RUNNING",
+          "COMPLETED",
+          "COMPLETED_WITH_FAILURES"
+        ]
+      },
+      "CancellationProgressDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CancellationStatus"
+              }
+            ]
+          },
+          "totalOrders": {
+            "type": "number"
+          },
+          "succeeded": {
+            "type": "number"
+          },
+          "failed": {
+            "type": "number"
+          },
+          "pending": {
+            "type": "number"
+          },
+          "finishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "status",
+          "totalOrders",
+          "succeeded",
+          "failed",
+          "pending",
+          "finishedAt"
+        ]
+      },
+      "RefundOrderDto": {
+        "type": "object",
+        "properties": {
+          "amountCents": {
+            "type": "number",
+            "description": "Integer NZD cents, at most what is still refundable"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Told to the buyer"
+          }
+        },
+        "required": [
+          "amountCents",
+          "reason"
         ]
       },
       "MerchantOrderItemDto": {
@@ -1934,6 +2232,10 @@
           "canNoShow": {
             "type": "boolean",
             "description": "Mark no-show (free, once the event has started)"
+          },
+          "refundableCents": {
+            "type": "number",
+            "description": "Paid: what can still be refunded (total less refunded and refunds in flight)"
           }
         },
         "required": [
@@ -1958,7 +2260,55 @@
           "cancelledAt",
           "canFulfil",
           "canCancel",
-          "canNoShow"
+          "canNoShow",
+          "refundableCents"
+        ]
+      },
+      "Pricing": {
+        "type": "string",
+        "enum": [
+          "FREE",
+          "PAID"
+        ]
+      },
+      "ListingStatus": {
+        "type": "string",
+        "enum": [
+          "DRAFT",
+          "PUBLISHED",
+          "CLOSED",
+          "CANCELLED"
+        ]
+      },
+      "MerchantOrderListingDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "pricing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Pricing"
+              }
+            ]
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingStatus"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "pricing",
+          "status"
         ]
       },
       "MerchantOrderListDto": {

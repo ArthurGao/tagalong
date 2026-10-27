@@ -109,6 +109,19 @@ backend/
   - `common/security/turnstile.ts` `TurnstileVerifier` checks the token on every new order, after the idempotency replay; it fails closed. e2e tests use `test/e2e/support/turnstile-fake.ts`.
   - `ThrottlerGuard` on order creation limits each IP (`ORDER_RATE_LIMIT_PER_MINUTE`).
   - `TRUST_PROXY` decides which hops may set X-Forwarded-For.
+- **Refunds (M6):**
+  - Every merchant and cancellation refund writes a `PENDING` Refund row under the order lock first (`refunds.refundable` = total − refunded − pending, pending via `pendingByOrder`), calls Stripe with the row id as idempotency key, then `refunds.confirmRefund` records Stripe's answer once and `settleRefund` moves `refundedCents` and the status (where the state machine allows) and queues ORDER_REFUNDED.
+  - The late-payment refund above is the exception: it keeps the order EXPIRED/CANCELLED and sends ORDER_AUTO_REFUNDED.
+  - A Stripe error marks the row FAILED.
+  - `charge.refunded` adds only the unrecorded remainder (Dashboard refunds).
+  - `charge.dispute.created` emails the merchant (MERCHANT_DISPUTE).
+- **Listing cancellation (§8.5):** `cancellation.service.ts`.
+  - It locks the listing's orders, then the listing.
+  - The listing becomes CANCELLED, unpaid checkouts EXPIRED, free registrations CANCELLED (with an email).
+  - Each PAID / PARTIALLY_REFUNDED order gets one `RefundTask` plus a Refund with the **same id**.
+  - `refund.job.ts`: every 30 s, 20 tasks, lease plus SKIP LOCKED; retries after 1/2/4/8 min; FAILED after 5 attempts. A cancellation with nothing pending becomes COMPLETED(_WITH_FAILURES) and the merchant is emailed.
+  - `retryFailed()` is for the admin console (M8).
+- `orders-csv.ts` builds the merchant CSV (pure, one column table; BOM, CRLF, formula-safe cells).
 - `merchant-orders.*`: the merchant's list (`?status=&q=`), fulfil (check-in or hand-over), cancel (free only, emails the reason) and no-show (only after the event starts).
 - `StripeClient` lives in `StripeClientModule`, so orders and the Stripe module can both inject it without a cycle.
 

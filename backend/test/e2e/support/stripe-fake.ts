@@ -28,6 +28,8 @@ export class FakeStripeClient implements StripeClient {
   failCheckout = false;
   failExpire = false;
   failRefund = false;
+  /** Refunds whose idempotency key is listed keep failing until it is removed. */
+  readonly failRefundKeys = new Set<string>();
   /** Like Stripe while the first request with the same idempotency key is still running. */
   checkoutInUse = false;
 
@@ -38,6 +40,7 @@ export class FakeStripeClient implements StripeClient {
     this.failCheckout = false;
     this.failExpire = false;
     this.failRefund = false;
+    this.failRefundKeys.clear();
     this.checkoutInUse = false;
     this.createdFor.length = 0;
     this.links.length = 0;
@@ -102,7 +105,7 @@ export class FakeStripeClient implements StripeClient {
   }
 
   async refundPayment(accountId: string, paymentIntentId: string, amountCents: number, idempotencyKey: string) {
-    if (this.failRefund) throw stripeError('api_error');
+    if (this.failRefund || this.failRefundKeys.has(idempotencyKey)) throw stripeError('api_error');
     this.refunds.push({ accountId, paymentIntentId, amountCents, idempotencyKey });
     return { id: `re_${idempotencyKey.replace(/[^a-z0-9]/gi, '').slice(-16)}`, status: 'succeeded' };
   }

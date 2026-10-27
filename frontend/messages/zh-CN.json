@@ -354,7 +354,26 @@
     "fulfilmentLabel": "交付方式",
     "timeInvalid": "这个时间在新西兰不存在（夏令时开始时跳过的一小时），请换一个时间。",
     "registrations": "报名名单",
-    "orders": "订单"
+    "orders": "订单",
+    "cancel": {
+      "button": "取消接龙",
+      "title": "取消整条接龙？",
+      "body": "所有买家都会收到你填写的原因。取消后无法恢复。",
+      "paidOrders": "{count} 笔已付款订单将全额退款，共 {amount}",
+      "registrations": "{count} 个报名将被取消",
+      "unpaid": "{count} 个未付款订单将被关闭",
+      "feesNotReturned": "Stripe 手续费不会退还给你。",
+      "reason": "原因（会发给所有买家）",
+      "typeTitle": "输入接龙标题「{title}」以确认",
+      "keep": "不取消",
+      "confirm": "确认取消接龙",
+      "progress": {
+        "PENDING": "正在开始退款…",
+        "RUNNING": "退款中：已完成 {succeeded} / {total}",
+        "COMPLETED": "{total} 笔退款已全部完成。",
+        "COMPLETED_WITH_FAILURES": "已完成 {succeeded} / {total} 笔退款，{failed} 笔失败，平台会跟进处理。"
+      }
+    }
   },
   "orders": {
     "title": "订单",
@@ -383,6 +402,13 @@
       "REFUNDED": "已退款",
       "PARTIALLY_REFUNDED": "部分退款",
       "NO_SHOW": "未到"
-    }
+    },
+    "csv": "下载 CSV",
+    "refund": "退款",
+    "refunded": "已退 {amount}",
+    "refundTitle": "给 {name} 退款",
+    "refundBody": "最多还可退 {amount}。Stripe 手续费不退还给你。",
+    "refundAmount": "金额（NZD）",
+    "confirmRefund": "退款 {amount}"
   }
 }

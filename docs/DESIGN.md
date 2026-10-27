@@ -332,11 +332,13 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 
 ### 8.4 退款
 - 调用 `refunds.create({ payment_intent, amount }, { stripeAccount })`，默认设置 `refund_application_fee: true`（平台费退还比例可配置）。
-- 退款金额累加不能超过 `totalCents`。
+- 退款金额累加不能超过 `totalCents`：可退金额 = `totalCents − refundedCents −` 尚在途中（`PENDING`）的退款。每笔平台发起的退款都先在订单锁内写一条 `PENDING` Refund，再调 Stripe（幂等键为该行 id），成功后才增加 `refundedCents`；所以并发的两笔退款不会超额。
+- `charge.refunded`：只把「Stripe 上的已退总额 − 我们已记录的 − 在途的」部分记为在 Stripe Dashboard 里直接做的退款，自家的退款不会被算两次。
+- 导出 CSV（`GET /merchants/me/listings/:id/orders.csv`）：UTF-8 带 BOM，以 `= + - @` 开头的单元格前加 `'`，防止表格公式注入。
 
 ### 8.5 整条接龙取消与批量退款
 1. 商家（或 admin）发起取消：创建 `ListingCancellation`，接龙立即置为 `CANCELLED`，公开页显示「已取消」，所有 `PENDING_PAYMENT` 订单过期。
-2. 在同一事务里为每笔 `PAID` / `PARTIALLY_REFUNDED` 订单创建一条 `RefundTask`（金额为剩余可退金额）；免费接龙则直接把 `CONFIRMED` 订单置为 `CANCELLED`，不需要任务。
+2. 在同一事务里为每笔 `PAID` / `PARTIALLY_REFUNDED` 订单创建一条 `RefundTask`（金额为剩余可退金额，并同时写一条同 id 的 `PENDING` Refund，表示这笔钱已在退款途中）；已 `FULFILLED`（货已交付）的订单不自动退款，商家可逐笔退；免费接龙则直接把 `CONFIRMED` 订单置为 `CANCELLED`，不需要任务。
 3. `refund.job.ts` 每 30 秒取一批 `PENDING` 任务（`FOR UPDATE SKIP LOCKED`，每批 20 笔），逐笔调用 Stripe：
    - 成功：订单转为 `REFUNDED`，写入 `ORDER_REFUNDED` 通知
    - 失败：`attempts += 1`，指数退避，最多 5 次；超过后标记 `FAILED`

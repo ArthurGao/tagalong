@@ -148,6 +148,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/merchants/me/listings/{id}/orders.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MerchantOrdersController_csv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merchants/me/listings/{id}/cancellation/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MerchantOrdersController_cancelPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merchants/me/listings/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["MerchantOrdersController_cancelListing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merchants/me/listings/{id}/cancellation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MerchantOrdersController_cancellation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merchants/me/orders/{id}/refund": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["MerchantOrdersController_refund"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/merchants/me/listings/{id}/orders": {
         parameters: {
             query?: never;
@@ -527,15 +607,38 @@ export interface components {
              */
             selfCancelUntil: string | null;
         };
+        CancellationPreviewDto: {
+            /** @description Paid orders that will be refunded */
+            paidOrders: number;
+            /** @description What they will get back, in cents (Stripe fees are not returned to the merchant) */
+            refundTotalCents: number;
+            /** @description Free registrations that will be cancelled */
+            registrations: number;
+            /** @description Unpaid checkouts that will be ended */
+            unpaidOrders: number;
+        };
+        CancelListingDto: {
+            /** @description Told to every buyer */
+            reason: string;
+            /** @description The listing title, typed by the merchant to confirm (DESIGN §8.5) */
+            confirmTitle: string;
+        };
         /** @enum {string} */
-        Pricing: "FREE" | "PAID";
-        /** @enum {string} */
-        ListingStatus: "DRAFT" | "PUBLISHED" | "CLOSED" | "CANCELLED";
-        MerchantOrderListingDto: {
-            id: string;
-            title: string;
-            pricing: components["schemas"]["Pricing"];
-            status: components["schemas"]["ListingStatus"];
+        CancellationStatus: "PENDING" | "RUNNING" | "COMPLETED" | "COMPLETED_WITH_FAILURES";
+        CancellationProgressDto: {
+            status: components["schemas"]["CancellationStatus"];
+            totalOrders: number;
+            succeeded: number;
+            failed: number;
+            pending: number;
+            /** Format: date-time */
+            finishedAt: string | null;
+        };
+        RefundOrderDto: {
+            /** @description Integer NZD cents, at most what is still refundable */
+            amountCents: number;
+            /** @description Told to the buyer */
+            reason: string;
         };
         MerchantOrderItemDto: {
             name: string;
@@ -577,6 +680,18 @@ export interface components {
             canCancel: boolean;
             /** @description Mark no-show (free, once the event has started) */
             canNoShow: boolean;
+            /** @description Paid: what can still be refunded (total less refunded and refunds in flight) */
+            refundableCents: number;
+        };
+        /** @enum {string} */
+        Pricing: "FREE" | "PAID";
+        /** @enum {string} */
+        ListingStatus: "DRAFT" | "PUBLISHED" | "CLOSED" | "CANCELLED";
+        MerchantOrderListingDto: {
+            id: string;
+            title: string;
+            pricing: components["schemas"]["Pricing"];
+            status: components["schemas"]["ListingStatus"];
         };
         MerchantOrderListDto: {
             listing: components["schemas"]["MerchantOrderListingDto"];
@@ -1147,6 +1262,162 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublicOrderDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    MerchantOrdersController_csv: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    MerchantOrdersController_cancelPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancellationPreviewDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    MerchantOrdersController_cancelListing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelListingDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancellationProgressDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    MerchantOrdersController_cancellation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancellationProgressDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    MerchantOrdersController_refund: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefundOrderDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantOrderDto"];
                 };
             };
             /** @description Error (code from DESIGN §17) */

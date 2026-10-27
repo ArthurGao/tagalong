@@ -354,7 +354,26 @@
     "fulfilmentLabel": "Fulfilment",
     "timeInvalid": "That time doesn't exist in New Zealand (daylight saving starts). Pick another.",
     "registrations": "Registrations",
-    "orders": "Orders"
+    "orders": "Orders",
+    "cancel": {
+      "button": "Cancel listing",
+      "title": "Cancel the whole listing?",
+      "body": "Everyone is told your reason. This cannot be undone.",
+      "paidOrders": "{count} paid orders will be refunded in full: {amount}",
+      "registrations": "{count} registrations will be cancelled",
+      "unpaid": "{count} unpaid checkouts will be ended",
+      "feesNotReturned": "Stripe's processing fees are not returned to you.",
+      "reason": "Reason (sent to every buyer)",
+      "typeTitle": "Type \"{title}\" to confirm",
+      "keep": "Keep the listing",
+      "confirm": "Cancel listing",
+      "progress": {
+        "PENDING": "Refunds are starting…",
+        "RUNNING": "Refunding: {succeeded} of {total} done",
+        "COMPLETED": "All {total} refunds are done.",
+        "COMPLETED_WITH_FAILURES": "{succeeded} of {total} refunds are done; {failed} failed and will be followed up by TagAlong."
+      }
+    }
   },
   "orders": {
     "title": "Orders",
@@ -383,6 +402,13 @@
       "REFUNDED": "Refunded",
       "PARTIALLY_REFUNDED": "Partly refunded",
       "NO_SHOW": "No-show"
-    }
+    },
+    "csv": "Download CSV",
+    "refund": "Refund",
+    "refunded": "Refunded {amount}",
+    "refundTitle": "Refund {name}",
+    "refundBody": "Up to {amount} can still be refunded. Stripe fees are not returned to you.",
+    "refundAmount": "Amount (NZD)",
+    "confirmRefund": "Refund {amount}"
   }
 }

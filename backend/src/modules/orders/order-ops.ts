@@ -1,6 +1,8 @@
 import type { Logger } from '@nestjs/common';
 import type { Env } from '../../config/env.js';
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
+import type { NotificationsService } from '../notifications/notifications.service.js';
+import type { RegistrationCancelledPayload } from '../notifications/templates.js';
 import type { CheckoutRequest, StripeClient } from '../stripe/stripe-client.js';
 import { transitionOrder } from './order-state-machine.js';
 import { release, releaseSold } from './reservation.js';
@@ -43,6 +45,27 @@ export async function endUnpaid(
 export async function cancelFree(tx: Prisma.TransactionClient, order: OrderDetail): Promise<void> {
   await transitionOrder(tx, order, 'CANCELLED', { cancelledAt: new Date() });
   await releaseSold(tx, order.listingId, order.items);
+}
+
+/** A free registration cancelled by the merchant (one order or the whole listing): the buyer is told why. */
+export async function cancelFreeWithEmail(
+  tx: Prisma.TransactionClient,
+  deps: { notifications: NotificationsService; env: Env },
+  order: OrderDetail,
+  reason: string,
+): Promise<void> {
+  await cancelFree(tx, order);
+  await deps.notifications.enqueue(tx, {
+    type: 'REGISTRATION_CANCELLED',
+    recipient: order.buyerEmail,
+    locale: order.locale,
+    payload: {
+      listingTitle: order.listing.title,
+      reason,
+      listingUrl: listingUrl(deps.env, order.locale, order.listing.shortCode),
+    } satisfies RegistrationCancelledPayload,
+    dedupeKey: `REGISTRATION_CANCELLED:${order.id}`,
+  });
 }
 
 /** Until when the buyer may cancel a free registration online (DESIGN §9); null when never or without a deadline. */

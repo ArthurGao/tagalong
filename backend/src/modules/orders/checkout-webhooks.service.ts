@@ -5,7 +5,9 @@ import type { Env } from '../../config/env.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import type { OrderAutoRefundedPayload, OrderConfirmedPayload } from '../notifications/templates.js';
+import type { MerchantDisputePayload, OrderAutoRefundedPayload, OrderConfirmedPayload } from '../notifications/templates.js';
+import { DEFAULT_LOCALE } from '../../common/locale.js';
+import { pendingByOrder, settleRefund } from './refunds.js';
 import { StripeClient } from '../stripe/stripe-client.js';
 import { transitionOrder } from './order-state-machine.js';
 import { endUnpaid, lockOrder, type OrderDetail, orderDetail, recoverCheckoutSession } from './order-ops.js';
@@ -32,11 +34,15 @@ export class CheckoutWebhooksService {
     @Inject(ENV) private readonly env: Env,
   ) {}
 
+  private get deps() {
+    return { notifications: this.notifications, env: this.env };
+  }
+
   async completed(session: Stripe.Checkout.Session, account: string | undefined): Promise<void> {
     // A delayed method completes the session unpaid; the order waits for async_payment_succeeded / _failed.
     if (session.payment_status !== 'paid') return;
     const orderId = session.metadata?.orderId;
-    const paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id;
+    const paymentIntentId = paymentIntentIdOf(session);
     if (!orderId || !paymentIntentId) {
       this.logger.warn(`checkout.session.completed ${session.id} without orderId / payment_intent`);
       return;
@@ -85,6 +91,50 @@ export class CheckoutWebhooksService {
       const order = await lockOrder(tx, { id: orderId });
       // Anything but an unpaid order means the expiry job, a cancel or the payment got there first.
       if (order?.status === 'PENDING_PAYMENT' && belongsTo(order, session, account)) await endUnpaid(tx, order, 'EXPIRED');
+    });
+  }
+
+  /**
+   * charge.refunded (DESIGN §8.3): a refund made outside TagAlong, e.g. by the merchant in the Stripe Dashboard. Only
+   * the part we have not recorded (or have in flight) is added, so our own refunds are never counted twice.
+   */
+  async chargeRefunded(charge: Stripe.Charge, account: string | undefined): Promise<void> {
+    const paymentIntentId = paymentIntentIdOf(charge);
+    if (!paymentIntentId) return;
+    await this.prisma.$transaction(async (tx) => {
+      const found = await tx.order.findUnique({ where: { stripePaymentIntentId: paymentIntentId }, select: { id: true } });
+      const order = found && (await lockOrder(tx, { id: found.id }));
+      if (!order || !account || account !== order.merchant.stripeAccountId) {
+        this.logger.warn(`charge.refunded ${charge.id} matches no order of account ${account}; ignored`);
+        return;
+      }
+      const unrecorded = charge.amount_refunded - order.refundedCents - ((await pendingByOrder(tx, [order.id])).get(order.id) ?? 0);
+      if (unrecorded <= 0) return;
+      await tx.refund.create({ data: { orderId: order.id, amountCents: unrecorded, reason: 'Refunded in the Stripe Dashboard', status: 'SUCCEEDED' } });
+      await settleRefund(tx, this.deps, order, unrecorded, `charge:${charge.id}:${charge.amount_refunded}`, null);
+    });
+  }
+
+  /** charge.dispute.created (DESIGN §8.3): logged, and the merchant is told to respond in Stripe. */
+  async disputeCreated(dispute: Stripe.Dispute, account: string | undefined): Promise<void> {
+    const paymentIntentId = paymentIntentIdOf(dispute);
+    const order = paymentIntentId
+      ? await this.prisma.order.findUnique({
+          where: { stripePaymentIntentId: paymentIntentId },
+          include: { listing: { select: { title: true } }, merchant: { select: { stripeAccountId: true, contactEmail: true } } },
+        })
+      : null;
+    if (!order || !account || account !== order.merchant.stripeAccountId) {
+      this.logger.warn(`charge.dispute.created ${dispute.id} matches no order of account ${account}`);
+      return;
+    }
+    this.logger.warn(`dispute ${dispute.id} on order ${order.id}: ${dispute.amount} cents, ${dispute.reason}`);
+    await this.notifications.enqueue(this.prisma, {
+      type: 'MERCHANT_DISPUTE',
+      recipient: order.merchant.contactEmail,
+      locale: DEFAULT_LOCALE, // merchants have no language setting yet
+      payload: { publicCode: order.publicCode, listingTitle: order.listing.title, amountCents: dispute.amount, reason: dispute.reason } satisfies MerchantDisputePayload,
+      dedupeKey: `MERCHANT_DISPUTE:${dispute.id}`,
     });
   }
 
@@ -160,3 +210,6 @@ export class CheckoutWebhooksService {
     this.logger.warn(`late payment on sold-out order ${order.id}: refunded ${order.totalCents} cents`);
   }
 }
+
+const paymentIntentIdOf = (o: { payment_intent: string | { id: string } | null }) =>
+  typeof o.payment_intent === 'string' ? o.payment_intent : o.payment_intent?.id;

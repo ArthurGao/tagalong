@@ -35,6 +35,7 @@ const order = (over: Partial<Order> = {}): Order => ({
   canFulfil: true,
   canCancel: true,
   canNoShow: false,
+  refundableCents: 0,
   ...over,
 });
 const data = (orders: Order[], pricing: 'FREE' | 'PAID' = 'FREE') => ({
@@ -92,5 +93,26 @@ describe('OrderList (merchant registrations)', () => {
     fireEvent.click(screen.getByRole('button', { name: t.searchButton }));
     await waitFor(() => expect(screen.getByRole('listitem').textContent).toContain('Bob Chen'));
     expect(get.mock.calls[0][1]).toEqual({ params: { path: { id: 'l1' }, query: { q: 'chen' } } });
+  });
+
+  it('refunds part of a paid order: the amount is typed in dollars and sent in cents, never over what is left', async () => {
+    const paid = order({ isFree: false, status: 'PAID', totalCents: 3900, refundableCents: 3900, canCancel: false });
+    post.mockResolvedValue({ data: { ...paid, status: 'PARTIALLY_REFUNDED', refundedCents: 1000, refundableCents: 2900 } });
+    renderWithIntl(<OrderList initial={data([paid], 'PAID')} />);
+    fireEvent.click(screen.getByRole('button', { name: t.refund }));
+    const amount = await screen.findByLabelText(t.refundAmount);
+    expect((amount as HTMLInputElement).value).toBe('39.00'); // defaults to all that is left
+    fireEvent.change(screen.getByLabelText(t.reason), { target: { value: 'Short delivery' } });
+    fireEvent.change(amount, { target: { value: '40' } });
+    expect(screen.getByRole('button', { name: t.confirmRefund.replace('{amount}', '$40.00') })).toHaveProperty('disabled', true);
+    fireEvent.change(amount, { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: t.confirmRefund.replace('{amount}', '$10.00') }));
+    await waitFor(() => expect(screen.getByRole('listitem').textContent).toContain(t.refunded.replace('{amount}', '$10.00')));
+    expect(post).toHaveBeenCalledWith('/api/v1/merchants/me/orders/{id}/refund', { params: { path: { id: 'o1' } }, body: { amountCents: 1000, reason: 'Short delivery' } });
+  });
+
+  it('links the CSV export of this listing', () => {
+    renderWithIntl(<OrderList initial={data([order()])} />);
+    expect(screen.getByRole('link', { name: t.csv }).getAttribute('href')).toBe('/api/v1/merchants/me/listings/l1/orders.csv');
   });
 });

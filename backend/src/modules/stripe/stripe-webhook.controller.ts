@@ -68,8 +68,12 @@ export class StripeWebhookController {
       case 'checkout.session.expired':
       case 'checkout.session.async_payment_failed':
         return this.checkout.expired(event.data.object, event.account);
+      case 'charge.refunded':
+        return this.checkout.chargeRefunded(event.data.object, event.account);
+      case 'charge.dispute.created':
+        return this.checkout.disputeCreated(event.data.object, event.account);
       default:
-        return; // recorded; refund and dispute handlers arrive in M6
+        return; // recorded only
     }
   }
 
