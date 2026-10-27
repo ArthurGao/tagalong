@@ -101,6 +101,15 @@ backend/
   - Retries follow 1/5/30 min, 2 h, 12 h; the 6th failure → FAILED. A missing template → FAILED at once.
   - `EmailService`: SMTP (Mailpit) or Resend by `EMAIL_PROVIDER`. e2e tests use `test/e2e/support/email-fake.ts`.
   - Templates live in `templates.ts`, are short and bilingual, and escape everything. The buyer's language is `order.locale`.
+- **Free registration (M5b):**
+  - `reservation.registerFree` goes straight to sold (same lock-and-check as `reserve`); `releaseSold` gives the places back when a registration is cancelled (by the buyer within `selfCancelUntil`, or by the merchant).
+  - `onePerEmail` is enforced twice: an up-front check (which re-sends the confirmation, once an hour, and answers `ALREADY_REGISTERED`) and the partial unique index as the race backstop.
+  - Custom-field answers go through `form-fields.answerIssues` for paid and free orders alike.
+- **Abuse controls:**
+  - `common/security/turnstile.ts` `TurnstileVerifier` checks the token on every new order, after the idempotency replay; it fails closed. e2e tests use `test/e2e/support/turnstile-fake.ts`.
+  - `ThrottlerGuard` on order creation limits each IP (`ORDER_RATE_LIMIT_PER_MINUTE`).
+  - `TRUST_PROXY` decides which hops may set X-Forwarded-For.
+- `merchant-orders.*`: the merchant's list (`?status=&q=`), fulfil (check-in or hand-over), cancel (free only, emails the reason) and no-show (only after the event starts).
 - `StripeClient` lives in `StripeClientModule`, so orders and the Stripe module can both inject it without a cycle.
 
 ## Security
@@ -230,6 +239,8 @@ CLERK_WEBHOOK_SIGNING_SECRET=
 ADMIN_EMAIL_ALLOWLIST=           # comma-separated
 STRIPE_SECRET_KEY=
 TURNSTILE_SECRET_KEY=
+ORDER_RATE_LIMIT_PER_MINUTE=10
+TRUST_PROXY=loopback
 STRIPE_WEBHOOK_SECRET_CONNECT=
 STRIPE_WEBHOOK_SECRET_PLATFORM=
 PLATFORM_FEE_BPS=300

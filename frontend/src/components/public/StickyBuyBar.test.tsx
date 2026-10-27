@@ -16,7 +16,7 @@ describe('StickyBuyBar', () => {
 
   it.each([
     ['PAID', 'OPEN', t.buy.PAID, true],
-    ['FREE', 'OPEN', t.buy.FREE, false], // free registration arrives in M5b
+    ['FREE', 'OPEN', t.buy.FREE, true],
     ['PAID', 'SOLD_OUT', t.state.SOLD_OUT, false],
     ['FREE', 'CLOSED', t.state.CLOSED, false],
     ['PAID', 'SUSPENDED', t.state.SUSPENDED, false],

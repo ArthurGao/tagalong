@@ -433,6 +433,213 @@
         ]
       }
     },
+    "/api/v1/merchants/me/listings/{id}/orders": {
+      "get": {
+        "operationId": "MerchantOrdersController_list",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/OrderStatus"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Name, email, phone or order code",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOrderListDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/orders/{id}/fulfil": {
+      "post": {
+        "operationId": "MerchantOrdersController_fulfil",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOrderDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/orders/{id}/cancel": {
+      "post": {
+        "operationId": "MerchantOrdersController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MerchantCancelOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOrderDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/orders/{id}/no-show": {
+      "post": {
+        "operationId": "MerchantOrdersController_noShow",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOrderDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
     "/api/v1/uploads/presign": {
       "post": {
         "operationId": "UploadsController_presign",
@@ -1282,6 +1489,14 @@
             "type": "number",
             "minimum": 1,
             "maximum": 50
+          },
+          "attendeeAnswers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "description": "Attendee-scope answers, one object per place"
           }
         },
         "required": [
@@ -1330,6 +1545,15 @@
             "type": "boolean",
             "description": "Show as \"anonymous\" on the public sign-up sheet"
           },
+          "formAnswers": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Answers to the listing's order-scope formFields"
+          },
+          "turnstileToken": {
+            "type": "string",
+            "description": "Cloudflare Turnstile token (DESIGN §10)"
+          },
           "locale": {
             "type": "string",
             "enum": [
@@ -1342,7 +1566,8 @@
         "required": [
           "items",
           "buyer",
-          "anonymous"
+          "anonymous",
+          "turnstileToken"
         ]
       },
       "CreateOrderResultDto": {
@@ -1358,6 +1583,14 @@
           "checkoutUrl": {
             "type": "string",
             "description": "Paid listings: Stripe Checkout URL to redirect to"
+          },
+          "publicCode": {
+            "type": "string",
+            "description": "Free listings: the confirmed registration"
+          },
+          "accessToken": {
+            "type": "string",
+            "description": "Free listings: the order link token"
           }
         },
         "required": [
@@ -1511,6 +1744,12 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "selfCancelUntil": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Free: self-cancel allowed until"
           }
         },
         "required": [
@@ -1528,7 +1767,228 @@
           "listing",
           "createdAt",
           "paidAt",
-          "reservationExpiresAt"
+          "reservationExpiresAt",
+          "selfCancelUntil"
+        ]
+      },
+      "Pricing": {
+        "type": "string",
+        "enum": [
+          "FREE",
+          "PAID"
+        ]
+      },
+      "ListingStatus": {
+        "type": "string",
+        "enum": [
+          "DRAFT",
+          "PUBLISHED",
+          "CLOSED",
+          "CANCELLED"
+        ]
+      },
+      "MerchantOrderListingDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "pricing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Pricing"
+              }
+            ]
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingStatus"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "pricing",
+          "status"
+        ]
+      },
+      "MerchantOrderItemDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitPriceCents": {
+            "type": "number"
+          },
+          "attendeeAnswers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "name",
+          "quantity",
+          "unitPriceCents",
+          "attendeeAnswers"
+        ]
+      },
+      "MerchantOrderDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "publicCode": {
+            "type": "string"
+          },
+          "sequenceNo": {
+            "type": "number",
+            "nullable": true
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderStatus"
+              }
+            ]
+          },
+          "isFree": {
+            "type": "boolean"
+          },
+          "buyerName": {
+            "type": "string"
+          },
+          "buyerEmail": {
+            "type": "string"
+          },
+          "buyerPhone": {
+            "type": "string"
+          },
+          "buyerNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "displayAnonymous": {
+            "type": "boolean"
+          },
+          "formAnswers": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MerchantOrderItemDto"
+            }
+          },
+          "totalCents": {
+            "type": "number"
+          },
+          "refundedCents": {
+            "type": "number"
+          },
+          "pickupPointLabel": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "fulfilledAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "cancelledAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "canFulfil": {
+            "type": "boolean",
+            "description": "Check in (free) or mark collected (paid) is possible now"
+          },
+          "canCancel": {
+            "type": "boolean",
+            "description": "Cancel with a reason (free registrations only)"
+          },
+          "canNoShow": {
+            "type": "boolean",
+            "description": "Mark no-show (free, once the event has started)"
+          }
+        },
+        "required": [
+          "id",
+          "publicCode",
+          "sequenceNo",
+          "status",
+          "isFree",
+          "buyerName",
+          "buyerEmail",
+          "buyerPhone",
+          "buyerNote",
+          "displayAnonymous",
+          "formAnswers",
+          "items",
+          "totalCents",
+          "refundedCents",
+          "pickupPointLabel",
+          "createdAt",
+          "paidAt",
+          "fulfilledAt",
+          "cancelledAt",
+          "canFulfil",
+          "canCancel",
+          "canNoShow"
+        ]
+      },
+      "MerchantOrderListDto": {
+        "type": "object",
+        "properties": {
+          "listing": {
+            "$ref": "#/components/schemas/MerchantOrderListingDto"
+          },
+          "orders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MerchantOrderDto"
+            }
+          }
+        },
+        "required": [
+          "listing",
+          "orders"
+        ]
+      },
+      "MerchantCancelOrderDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Told to the buyer"
+          }
+        },
+        "required": [
+          "reason"
         ]
       },
       "PresignUploadDto": {
@@ -1566,22 +2026,6 @@
         "required": [
           "uploadUrl",
           "publicUrl"
-        ]
-      },
-      "ListingStatus": {
-        "type": "string",
-        "enum": [
-          "DRAFT",
-          "PUBLISHED",
-          "CLOSED",
-          "CANCELLED"
-        ]
-      },
-      "Pricing": {
-        "type": "string",
-        "enum": [
-          "FREE",
-          "PAID"
         ]
       },
       "ListingType": {

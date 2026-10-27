@@ -282,7 +282,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
    - 「退款」这个决定在订单行锁内先写成一行 `PENDING` 的 Refund，再调 Stripe；之后重发或并发的同一事件只会继续完成这笔退款，不会因为名额又空出来而改成 PAID
 6. **免费报名**：同样使用第 1 步的条件 UPDATE，只是改为直接对 `sold_count` 加 q（不经过 reserved），然后在同一事务中创建 `CONFIRMED` 订单并分配序号。
    - 如果 `onePerEmail=true`，用部分唯一索引来保证：`UNIQUE (listing_id, lower(buyer_email)) WHERE one_per_email AND status IN ('CONFIRMED','FULFILLED')`。`one_per_email` 是订单上的快照字段；不带这个条件的话，`onePerEmail=false` 的接龙也会被拦住。
-   - 冲突时返回 `409 ALREADY_REGISTERED`，并重新给该邮箱发送一次原报名的确认邮件（但**不在接口响应里透露**该邮箱已报名的任何信息）。
+   - 冲突时返回 `409 ALREADY_REGISTERED`，并重新给该邮箱发送一次原报名的确认邮件（但**不在接口响应里透露**该邮箱已报名的任何信息）。重发每小时最多一次（`dedupeKey` 带小时），避免被人反复触发。
 7. 必须有一个并发测试：capacity=5，同时发起 50 个下单请求，最终售出数量必须恰好等于 5。
 
 ## 8. Stripe 集成
@@ -419,7 +419,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - 付费订单：仅限 `PENDING_PAYMENT` 状态
   - 免费订单：`CONFIRMED` 状态，且 `allowSelfCancel` 为 true、当前时间早于 `selfCancelUntil`
 - `POST /merchants/me/orders/:id/cancel` {reason}：商家取消免费报名，并通知买家
-- `POST /merchants/me/orders/:id/no-show`：商家标记免费报名为未到
+- `POST /merchants/me/orders/:id/no-show`：商家标记免费报名为未到；只在活动已开始后允许（订单所选场次最早的 `startsAt` 已过，没有场次时间则以接龙 `closesAt` 为准）
 - `GET /public/merchants/:slug`
 
 **Admin（需要 role=ADMIN；所有写操作都要求填写 `reason`，并写入 AuditLog）**
@@ -464,7 +464,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - 登录相关的限流和暴力破解防护由 Clerk 负责
   - 公开下单：同一 IP 每分钟最多 10 次
 - **防刷（主要针对免费报名）**：免费报名没有付款这道门槛，很容易被脚本刷满或被恶意占位，因此：
-  - 所有公开下单接口都要求通过 **Cloudflare Turnstile** 人机验证，后端校验 token
+  - 所有公开下单接口都要求通过 **Cloudflare Turnstile** 人机验证，后端校验 token；Cloudflare 不可达时按未通过处理（fail closed）。同一 `Idempotency-Key` 的重放不再校验（token 只能用一次）。公开下单另有每 IP 每分钟 `ORDER_RATE_LIMIT_PER_MINUTE`（默认 10）次的限流，超出返回 `429 RATE_LIMITED`
   - 免费接龙默认开启 `onePerEmail`
   - `maxQtyPerOrder` 对免费接龙默认为 1，最高可设为 10
   - Phase 2 视情况增加邮箱确认链接后才生效的报名模式

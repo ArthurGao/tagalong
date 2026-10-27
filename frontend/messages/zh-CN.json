@@ -50,7 +50,6 @@
         "SUSPENDED": "暂停销售",
         "NOT_YET_OPEN": "未开始"
       },
-      "orderingSoon": "在线下单即将开放。",
       "stateNotice": {
         "TAKEN_DOWN": "这条接龙已被下架。",
         "SUSPENDED": "该商家已暂停销售。",
@@ -81,8 +80,20 @@
         "pickup": "请选择取货点",
         "name": "请填写姓名",
         "email": "请填写有效的邮箱",
-        "phone": "请填写有效的手机号"
-      }
+        "phone": "请填写有效的手机号",
+        "answers": "有些问题还没回答或填写有误。",
+        "human": "请等人机验证完成。"
+      },
+      "titleFree": "报名",
+      "register": "提交报名",
+      "registering": "正在提交…",
+      "requiredLabel": "{label}（必填）",
+      "answer": {
+        "required": "必填",
+        "invalid": "请检查这一项"
+      },
+      "choose": "请选择…",
+      "attendee": "{option}，第 {n} 位"
     },
     "order": {
       "title": "订单 {code}",
@@ -95,7 +106,8 @@
         "CANCELLED": "已取消",
         "REFUNDED": "已退款",
         "PARTIALLY_REFUNDED": "部分退款",
-        "NO_SHOW": "未到"
+        "NO_SHOW": "未到",
+        "CHECKED_IN": "已签到"
       },
       "confirming": "正在确认付款…",
       "submitted": "付款已提交，确认后会发邮件通知你。",
@@ -112,7 +124,13 @@
       "cancelTitle": "确定取消订单？",
       "cancelBody": "预留的名额会被释放。",
       "cancelConfirm": "确认取消",
-      "keep": "保留"
+      "keep": "保留",
+      "registeredHeadline": "报名成功！你是第 {seq} 位",
+      "cancelUntil": "{time} 前可在线取消。",
+      "cancelRegistration": "取消报名",
+      "cancelRegistrationTitle": "确定取消报名？",
+      "cancelRegistrationBody": "你的名额会让给其他人。",
+      "titleFree": "报名号 {code}"
     }
   },
   "admin": {
@@ -334,6 +352,37 @@
     "pricingLabel": "定价方式",
     "typeLabel": "类型",
     "fulfilmentLabel": "交付方式",
-    "timeInvalid": "这个时间在新西兰不存在（夏令时开始时跳过的一小时），请换一个时间。"
+    "timeInvalid": "这个时间在新西兰不存在（夏令时开始时跳过的一小时），请换一个时间。",
+    "registrations": "报名名单",
+    "orders": "订单"
+  },
+  "orders": {
+    "title": "订单",
+    "titleFree": "报名名单",
+    "search": "姓名、邮箱、手机号或订单号",
+    "searchButton": "搜索",
+    "empty": "还没有记录。",
+    "attendee": "第 {n} 位：",
+    "checkIn": "签到",
+    "fulfil": "已取货",
+    "noShow": "未到",
+    "cancel": "取消",
+    "cancelTitle": "取消 {name} 的报名？",
+    "cancelBody": "名额会释放，并把你填写的原因发邮件告诉对方。",
+    "reason": "原因（会发给报名人）",
+    "keep": "保留",
+    "confirmCancel": "取消报名",
+    "status": {
+      "PENDING_PAYMENT": "待付款",
+      "PAID": "已付款",
+      "CONFIRMED": "已报名",
+      "FULFILLED": "已取货",
+      "CHECKED_IN": "已签到",
+      "EXPIRED": "已过期",
+      "CANCELLED": "已取消",
+      "REFUNDED": "已退款",
+      "PARTIALLY_REFUNDED": "部分退款",
+      "NO_SHOW": "未到"
+    }
   }
 }

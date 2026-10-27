@@ -11,10 +11,10 @@ export async function ListingRows({ listings, locale }: { listings: Summary[]; l
   return (
     <ul className="divide-y divide-border rounded-[var(--radius)] border border-border bg-card">
       {listings.map((l) => (
-        <li key={l.id}>
+        <li key={l.id} className="flex flex-wrap items-center gap-2 pr-4">
           <Link
             href={`/${locale}/dashboard/listings/${l.id}/edit`}
-            className="flex min-h-14 flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-muted"
+            className="flex min-h-14 flex-1 flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-muted"
           >
             <span className="font-bold">{l.title}</span>
             <span className="flex flex-wrap gap-3 text-sm text-muted-foreground tabular-nums">
@@ -28,6 +28,11 @@ export async function ListingRows({ listings, locale }: { listings: Summary[]; l
               {l.closesAt && <span>{t('closes', { date: formatNzDateTime(l.closesAt, locale) })}</span>}
             </span>
           </Link>
+          {l.status !== 'DRAFT' && (
+            <Link href={`/${locale}/dashboard/listings/${l.id}/orders`} className="min-h-11 py-3 text-sm underline">
+              {t(l.pricing === 'FREE' ? 'registrations' : 'orders')}
+            </Link>
+          )}
         </li>
       ))}
     </ul>

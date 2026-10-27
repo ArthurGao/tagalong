@@ -54,3 +54,12 @@ export async function requireAdmin(locale: string) {
   if (me.role !== 'ADMIN') notFound();
   return me;
 }
+
+export const getListingOrders = cache(async (id: string) => {
+  const { data } = await api.GET('/api/v1/merchants/me/listings/{id}/orders', {
+    params: { path: { id }, query: {} },
+    headers: await authHeaders(),
+    cache: 'no-store',
+  });
+  return data ?? null;
+});

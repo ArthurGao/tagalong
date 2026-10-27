@@ -37,3 +37,31 @@ describe('email templates', () => {
     expect(() => renderEmail('NOPE', 'en', 'a@example.test', {})).toThrow(UnknownTemplateError);
   });
 });
+
+describe('registration emails', () => {
+  const registered = {
+    publicCode: 'TA-K7M2Q9',
+    listingTitle: 'Yoga',
+    seq: 3,
+    items: [{ name: 'Sat 9am', quantity: 1 }],
+    orderUrl: 'https://tagalong.test/zh-CN/o/TA-K7M2Q9?t=abc',
+    pickup: null,
+    canSelfCancel: true,
+    selfCancelUntil: '2026-11-01T20:00:00.000Z',
+  };
+
+  it('confirms with the number, the cancel deadline in Auckland time, and the order link', () => {
+    const zh = renderEmail('REGISTRATION_CONFIRMED', 'zh-CN', 'amy@example.test', registered);
+    expect(zh.subject).toBe('报名成功 #3：Yoga');
+    expect(zh.text).toContain('2026年11月2日 09:00'); // 20:00 UTC = 09:00 NZDT next day
+    expect(zh.text).toContain(registered.orderUrl);
+    const en = renderEmail('REGISTRATION_CONFIRMED', 'en', 'amy@example.test', { ...registered, canSelfCancel: false, selfCancelUntil: null });
+    expect(en.text).not.toContain('cancel');
+  });
+
+  it('tells the buyer why the organiser cancelled, escaped', () => {
+    const { html, subject } = renderEmail('REGISTRATION_CANCELLED', 'en', 'a@example.test', { listingTitle: 'Yoga', reason: '<b>rain</b>', listingUrl: 'https://x' });
+    expect(subject).toBe('Registration cancelled: Yoga');
+    expect(html).toContain('Reason: &lt;b&gt;rain&lt;/b&gt;');
+  });
+});

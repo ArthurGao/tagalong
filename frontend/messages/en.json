@@ -50,7 +50,6 @@
         "SUSPENDED": "Paused",
         "NOT_YET_OPEN": "Not open yet"
       },
-      "orderingSoon": "Online ordering opens soon.",
       "stateNotice": {
         "TAKEN_DOWN": "This listing was taken down.",
         "SUSPENDED": "This seller has paused sales.",
@@ -81,8 +80,20 @@
         "pickup": "Choose a pickup point",
         "name": "Enter your name",
         "email": "Enter a valid email",
-        "phone": "Enter a valid phone number"
-      }
+        "phone": "Enter a valid phone number",
+        "answers": "Some answers are missing or invalid.",
+        "human": "Please wait for the human check to finish."
+      },
+      "titleFree": "Register",
+      "register": "Register",
+      "registering": "Registering…",
+      "requiredLabel": "{label} (required)",
+      "answer": {
+        "required": "Required",
+        "invalid": "Check this answer"
+      },
+      "choose": "Choose…",
+      "attendee": "{option}, place {n}"
     },
     "order": {
       "title": "Order {code}",
@@ -95,7 +106,8 @@
         "CANCELLED": "Cancelled",
         "REFUNDED": "Refunded",
         "PARTIALLY_REFUNDED": "Partly refunded",
-        "NO_SHOW": "Marked as no-show"
+        "NO_SHOW": "Marked as no-show",
+        "CHECKED_IN": "Checked in"
       },
       "confirming": "Confirming your payment…",
       "submitted": "Payment submitted. We'll email you once it's confirmed.",
@@ -112,7 +124,13 @@
       "cancelTitle": "Cancel this order?",
       "cancelBody": "Your held places will be released.",
       "cancelConfirm": "Yes, cancel",
-      "keep": "Keep it"
+      "keep": "Keep it",
+      "registeredHeadline": "You're registered! You're #{seq}",
+      "cancelUntil": "You can cancel online until {time}.",
+      "cancelRegistration": "Cancel registration",
+      "cancelRegistrationTitle": "Cancel your registration?",
+      "cancelRegistrationBody": "Your place will be given to someone else.",
+      "titleFree": "Registration {code}"
     }
   },
   "admin": {
@@ -334,6 +352,37 @@
     "pricingLabel": "Pricing",
     "typeLabel": "Type",
     "fulfilmentLabel": "Fulfilment",
-    "timeInvalid": "That time doesn't exist in New Zealand (daylight saving starts). Pick another."
+    "timeInvalid": "That time doesn't exist in New Zealand (daylight saving starts). Pick another.",
+    "registrations": "Registrations",
+    "orders": "Orders"
+  },
+  "orders": {
+    "title": "Orders",
+    "titleFree": "Registrations",
+    "search": "Name, email, phone or order code",
+    "searchButton": "Search",
+    "empty": "Nothing here yet.",
+    "attendee": "Place {n}:",
+    "checkIn": "Check in",
+    "fulfil": "Mark collected",
+    "noShow": "No-show",
+    "cancel": "Cancel",
+    "cancelTitle": "Cancel the registration of {name}?",
+    "cancelBody": "Their place is released and they are emailed your reason.",
+    "reason": "Reason (sent to the buyer)",
+    "keep": "Keep it",
+    "confirmCancel": "Cancel registration",
+    "status": {
+      "PENDING_PAYMENT": "Awaiting payment",
+      "PAID": "Paid",
+      "CONFIRMED": "Registered",
+      "FULFILLED": "Collected",
+      "CHECKED_IN": "Checked in",
+      "EXPIRED": "Expired",
+      "CANCELLED": "Cancelled",
+      "REFUNDED": "Refunded",
+      "PARTIALLY_REFUNDED": "Partly refunded",
+      "NO_SHOW": "No-show"
+    }
   }
 }

@@ -21,6 +21,7 @@ const clerk = {
   EMAIL_PROVIDER: 'resend',
   EMAIL_FROM: 'TagAlong <orders@tagalong.nz>',
   RESEND_API_KEY: 're_x',
+  TURNSTILE_SECRET_KEY: '0x4AAA',
 };
 
 describe('parseEnv', () => {
@@ -48,7 +49,7 @@ describe('parseEnv', () => {
 
   it('requires every Clerk, Stripe and storage variable in production', () => {
     expect(() => parseEnv({ ...valid, NODE_ENV: 'production' })).toThrow(
-      'Invalid environment configuration: EMAIL_PROVIDER, CLERK_SECRET_KEY, CLERK_JWT_KEY, CLERK_AUTHORIZED_PARTIES, CLERK_WEBHOOK_SIGNING_SECRET, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET_CONNECT, STRIPE_WEBHOOK_SECRET_PLATFORM, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_PUBLIC_BASE_URL, EMAIL_FROM',
+      'Invalid environment configuration: EMAIL_PROVIDER, CLERK_SECRET_KEY, CLERK_JWT_KEY, CLERK_AUTHORIZED_PARTIES, CLERK_WEBHOOK_SIGNING_SECRET, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET_CONNECT, STRIPE_WEBHOOK_SECRET_PLATFORM, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_PUBLIC_BASE_URL, EMAIL_FROM, TURNSTILE_SECRET_KEY',
     );
     expect(() => parseEnv({ ...valid, ...clerk, NODE_ENV: 'production' })).not.toThrow();
   });

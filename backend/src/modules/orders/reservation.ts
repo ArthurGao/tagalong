@@ -1,4 +1,4 @@
-import type { Prisma } from '../../generated/prisma/client.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { assertOrderable, availabilityOf } from '../listings/availability.js';
 
@@ -22,15 +22,7 @@ const isSoldOut = (e: unknown) => e instanceof AppError && e.code === 'SOLD_OUT'
  * transaction, and the CHECK constraints on listing and listing_option are the last line of defence.
  */
 export async function reserve(tx: Prisma.TransactionClient, listingId: string, items: ItemQty[], now = new Date()): Promise<void> {
-  await tx.$queryRaw`
-    SELECT l.id FROM listing l JOIN merchant m ON m.id = l.merchant_id
-    WHERE l.id = ${listingId}::uuid
-    FOR UPDATE OF l FOR SHARE OF m`;
-  const listing = await tx.listing.findUniqueOrThrow({
-    where: { id: listingId },
-    include: { options: true, merchant: { select: { status: true } } },
-  });
-  assertOrderable(availabilityOf(listing, now));
+  await lockOrderable(tx, listingId, now);
   const sum = total(items);
   const rows = await tx.$queryRaw<unknown[]>`
     UPDATE listing SET reserved_count = reserved_count + ${sum}, updated_at = now()
@@ -47,16 +39,50 @@ export async function reserve(tx: Prisma.TransactionClient, listingId: string, i
   }
 }
 
-/** Gives held stock back when an unpaid order expires or is cancelled (DESIGN §6). */
-export async function release(tx: Prisma.TransactionClient, listingId: string, items: ItemQty[]): Promise<void> {
-  await tx.$executeRaw`
-    UPDATE listing SET reserved_count = reserved_count - ${total(items)}, updated_at = now()
-    WHERE id = ${listingId}::uuid`;
+/** Locks the listing (merchant row shared) and checks, on the locked rows, that it still takes orders. */
+async function lockOrderable(tx: Prisma.TransactionClient, listingId: string, now: Date): Promise<void> {
+  await tx.$queryRaw`
+    SELECT l.id FROM listing l JOIN merchant m ON m.id = l.merchant_id
+    WHERE l.id = ${listingId}::uuid
+    FOR UPDATE OF l FOR SHARE OF m`;
+  const listing = await tx.listing.findUniqueOrThrow({
+    where: { id: listingId },
+    include: { options: true, merchant: { select: { status: true } } },
+  });
+  assertOrderable(availabilityOf(listing, now));
+}
+
+/**
+ * Free registration (DESIGN §7.6): the same orderability check and capacity conditions, straight into sold (never
+ * reserved, never expires). Returns the sign-up number.
+ */
+export async function registerFree(tx: Prisma.TransactionClient, listingId: string, items: ItemQty[], now = new Date()): Promise<number> {
+  await lockOrderable(tx, listingId, now);
+  return moveToSold(tx, listingId, items, false);
+}
+
+/** A free registration cancelled: its places go back (DESIGN §6). The sign-up number is never reused. */
+export function releaseSold(tx: Prisma.TransactionClient, listingId: string, items: ItemQty[]): Promise<void> {
+  return giveBack(tx, listingId, items, 'sold_count');
+}
+
+/** Lowers one counter on the listing, then its options in id order (the shared lock order). */
+async function giveBack(
+  tx: Prisma.TransactionClient,
+  listingId: string,
+  items: ItemQty[],
+  column: 'sold_count' | 'reserved_count',
+): Promise<void> {
+  const col = Prisma.raw(column);
+  await tx.$executeRaw`UPDATE listing SET ${col} = ${col} - ${total(items)}, updated_at = now() WHERE id = ${listingId}::uuid`;
   for (const i of sorted(items)) {
-    await tx.$executeRaw`
-      UPDATE listing_option SET reserved_count = reserved_count - ${i.quantity}, updated_at = now()
-      WHERE id = ${i.optionId}::uuid`;
+    await tx.$executeRaw`UPDATE listing_option SET ${col} = ${col} - ${i.quantity}, updated_at = now() WHERE id = ${i.optionId}::uuid`;
   }
+}
+
+/** Gives held stock back when an unpaid order expires or is cancelled (DESIGN §6). */
+export function release(tx: Prisma.TransactionClient, listingId: string, items: ItemQty[]): Promise<void> {
+  return giveBack(tx, listingId, items, 'reserved_count');
 }
 
 /**

@@ -9,6 +9,7 @@ import { api } from '@/lib/api/client';
 import { fetchOrder, type PublicOrder } from '@/lib/api/public';
 import { useSave } from '@/lib/api/use-save';
 import { formatCents } from '@/lib/money';
+import { statusKey } from '@/lib/order-status';
 import { formatNzDateTime } from '@/lib/time';
 import { Section } from './Section';
 
@@ -64,13 +65,14 @@ export function OrderView({ initial, token, paid }: { initial: PublicOrder; toke
   };
 
   const pending = order.status === 'PENDING_PAYMENT';
-  const statusLabel = t(`status.${order.status}`);
+  const free = order.isFree;
+  const statusLabel = t(`status.${statusKey(order)}`);
   // The headline, and whether the plain status label is worth adding under it.
   let headline = statusLabel;
   let showStatus = false;
   if (pending && paid) headline = waiting ? t('confirming') : t('submitted'); // never "unpaid" here
-  else if ((order.status === 'PAID' || order.status === 'FULFILLED') && order.sequenceNo) {
-    [headline, showStatus] = [t('paidHeadline', { seq: order.sequenceNo }), true];
+  else if ((order.status === 'PAID' || order.status === 'CONFIRMED' || order.status === 'FULFILLED') && order.sequenceNo) {
+    [headline, showStatus] = [t(free ? 'registeredHeadline' : 'paidHeadline', { seq: order.sequenceNo }), true];
   } else if (order.status === 'EXPIRED') {
     [headline, showStatus] = [order.refundedCents > 0 ? t('autoRefunded') : t('expiredBody'), true];
   }
@@ -78,11 +80,16 @@ export function OrderView({ initial, token, paid }: { initial: PublicOrder; toke
   return (
     <main className="mx-auto flex max-w-[480px] flex-col gap-6 px-4 py-6">
       <header className="flex flex-col gap-1">
-        <p className="text-sm text-muted-foreground">{t('title', { code: order.publicCode })}</p>
+        <p className="text-sm text-muted-foreground">{t(free ? 'titleFree' : 'title', { code: order.publicCode })}</p>
         <h1 className="font-display text-[28px] leading-tight font-bold">{order.listing.title}</h1>
         <p role="status" aria-live="polite" className="font-display text-xl font-semibold">
           {headline}
         </p>
+        {order.canCancel && order.selfCancelUntil && (
+          <p className="text-sm text-muted-foreground">
+            {t('cancelUntil', { time: formatNzDateTime(order.selfCancelUntil, locale) })}
+          </p>
+        )}
         {pending && !paid && order.reservationExpiresAt && (
           <p className="text-sm text-muted-foreground">
             {t('held', { time: formatNzDateTime(order.reservationExpiresAt, locale) })}
@@ -97,11 +104,13 @@ export function OrderView({ initial, token, paid }: { initial: PublicOrder; toke
               <span>
                 {i.name} ×{i.quantity}
               </span>
-              <span className="tabular-nums">{formatCents(i.unitPriceCents * i.quantity)}</span>
+              {!free && <span className="tabular-nums">{formatCents(i.unitPriceCents * i.quantity)}</span>}
             </li>
           ))}
         </ul>
-        <p className="text-right font-display text-lg font-bold tabular-nums">{t('total', { amount: formatCents(order.totalCents) })}</p>
+        {!free && (
+          <p className="text-right font-display text-lg font-bold tabular-nums">{t('total', { amount: formatCents(order.totalCents) })}</p>
+        )}
         {order.refundedCents > 0 && (
           <p className="text-right text-sm tabular-nums text-muted-foreground">
             {t('refunded', { amount: formatCents(order.refundedCents) })}
@@ -121,15 +130,15 @@ export function OrderView({ initial, token, paid }: { initial: PublicOrder; toke
         </Link>
         {order.canCancel && !paid && (
           <Button variant="outline" onClick={() => setConfirmCancel(true)}>
-            {t('cancel')}
+            {t(free ? 'cancelRegistration' : 'cancel')}
           </Button>
         )}
       </div>
       <Dialog open={confirmCancel} onOpenChange={setConfirmCancel}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t('cancelTitle')}</DialogTitle>
-            <DialogDescription>{t('cancelBody')}</DialogDescription>
+            <DialogTitle>{t(free ? 'cancelRegistrationTitle' : 'cancelTitle')}</DialogTitle>
+            <DialogDescription>{t(free ? 'cancelRegistrationBody' : 'cancelBody')}</DialogDescription>
           </DialogHeader>
           {save.error && (
             <p role="alert" className="text-sm text-destructive">

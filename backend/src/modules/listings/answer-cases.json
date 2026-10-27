@@ -1,0 +1,13 @@
+[
+  { "why": "required text missing", "field": { "key": "a", "label": "A", "type": "text", "required": true, "scope": "order" }, "value": "", "ok": false },
+  { "why": "optional text missing", "field": { "key": "a", "label": "A", "type": "text", "required": false, "scope": "order" }, "value": null, "ok": true },
+  { "why": "text at its limit", "field": { "key": "a", "label": "A", "type": "text", "required": false, "scope": "order" }, "repeat": 500, "ok": true },
+  { "why": "text over 500", "field": { "key": "a", "label": "A", "type": "text", "required": false, "scope": "order" }, "repeat": 501, "ok": false },
+  { "why": "textarea over 2000", "field": { "key": "a", "label": "A", "type": "textarea", "required": false, "scope": "order" }, "repeat": 2001, "ok": false },
+  { "why": "number given as text", "field": { "key": "a", "label": "A", "type": "number", "required": true, "scope": "order" }, "value": "7", "ok": false },
+  { "why": "number", "field": { "key": "a", "label": "A", "type": "number", "required": true, "scope": "order" }, "value": 7, "ok": true },
+  { "why": "required checkbox unticked", "field": { "key": "a", "label": "A", "type": "checkbox", "required": true, "scope": "order" }, "value": false, "ok": false },
+  { "why": "select outside its options", "field": { "key": "a", "label": "A", "type": "select", "required": true, "scope": "order", "options": ["S"] }, "value": "M", "ok": false },
+  { "why": "multiselect with a non-string", "field": { "key": "a", "label": "A", "type": "multiselect", "required": false, "scope": "order", "options": ["1"] }, "value": [1], "ok": false },
+  { "why": "multiselect within options", "field": { "key": "a", "label": "A", "type": "multiselect", "required": true, "scope": "order", "options": ["S", "M"] }, "value": ["M"], "ok": true }
+]

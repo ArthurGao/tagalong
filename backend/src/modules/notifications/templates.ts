@@ -1,4 +1,5 @@
 import { formatCents as money } from '../../common/money.js';
+import { formatNzDateTime as nzTime } from '../../common/time.js';
 import type { OutgoingEmail } from './email.service.js';
 
 // Short bilingual emails; the polished templates and .ics attachments arrive in M7 (DESIGN §12).
@@ -18,6 +19,22 @@ export type OrderAutoRefundedPayload = {
   publicCode: string;
   listingTitle: string;
   totalCents: number;
+  listingUrl: string;
+};
+export type RegistrationConfirmedPayload = {
+  publicCode: string;
+  listingTitle: string;
+  seq: number;
+  items: { name: string; quantity: number }[];
+  orderUrl: string;
+  pickup: { label: string; address: string } | null;
+  canSelfCancel: boolean;
+  /** ISO time, or null when cancelling is open until the event (or not allowed). */
+  selfCancelUntil: string | null;
+};
+export type RegistrationCancelledPayload = {
+  listingTitle: string;
+  reason: string;
   listingUrl: string;
 };
 export type PickupPointChangedPayload = {
@@ -76,6 +93,36 @@ export function renderEmail(type: string, locale: string, to: string, payload: u
             ? `你的付款在预留时间结束后才到账，而名额已经被订完，所以我们已全额退款 ${money(p.totalCents)}。订单号 ${p.publicCode}`
             : `Your payment arrived after your reservation ended and the places had sold out, so we refunded ${money(p.totalCents)} in full. Order ${p.publicCode}`,
           zh ? '退款通常在 5–10 个工作日内回到原支付方式。' : 'Refunds usually reach your card within 5–10 business days.',
+        ],
+        { label: zh ? '查看接龙' : 'View the listing', url: p.listingUrl },
+      );
+    }
+    case 'REGISTRATION_CONFIRMED': {
+      const p = payload as RegistrationConfirmedPayload;
+      const until = p.selfCancelUntil ? nzTime(p.selfCancelUntil, locale) : null;
+      const cancelLine = !p.canSelfCancel
+        ? []
+        : [until ? (zh ? `如需取消，请在 ${until} 前通过下面的链接操作。` : `To cancel, use the link below before ${until}.`) : zh ? '如需取消，可通过下面的链接操作。' : 'To cancel, use the link below.'];
+      return email(
+        to,
+        zh ? `报名成功 #${p.seq}：${p.listingTitle}` : `You're registered (#${p.seq}): ${p.listingTitle}`,
+        [
+          zh ? `报名成功，你是第 ${p.seq} 位。报名号 ${p.publicCode}` : `You're registered as #${p.seq}. Reference ${p.publicCode}`,
+          ...p.items.map((i) => `${i.name} ×${i.quantity}`),
+          ...(p.pickup ? [zh ? `地点：${p.pickup.label}，${p.pickup.address}` : `Place: ${p.pickup.label}, ${p.pickup.address}`] : []),
+          ...cancelLine,
+        ],
+        { label: zh ? '查看报名' : 'View your registration', url: p.orderUrl },
+      );
+    }
+    case 'REGISTRATION_CANCELLED': {
+      const p = payload as RegistrationCancelledPayload;
+      return email(
+        to,
+        zh ? `报名已被取消：${p.listingTitle}` : `Registration cancelled: ${p.listingTitle}`,
+        [
+          zh ? `商家取消了你在「${p.listingTitle}」的报名。` : `The organiser cancelled your registration for "${p.listingTitle}".`,
+          ...(p.reason ? [zh ? `原因：${p.reason}` : `Reason: ${p.reason}`] : []),
         ],
         { label: zh ? '查看接龙' : 'View the listing', url: p.listingUrl },
       );

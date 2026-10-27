@@ -148,6 +148,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/merchants/me/listings/{id}/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MerchantOrdersController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merchants/me/orders/{id}/fulfil": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["MerchantOrdersController_fulfil"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merchants/me/orders/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["MerchantOrdersController_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merchants/me/orders/{id}/no-show": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["MerchantOrdersController_noShow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uploads/presign": {
         parameters: {
             query?: never;
@@ -378,6 +442,10 @@ export interface components {
         OrderItemInputDto: {
             optionId: string;
             quantity: number;
+            /** @description Attendee-scope answers, one object per place */
+            attendeeAnswers?: {
+                [key: string]: unknown;
+            }[];
         };
         BuyerInputDto: {
             name: string;
@@ -391,6 +459,12 @@ export interface components {
             note?: string;
             /** @description Show as "anonymous" on the public sign-up sheet */
             anonymous: boolean;
+            /** @description Answers to the listing's order-scope formFields */
+            formAnswers?: {
+                [key: string]: unknown;
+            };
+            /** @description Cloudflare Turnstile token (DESIGN §10) */
+            turnstileToken: string;
             /**
              * @description Buyer UI language, used for emails
              * @enum {string}
@@ -402,6 +476,10 @@ export interface components {
             kind: "checkout" | "confirmed";
             /** @description Paid listings: Stripe Checkout URL to redirect to */
             checkoutUrl?: string;
+            /** @description Free listings: the confirmed registration */
+            publicCode?: string;
+            /** @description Free listings: the order link token */
+            accessToken?: string;
         };
         /** @enum {string} */
         OrderStatus: "PENDING_PAYMENT" | "PAID" | "CONFIRMED" | "FULFILLED" | "EXPIRED" | "CANCELLED" | "REFUNDED" | "PARTIALLY_REFUNDED" | "NO_SHOW";
@@ -443,6 +521,70 @@ export interface components {
             paidAt: string | null;
             /** Format: date-time */
             reservationExpiresAt: string | null;
+            /**
+             * Format: date-time
+             * @description Free: self-cancel allowed until
+             */
+            selfCancelUntil: string | null;
+        };
+        /** @enum {string} */
+        Pricing: "FREE" | "PAID";
+        /** @enum {string} */
+        ListingStatus: "DRAFT" | "PUBLISHED" | "CLOSED" | "CANCELLED";
+        MerchantOrderListingDto: {
+            id: string;
+            title: string;
+            pricing: components["schemas"]["Pricing"];
+            status: components["schemas"]["ListingStatus"];
+        };
+        MerchantOrderItemDto: {
+            name: string;
+            quantity: number;
+            unitPriceCents: number;
+            attendeeAnswers: {
+                [key: string]: unknown;
+            }[];
+        };
+        MerchantOrderDto: {
+            id: string;
+            publicCode: string;
+            sequenceNo: number | null;
+            status: components["schemas"]["OrderStatus"];
+            isFree: boolean;
+            buyerName: string;
+            buyerEmail: string;
+            buyerPhone: string;
+            buyerNote: string | null;
+            displayAnonymous: boolean;
+            formAnswers: {
+                [key: string]: unknown;
+            };
+            items: components["schemas"]["MerchantOrderItemDto"][];
+            totalCents: number;
+            refundedCents: number;
+            pickupPointLabel: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            paidAt: string | null;
+            /** Format: date-time */
+            fulfilledAt: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+            /** @description Check in (free) or mark collected (paid) is possible now */
+            canFulfil: boolean;
+            /** @description Cancel with a reason (free registrations only) */
+            canCancel: boolean;
+            /** @description Mark no-show (free, once the event has started) */
+            canNoShow: boolean;
+        };
+        MerchantOrderListDto: {
+            listing: components["schemas"]["MerchantOrderListingDto"];
+            orders: components["schemas"]["MerchantOrderDto"][];
+        };
+        MerchantCancelOrderDto: {
+            /** @description Told to the buyer */
+            reason: string;
         };
         PresignUploadDto: {
             /** @enum {string} */
@@ -454,10 +596,6 @@ export interface components {
             uploadUrl: string;
             publicUrl: string;
         };
-        /** @enum {string} */
-        ListingStatus: "DRAFT" | "PUBLISHED" | "CLOSED" | "CANCELLED";
-        /** @enum {string} */
-        Pricing: "FREE" | "PAID";
         /** @enum {string} */
         ListingType: "RETAIL" | "SESSION" | "EVENT";
         ListingSummaryDto: {
@@ -1009,6 +1147,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublicOrderDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    MerchantOrdersController_list: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["OrderStatus"];
+                /** @description Name, email, phone or order code */
+                q?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantOrderListDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    MerchantOrdersController_fulfil: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantOrderDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    MerchantOrdersController_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MerchantCancelOrderDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantOrderDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    MerchantOrdersController_noShow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantOrderDto"];
                 };
             };
             /** @description Error (code from DESIGN §17) */

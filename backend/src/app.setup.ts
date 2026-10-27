@@ -3,6 +3,8 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, getSchemaPath, type OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { Logger } from 'nestjs-pino';
+import { ENV } from './config/config.module.js';
+import type { Env } from './config/env.js';
 import { AppModule } from './app.module.js';
 import { API_PREFIX } from './common/api-prefix.js';
 import { AllExceptionsFilter } from './common/errors/all-exceptions.filter.js';
@@ -20,6 +22,9 @@ export async function createApp(): Promise<INestApplication> {
 // Shared by every entrypoint so they all see the same prefix, pipes and error filter.
 export function configureApp<T extends INestApplication>(app: T): T {
   app.useLogger(app.get(Logger));
+  // req.ip from X-Forwarded-For only through trusted hops (rate limits key on it).
+  const trust = app.get<Env>(ENV).TRUST_PROXY;
+  app.getHttpAdapter().getInstance().set('trust proxy', /^\d+$/.test(trust) ? Number(trust) : trust);
   app.setGlobalPrefix(API_PREFIX);
   app.use(cookieParser());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));

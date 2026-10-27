@@ -22,6 +22,8 @@ export default defineConfig({
           fileParallelism: false,
           env: {
             APP_URL: 'http://localhost:3800',
+            // High enough for the concurrency tests; rate-limit.e2e-spec.ts lowers it for its own app.
+            ORDER_RATE_LIMIT_PER_MINUTE: '100000',
             // Test-only secret: base64 of "tagalong-e2e-webhook-secret".
             CLERK_WEBHOOK_SIGNING_SECRET: 'whsec_dGFnYWxvbmctZTJlLXdlYmhvb2stc2VjcmV0',
             ADMIN_EMAIL_ALLOWLIST: 'ops@tagalong.test',

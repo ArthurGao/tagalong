@@ -7,6 +7,7 @@ import {
   IsEmail,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -22,9 +23,17 @@ import { PHONE } from '../../common/validation.js';
 import { OrderStatus } from '../../generated/prisma/enums.js';
 
 
+export const ANSWERS = { type: 'object', additionalProperties: true } as const;
+
 export class OrderItemInputDto {
   @ApiProperty() @IsUUID() optionId!: string;
   @ApiProperty({ minimum: 1, maximum: 50 }) @IsInt() @Min(1) @Max(50) quantity!: number;
+
+  @ApiPropertyOptional({ type: 'array', items: ANSWERS, description: 'Attendee-scope answers, one object per place' })
+  @IsOptional()
+  @ArrayMaxSize(50)
+  @IsObject({ each: true })
+  attendeeAnswers?: Record<string, unknown>[];
 }
 
 export class BuyerInputDto {
@@ -46,6 +55,13 @@ export class CreateOrderDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID() pickupPointId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) note?: string;
   @ApiProperty({ description: 'Show as "anonymous" on the public sign-up sheet' }) @IsBoolean() anonymous!: boolean;
+
+  @ApiPropertyOptional({ ...ANSWERS, description: "Answers to the listing's order-scope formFields" })
+  @IsOptional()
+  @IsObject()
+  formAnswers?: Record<string, unknown>;
+
+  @ApiProperty({ description: 'Cloudflare Turnstile token (DESIGN §10)' }) @IsString() @Length(1, 2048) turnstileToken!: string;
   @ApiPropertyOptional({ enum: LOCALES, description: 'Buyer UI language, used for emails' })
   @IsOptional()
   @IsIn(LOCALES)
@@ -55,6 +71,8 @@ export class CreateOrderDto {
 export class CreateOrderResultDto {
   @ApiProperty({ enum: ['checkout', 'confirmed'] }) kind!: 'checkout' | 'confirmed';
   @ApiPropertyOptional({ description: 'Paid listings: Stripe Checkout URL to redirect to' }) checkoutUrl?: string;
+  @ApiPropertyOptional({ description: 'Free listings: the confirmed registration' }) publicCode?: string;
+  @ApiPropertyOptional({ description: 'Free listings: the order link token' }) accessToken?: string;
 }
 
 export class PublicOrderItemDto {
@@ -93,4 +111,6 @@ export class PublicOrderDto {
   @ApiProperty() createdAt!: Date;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) paidAt!: Date | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) reservationExpiresAt!: Date | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Free: self-cancel allowed until' })
+  selfCancelUntil!: Date | null;
 }

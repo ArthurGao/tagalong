@@ -8,6 +8,7 @@ import { createTestApp, type TestApp } from './support/app.js';
 import { resetDb, testPrisma } from './support/db.js';
 import { createMerchant } from './support/factories.js';
 import { signStripeEvent } from './support/stripe-fake.js';
+import { TURNSTILE_PASS } from './support/turnstile-fake.js';
 
 const ORIGIN = 'http://localhost:3800';
 const ACCOUNT = 'acct_test_merchant';
@@ -68,6 +69,7 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
     buyer: { name: 'Amy Lee', email: 'amy@example.test', phone: '021 555 0101' },
     pickupPointId: l.pickupPoints[0].id,
     anonymous: false,
+    turnstileToken: TURNSTILE_PASS,
     ...over,
   });
 
@@ -145,6 +147,7 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
     await resetDb(prisma);
     t.stripe.reset();
     t.email.reset();
+    t.turnstile.reset();
   });
 
   describe('placing an order', () => {
@@ -348,7 +351,6 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
       ['a suspended merchant', { merchantStatus: 'SUSPENDED' as const }, 'MERCHANT_SUSPENDED'],
       ['a merchant who cannot take payments', { chargesEnabled: false }, 'MERCHANT_NOT_CHARGEABLE'],
       ['a sold-out listing', { capacities: [0] }, 'SOLD_OUT'],
-      ['a free listing (M5b)', { pricing: 'FREE' as const }, 'BAD_REQUEST'],
     ])('refuses %s', async (_, setup, code) => {
       const l = await listing(setup);
       const res = await order(l);

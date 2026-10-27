@@ -84,6 +84,9 @@ frontend/
     - `SOLD_OUT` invalidates the live listing query.
     - Redirects go through `lib/navigate.ts` `goTo()`, so tests can mock them.
   - The order page is `app/[locale]/(public)/o/[publicCode]` with `components/public/OrderView.tsx` (noindex, dynamic).
+  - Free registrations use the same `OrderSheet`. `DynamicFields` + `answers.ts` (mirror of the backend rules) render the custom fields; attendee fields repeat once per place.
+  - `Turnstile.tsx` loads Cloudflare's widget (test site key when `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is empty). Tokens are single-use, so it is remounted (new `key`) after every submission. Tests mock it.
+  - Merchant registration list: `dashboard/(app)/listings/[id]/orders` with `components/merchant/OrderList.tsx`.
   - Free listings get `{ kind: 'confirmed', publicCode, accessToken }`. Navigate to `/o/{publicCode}?t={accessToken}`, which shows "报名成功" (registered). Branch on `kind`, never on price.
   - Handle `ALREADY_REGISTERED` by showing "该邮箱已报名，确认邮件已重新发送" (this email is already registered; the confirmation email has been resent).
   - Every public order form includes the Cloudflare Turnstile widget, and its token is sent with the request.

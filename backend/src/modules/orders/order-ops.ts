@@ -3,13 +3,13 @@ import type { Env } from '../../config/env.js';
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
 import type { CheckoutRequest, StripeClient } from '../stripe/stripe-client.js';
 import { transitionOrder } from './order-state-machine.js';
-import { release } from './reservation.js';
+import { release, releaseSold } from './reservation.js';
 import { listingUrl, orderUrl } from './urls.js';
 
 // What every order path loads: items with option names, the listing, the pickup point and the merchant's account.
 export const orderDetail = {
   items: { select: { optionId: true, quantity: true, unitPriceCents: true, option: { select: { name: true } } } },
-  listing: { select: { title: true, shortCode: true } },
+  listing: { select: { title: true, shortCode: true, allowSelfCancel: true, selfCancelUntil: true } },
   pickupPoint: { select: { label: true, address: true, windowStart: true, windowEnd: true, notes: true } },
   merchant: { select: { stripeAccountId: true } },
 } satisfies Prisma.OrderInclude;
@@ -37,6 +37,22 @@ export async function endUnpaid(
 ): Promise<void> {
   await transitionOrder(tx, order, to, data);
   await release(tx, order.listingId, order.items);
+}
+
+/** A free registration cancelled (by its buyer or the merchant): places go back (DESIGN §6). */
+export async function cancelFree(tx: Prisma.TransactionClient, order: OrderDetail): Promise<void> {
+  await transitionOrder(tx, order, 'CANCELLED', { cancelledAt: new Date() });
+  await releaseSold(tx, order.listingId, order.items);
+}
+
+/** Until when the buyer may cancel a free registration online (DESIGN §9); null when never or without a deadline. */
+export function selfCancelDeadline(order: OrderDetail): Date | null {
+  return order.isFree && order.listing.allowSelfCancel ? order.listing.selfCancelUntil : null;
+}
+
+export function canSelfCancel(order: OrderDetail, now: Date): boolean {
+  const deadline = selfCancelDeadline(order);
+  return order.isFree && order.status === 'CONFIRMED' && order.listing.allowSelfCancel && (!deadline || now < deadline);
 }
 
 export interface CheckoutSessionRef {

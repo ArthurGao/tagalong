@@ -28,6 +28,7 @@ const order = (over: Partial<PublicOrder> = {}): PublicOrder => ({
   createdAt: '2026-10-27T00:00:00.000Z',
   paidAt: null,
   reservationExpiresAt: '2026-10-27T00:30:00.000Z',
+  selfCancelUntil: null,
   ...over,
 });
 const status = () => screen.getByRole('status').textContent;
@@ -85,5 +86,41 @@ describe('OrderView', () => {
     renderWithIntl(<OrderView initial={order({ status: 'EXPIRED', refundedCents: 7800, canCancel: false })} token="tok" paid />);
     expect(status()).toBe(t.autoRefunded);
     expect(screen.getByText(t.refunded.replace('{amount}', '$78.00'))).toBeTruthy();
+  });
+
+  describe('free registration', () => {
+    const registered = order({
+      isFree: true,
+      status: 'CONFIRMED',
+      sequenceNo: 4,
+      totalCents: 0,
+      items: [{ name: 'Sat 9am', quantity: 1, unitPriceCents: 0 }],
+      canCancel: true,
+      selfCancelUntil: '2026-11-01T20:00:00.000Z',
+      reservationExpiresAt: null,
+    });
+
+    it('shows the sign-up number and the cancel deadline, without prices', () => {
+      renderWithIntl(<OrderView initial={registered} token="tok" paid={false} />);
+      expect(status()).toBe(t.registeredHeadline.replace('{seq}', '4'));
+      expect(screen.getByText(/2 Nov 2026, 09:00/)).toBeTruthy();
+      expect(screen.queryByText(/\$/)).toBeNull();
+      expect(screen.getByRole('button', { name: t.cancelRegistration })).toBeTruthy();
+    });
+
+    it('cancels the registration after confirming', async () => {
+      post.mockResolvedValue({ data: { ...registered, status: 'CANCELLED', canCancel: false } });
+      renderWithIntl(<OrderView initial={registered} token="tok" paid={false} />);
+      fireEvent.click(screen.getByRole('button', { name: t.cancelRegistration }));
+      expect(await screen.findByText(t.cancelRegistrationTitle)).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: t.cancelConfirm }));
+      await waitFor(() => expect(status()).toBe(t.status.CANCELLED));
+    });
+
+    it('says "checked in", not "collected", once the organiser checked the buyer in', () => {
+      renderWithIntl(<OrderView initial={{ ...registered, status: 'FULFILLED', canCancel: false }} token="tok" paid={false} />);
+      expect(screen.getByText(t.status.CHECKED_IN)).toBeTruthy();
+      expect(screen.queryByText(t.status.FULFILLED)).toBeNull();
+    });
   });
 });

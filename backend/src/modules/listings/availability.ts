@@ -81,3 +81,13 @@ const NOT_ORDERABLE: Record<Exclude<Availability, 'OPEN'>, ErrorCode> = {
 export function assertOrderable(availability: Availability): void {
   if (availability !== 'OPEN') throw new AppError(NOT_ORDERABLE[availability], `Listing is ${availability}`);
 }
+
+/**
+ * Whether an event has begun, for marking no-shows (DESIGN §6): the earliest start among the chosen options, or the
+ * listing's deadline when the options have no start time.
+ */
+export function eventStarted(startsAt: (Date | null)[], closesAt: Date | null, now: Date): boolean {
+  const starts = startsAt.filter((d): d is Date => d !== null).map((d) => d.getTime());
+  const begins = starts.length ? Math.min(...starts) : closesAt?.getTime();
+  return begins !== undefined && begins <= now.getTime();
+}

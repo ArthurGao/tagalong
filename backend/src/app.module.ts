@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { httpLoggerOptions } from './common/logging/http-logger.options.js';
 import { OriginGuard } from './common/security/origin.guard.js';
@@ -21,6 +22,11 @@ import { PrismaModule } from './prisma/prisma.module.js';
   imports: [
     ConfigModule,
     ScheduleModule.forRoot(),
+    // Applied per route with ThrottlerGuard (public order creation); DESIGN §10.
+    ThrottlerModule.forRootAsync({
+      inject: [ENV],
+      useFactory: (env: Env) => [{ name: 'orders', ttl: 60_000, limit: env.ORDER_RATE_LIMIT_PER_MINUTE }],
+    }),
     LoggerModule.forRootAsync({
       inject: [ENV],
       useFactory: (env: Env) => ({ pinoHttp: httpLoggerOptions(env.NODE_ENV) }),

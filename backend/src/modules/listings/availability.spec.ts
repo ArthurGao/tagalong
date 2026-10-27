@@ -1,4 +1,4 @@
-import { type AvailabilityInput, listingAvailability } from './availability.js';
+import { type AvailabilityInput, eventStarted, listingAvailability } from './availability.js';
 
 const now = new Date('2026-11-01T00:00:00Z');
 const open: AvailabilityInput = {
@@ -43,5 +43,20 @@ describe('listingAvailability', () => {
     expect(at({ optionRemaining: [] })).toBe('SOLD_OUT');
     expect(at({ totalRemaining: 0 })).toBe('SOLD_OUT');
     expect(at({ optionRemaining: [0, null] })).toBe('OPEN');
+  });
+});
+
+describe('eventStarted (no-show allowed)', () => {
+  const now = new Date('2026-10-28T10:00:00Z');
+  const before = new Date('2026-10-28T09:00:00Z');
+  const after = new Date('2026-10-28T11:00:00Z');
+  it.each([
+    ['the earliest option started', [after, before], null, true],
+    ['no option started yet', [after], before, false],
+    ['no start times: the deadline passed', [null], before, true],
+    ['no start times, deadline ahead', [null], after, false],
+    ['nothing to go by', [null], null, false],
+  ] as const)('%s', (_, starts, closes, started) => {
+    expect(eventStarted([...starts], closes, now)).toBe(started);
   });
 });

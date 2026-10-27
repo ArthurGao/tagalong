@@ -45,6 +45,12 @@ export const envSchema = z
     RESEND_API_KEY: z.string().default(''),
     SMTP_HOST: z.string().default('localhost'),
     SMTP_PORT: z.coerce.number().int().positive().default(1026),
+    // Abuse controls on public order creation (DESIGN §10). Without a secret outside production, Cloudflare's
+    // always-pass test secret is used (DESIGN §13 environments).
+    TURNSTILE_SECRET_KEY: z.string().default(''),
+    ORDER_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(10),
+    // Express "trust proxy": which hops may set X-Forwarded-For (the Next rewrite runs on the same host locally).
+    TRUST_PROXY: z.string().default('loopback'),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== 'production') return;
@@ -61,6 +67,7 @@ export const envSchema = z
       S3_SECRET_ACCESS_KEY: env.S3_SECRET_ACCESS_KEY,
       S3_PUBLIC_BASE_URL: env.S3_PUBLIC_BASE_URL,
       EMAIL_FROM: env.EMAIL_FROM,
+      TURNSTILE_SECRET_KEY: env.TURNSTILE_SECRET_KEY,
       RESEND_API_KEY: env.EMAIL_PROVIDER === 'resend' ? env.RESEND_API_KEY : 'not used',
     };
     if (env.EMAIL_PROVIDER !== 'resend') {
