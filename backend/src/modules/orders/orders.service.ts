@@ -9,9 +9,9 @@ import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { isUniqueViolation } from '../../prisma/errors.js';
+import { isRetryableTransactionError, isUniqueViolation } from '../../prisma/errors.js';
 import { assertOrderable, availabilityOf } from '../listings/availability.js';
-import { StripeClient } from '../stripe/stripe-client.js';
+import { StripeClient, stripeErrorCode } from '../stripe/stripe-client.js';
 import type { CreateOrderDto, CreateOrderResultDto, PublicOrderDto } from './order.dto.js';
 import {
   type CheckoutSessionRef,
@@ -26,7 +26,7 @@ import {
 import { reserve } from './reservation.js';
 import { orderUrl } from './urls.js';
 
-const ATTEMPTS = 3; // retries for a racing resubmit by the same email, or a public-code collision
+const ATTEMPTS = 3; // retries for a racing resubmit by the same email, a public-code collision or a deadlock
 
 type OrderListing = Prisma.ListingGetPayload<{
   include: { options: true; pickupPoints: { select: { id: true } }; merchant: { select: { status: true; chargesEnabled: true; stripeAccountId: true } } };
@@ -119,6 +119,7 @@ export class OrdersService {
           return { order, ended };
         });
       } catch (e) {
+        if (isRetryableTransactionError(e) && attempt < ATTEMPTS) continue;
         if (!isUniqueViolation(e)) throw e;
         // The same key won a concurrent race: answer with that order (the index waited for its commit).
         const raced = await this.replay(key);
@@ -129,15 +130,22 @@ export class OrdersService {
     await expireSessions(this.stripe, this.logger, created.ended);
 
     const { order } = created;
+    let session: { id: string; url: string };
     try {
-      const session = await this.stripe.createCheckoutSession(checkoutRequest(this.env, order));
-      await this.prisma.order.update({ where: { id: order.id }, data: { stripeCheckoutSessionId: session.id } });
-      return { kind: 'checkout', checkoutUrl: session.url };
+      session = await this.stripe.createCheckoutSession(checkoutRequest(this.env, order));
     } catch (e) {
-      // No Checkout, no order: give the places back. The key is cleared so the buyer's retry starts afresh.
+      // Stripe refused: no Checkout, no order. The places go back and the key is cleared so a retry starts afresh.
       await this.prisma.$transaction((tx) => endUnpaid(tx, order, 'EXPIRED', { idempotencyKey: null }));
       throw e;
     }
+    // If this write is lost, a retry with the same key recovers the session (replay) and a payment still matches.
+    return this.opened(order.id, session);
+  }
+
+  /** Saves the order's Checkout session (first writer wins) and answers with its URL. */
+  private async opened(orderId: string, session: { id: string; url: string }): Promise<CreateOrderResultDto> {
+    await this.prisma.order.updateMany({ where: { id: orderId, stripeCheckoutSessionId: null }, data: { stripeCheckoutSessionId: session.id } });
+    return { kind: 'checkout', checkoutUrl: session.url };
   }
 
   /** The first answer for an Idempotency-Key, or null when the key is new (§7.2). */
@@ -148,11 +156,20 @@ export class OrdersService {
       // Paid (or otherwise settled) already: send the buyer to their order page.
       return { kind: 'checkout', checkoutUrl: orderUrl(this.env, order.locale, order.publicCode, order.accessToken, true) };
     }
-    // The first request is still between its commit and its Checkout call.
-    if (!order.stripeCheckoutSessionId) throw new AppError('ORDER_IN_PROGRESS', 'This order is still being created');
-    // Same stored request, same Stripe idempotency key: Stripe returns the session it created the first time.
-    const session = await this.stripe.createCheckoutSession(checkoutRequest(this.env, order));
-    return { kind: 'checkout', checkoutUrl: session.url };
+    const accountId = order.merchant.stripeAccountId!;
+    if (order.stripeCheckoutSessionId) {
+      // Read the session back rather than re-sending a request the merchant's later edits could have changed.
+      const url = await this.stripe.retrieveCheckoutUrl(accountId, order.stripeCheckoutSessionId);
+      return { kind: 'checkout', checkoutUrl: url ?? orderUrl(this.env, order.locale, order.publicCode, order.accessToken) };
+    }
+    // The first request has not saved its session (still running, or it died after Stripe answered). The same stored
+    // request under the same idempotency key makes Stripe return that session, or tells us it is still being made.
+    try {
+      return await this.opened(order.id, await this.stripe.createCheckoutSession(checkoutRequest(this.env, order)));
+    } catch (e) {
+      if (stripeErrorCode(e) === 'idempotency_key_in_use') throw new AppError('ORDER_IN_PROGRESS', 'This order is still being created');
+      throw e;
+    }
   }
 
   /** Ends this email's unpaid order on the listing, if any; returns its Checkout session to end after commit. */

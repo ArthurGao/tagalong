@@ -60,9 +60,13 @@ export class StripeWebhookController {
         if (!merchant) this.logger.warn(`account.updated for unknown account ${accountId}`);
         return;
       }
+      // Payment methods follow the connected account's settings, so delayed ones (bank debits) can occur: a session
+      // completes unpaid and the money arrives (or fails) later in an async_payment event.
       case 'checkout.session.completed':
+      case 'checkout.session.async_payment_succeeded':
         return this.checkout.completed(event.data.object, event.account);
       case 'checkout.session.expired':
+      case 'checkout.session.async_payment_failed':
         return this.checkout.expired(event.data.object, event.account);
       default:
         return; // recorded; refund and dispute handlers arrive in M6

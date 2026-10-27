@@ -61,6 +61,15 @@ export async function expireSessions(stripe: StripeClient, logger: Logger, sessi
   }
 }
 
+// Stripe requires a session to stay open at least 30 minutes from its creation, which happens a moment after the
+// reservation deadline is stored. The session closes a little later; the expiry job ends it at the real deadline.
+const CHECKOUT_HEADROOM_MS = 2 * 60_000;
+
+/** Checkout's expires_at: the reservation deadline plus headroom, whole seconds (derived, so replays match). */
+export function checkoutDeadline(reservationExpiresAt: Date): Date {
+  return new Date(Math.ceil((reservationExpiresAt.getTime() + CHECKOUT_HEADROOM_MS) / 1000) * 1000);
+}
+
 /**
  * The Checkout request for an order, built only from what is stored. Replaying an Idempotency-Key sends exactly the
  * same request, so Stripe's idempotency returns the original session.
@@ -72,7 +81,7 @@ export function checkoutRequest(env: Env, order: OrderDetail): CheckoutRequest {
     lines: order.items.map((i) => ({ name: `${order.listing.title} · ${i.option.name}`, unitAmountCents: i.unitPriceCents, quantity: i.quantity })),
     applicationFeeCents: order.platformFeeCents,
     customerEmail: order.buyerEmail,
-    expiresAt: order.reservationExpiresAt!,
+    expiresAt: checkoutDeadline(order.reservationExpiresAt!),
     successUrl: orderUrl(env, order.locale, order.publicCode, order.accessToken, true),
     cancelUrl: listingUrl(env, order.locale, order.listing.shortCode),
     locale: order.locale,

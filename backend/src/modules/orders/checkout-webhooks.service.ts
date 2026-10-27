@@ -17,9 +17,11 @@ import { listingUrl, orderUrl } from './urls.js';
 //
 // A valid signature proves Stripe sent the event, not that it pays for this order: any connected merchant could put
 // another order's id in its own session's metadata. So an event only counts when it comes from the order's own
-// connected account and Checkout session, for the order's amount in NZD.
+// connected account and Checkout session, for the order's amount in NZD. An order that has not saved its session id yet
+// (the request died right after Stripe answered) accepts its merchant's session for it.
 function belongsTo(order: OrderDetail, session: Stripe.Checkout.Session, account: string | undefined): boolean {
-  return Boolean(account) && account === order.merchant.stripeAccountId && session.id === order.stripeCheckoutSessionId;
+  if (!account || account !== order.merchant.stripeAccountId) return false;
+  return order.stripeCheckoutSessionId === null || order.stripeCheckoutSessionId === session.id;
 }
 @Injectable()
 export class CheckoutWebhooksService {
@@ -33,7 +35,8 @@ export class CheckoutWebhooksService {
   ) {}
 
   async completed(session: Stripe.Checkout.Session, account: string | undefined): Promise<void> {
-    if (session.payment_status !== 'paid') return; // card payments are paid on completion; nothing else is offered
+    // A delayed method completes the session unpaid; the order waits for async_payment_succeeded / _failed.
+    if (session.payment_status !== 'paid') return;
     const orderId = session.metadata?.orderId;
     const paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id;
     if (!orderId || !paymentIntentId) {
@@ -56,15 +59,21 @@ export class CheckoutWebhooksService {
         await this.markPaid(tx, order, paid, await sell(tx, order.listingId, order.items));
         return null;
       }
-      // Already paid (a replay), or a late payment that was refunded already.
-      if ((order.status !== 'EXPIRED' && order.status !== 'CANCELLED') || order.refundedCents > 0) return null;
+      if (order.status !== 'EXPIRED' && order.status !== 'CANCELLED') return null; // already paid: a replay
+      // A refund was decided earlier (under this lock): carry it out, never reconsider it, even if places freed up.
+      const decided = await tx.refund.findFirst({ where: { orderId: order.id }, select: { stripeRefundId: true } });
+      if (decided) return decided.stripeRefundId ? null : order;
       // §7.5: paid just after the reservation ended. Take the places again if they are still there.
       const seq = order.status === 'EXPIRED' ? await sellAfresh(tx, order.listingId, order.items) : null;
       if (seq !== null) {
         await this.markPaid(tx, order, paid, seq);
         return null;
       }
+      // Decide the refund before calling Stripe (a PENDING row), so a concurrent or retried delivery can only resume it.
       await tx.order.update({ where: { id: order.id }, data: { stripePaymentIntentId: paymentIntentId } });
+      await tx.refund.create({
+        data: { orderId: order.id, amountCents: order.totalCents, reason: 'Paid after the reservation expired; sold out', status: 'PENDING' },
+      });
       return order;
     });
     if (toRefund) await this.refundLatePayment(toRefund, paymentIntentId);
@@ -119,17 +128,10 @@ export class CheckoutWebhooksService {
     if (!accountId) throw new Error(`Order ${order.id} paid on a merchant without a Stripe account`);
     const refund = await this.stripe.refundPayment(accountId, paymentIntentId, order.totalCents, `late-refund:${order.id}`);
     await this.prisma.$transaction(async (tx) => {
-      const { count } = await tx.refund.createMany({
-        data: [
-          {
-            orderId: order.id,
-            amountCents: order.totalCents,
-            reason: 'Paid after the reservation expired; sold out',
-            stripeRefundId: refund.id,
-            status: refund.status === 'succeeded' ? 'SUCCEEDED' : 'PENDING',
-          },
-        ],
-        skipDuplicates: true,
+      // First to record Stripe's answer wins; refundedCents moves only now that the money has moved.
+      const { count } = await tx.refund.updateMany({
+        where: { orderId: order.id, stripeRefundId: null },
+        data: { stripeRefundId: refund.id, status: refund.status === 'succeeded' ? 'SUCCEEDED' : 'PENDING' },
       });
       if (count === 0) return;
       await tx.order.update({ where: { id: order.id }, data: { refundedCents: order.totalCents } });

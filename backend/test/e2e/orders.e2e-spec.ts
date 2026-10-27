@@ -3,6 +3,7 @@ import request from 'supertest';
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 import { OutboxJob } from '../../src/modules/notifications/outbox.job.js';
 import { ExpiryJob } from '../../src/modules/orders/expiry.job.js';
+import { reserve } from '../../src/modules/orders/reservation.js';
 import { createTestApp, type TestApp } from './support/app.js';
 import { resetDb, testPrisma } from './support/db.js';
 import { createMerchant } from './support/factories.js';
@@ -25,10 +26,11 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
     chargesEnabled?: boolean;
     merchantStatus?: 'ACTIVE' | 'SUSPENDED';
     pricing?: 'PAID' | 'FREE';
+    clerkUserId?: string;
   }
 
   async function listing(s: ListingSetup = {}) {
-    const merchant = await createMerchant(prisma, { status: s.merchantStatus ?? 'ACTIVE' });
+    const merchant = await createMerchant(prisma, { status: s.merchantStatus ?? 'ACTIVE', clerkUserId: s.clerkUserId });
     await prisma.merchant.update({
       where: { id: merchant.id },
       data: { chargesEnabled: s.chargesEnabled ?? true, stripeAccountId: `${ACCOUNT}_${merchant.id.slice(-6)}` },
@@ -110,8 +112,8 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
         object: {
           id: o.stripeCheckoutSessionId,
           object: 'checkout.session',
-          payment_status: type === 'checkout.session.completed' ? 'paid' : 'unpaid',
-          payment_intent: type === 'checkout.session.completed' ? `pi_${o.id.slice(-8)}` : null,
+          payment_status: type.endsWith('completed') || type.endsWith('succeeded') ? 'paid' : 'unpaid',
+          payment_intent: type.endsWith('expired') ? null : `pi_${o.id.slice(-8)}`,
           amount_total: o.totalCents,
           currency: 'nzd',
           metadata: { orderId: o.id },
@@ -166,13 +168,17 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
         { name: 'Cherries · 3kg', unitAmountCents: 5900, quantity: 1 },
       ]);
       expect(session.applicationFeeCents).toBe(411); // 3% of 13700
-      expect(session.expiresAt.getTime() - before).toBeGreaterThanOrEqual(30 * 60_000 - 1000);
-      expect(session.expiresAt.getTime() - before).toBeLessThan(31 * 60_000);
+      // Stripe needs ≥ 30 minutes from the session's creation: the stored deadline plus headroom, whole seconds.
+      expect(session.expiresAt.getTime() - before).toBeGreaterThanOrEqual(31 * 60_000);
+      expect(session.expiresAt.getTime() - before).toBeLessThan(33 * 60_000);
+      expect(session.expiresAt.getMilliseconds()).toBe(0);
 
       const row = await prisma.order.findFirstOrThrow({ where: { listingId: l.id } });
       expect(res.body.checkoutUrl).toBe(`https://checkout.stripe.test/${row.stripeCheckoutSessionId}`);
       expect(session.successUrl).toBe(`${ORIGIN}/en/o/${row.publicCode}?t=${row.accessToken}&paid=1`);
       expect(session.cancelUrl).toBe(`${ORIGIN}/en/l/${l.shortCode}`);
+      // The places themselves are held for exactly RESERVATION_MINUTES.
+      expect(row.reservationExpiresAt!.getTime() - before).toBeLessThan(30 * 60_000 + 5000);
       expect(row).toMatchObject({
         status: 'PENDING_PAYMENT',
         subtotalCents: 13700,
@@ -247,16 +253,70 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
       expect((await counts(l)).listing.reserved).toBe(1);
     });
 
-    it('a retry that arrives while the first request is still opening Checkout is told to try again', async () => {
+    it('a retry recovers a Checkout session the first request never saved (409 while Stripe is still busy)', async () => {
       const l = await listing();
       const key = randomUUID();
-      const first = await placed(l);
-      await prisma.order.update({ where: { id: first.id }, data: { idempotencyKey: key, stripeCheckoutSessionId: null } });
-      const res = await order(l, {}, key);
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe('ORDER_IN_PROGRESS');
+      const first = await order(l, {}, key);
+      const { id } = await prisma.order.findFirstOrThrow();
+      await prisma.order.update({ where: { id }, data: { stripeCheckoutSessionId: null } });
+
+      t.stripe.checkoutInUse = true;
+      const busy = await order(l, {}, key);
+      expect(busy.status).toBe(409);
+      expect(busy.body.code).toBe('ORDER_IN_PROGRESS');
+
+      t.stripe.checkoutInUse = false;
+      const again = await order(l, {}, key);
+      expect(again.status).toBe(201);
+      expect(again.body.checkoutUrl).toBe(first.body.checkoutUrl);
+      expect((await prisma.order.findUniqueOrThrow({ where: { id } })).stripeCheckoutSessionId).toBe(first.body.checkoutUrl.split('/').pop());
       expect(await prisma.order.count()).toBe(1);
     });
+
+    it('a retry of the same key still works after the merchant renamed the listing (no new Checkout request)', async () => {
+      const l = await listing();
+      const key = randomUUID();
+      const first = await order(l, {}, key);
+      await prisma.listing.update({ where: { id: l.id }, data: { title: 'Renamed' } });
+      await prisma.listingOption.update({ where: { id: l.options[0].id }, data: { name: 'Renamed option' } });
+      const again = await order(l, {}, key);
+      expect(again.status).toBe(201);
+      expect(again.body.checkoutUrl).toBe(first.body.checkoutUrl);
+    });
+
+    it('re-checks the listing inside the transaction: closed, past its deadline or suspended means no reservation', async () => {
+      const l = await listing({ capacities: [5] });
+      const items = [{ optionId: l.options[0].id, quantity: 1 }];
+      const attempt = () => prisma.$transaction((tx) => reserve(tx, l.id, items, new Date())).catch((e: { code?: string }) => e.code);
+      await prisma.listing.update({ where: { id: l.id }, data: { status: 'CLOSED' } });
+      expect(await attempt()).toBe('LISTING_CLOSED');
+      await prisma.listing.update({ where: { id: l.id }, data: { status: 'PUBLISHED', closesAt: new Date(Date.now() - 1000) } });
+      expect(await attempt()).toBe('LISTING_CLOSED');
+      await prisma.listing.update({ where: { id: l.id }, data: { closesAt: null } });
+      await prisma.merchant.update({ where: { id: l.merchantId }, data: { status: 'SUSPENDED' } });
+      expect(await attempt()).toBe('MERCHANT_SUSPENDED');
+      await prisma.merchant.update({ where: { id: l.merchantId }, data: { status: 'ACTIVE' } });
+      expect(await attempt()).toBeUndefined();
+      expect(await counts(l)).toMatchObject({ options: [{ reserved: 1 }], listing: { reserved: 1 } });
+    });
+
+    it('orders and merchant option edits running together never deadlock or fail with 500', async () => {
+      const l = await listing({ capacities: [100], clerkUserId: 'user_m' });
+      const edit = async () => {
+        const { revision } = await prisma.listing.findUniqueOrThrow({ where: { id: l.id } });
+        const o = l.options[0];
+        return http()
+          .put(`/api/v1/merchants/me/listings/${l.id}/options`)
+          .set('authorization', 'Bearer valid:user_m')
+          .send({ revision, options: [{ id: o.id, name: o.name, priceCents: o.priceCents, capacity: 100, active: true }] });
+      };
+      const results = await Promise.all([
+        ...Array.from({ length: 30 }, (_, n) => order(l, { buyer: buyer(n) })),
+        ...Array.from({ length: 10 }, () => edit()),
+      ]);
+      expect(results.filter((r) => r.status >= 500).map((r) => r.body)).toEqual([]);
+      expect((await counts(l)).options[0].reserved).toBe(await prisma.order.count({ where: { status: 'PENDING_PAYMENT' } }));
+    }, 30_000);
 
     it('a resubmit by the same email ends the earlier unpaid order and gives its places back', async () => {
       const l = await listing({ capacities: [3] });
@@ -369,6 +429,36 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
       expect(await counts(l)).toMatchObject({ options: [{ sold: 0, reserved: 1 }] });
     });
 
+    it('accepts the payment when it lands before the order saved its Checkout session id', async () => {
+      const l = await listing();
+      const o = await placed(l);
+      const event = await sessionEvent('checkout.session.completed', o);
+      await prisma.order.update({ where: { id: o.id }, data: { stripeCheckoutSessionId: null } });
+      expect((await deliver(event)).status).toBe(200);
+      expect(await prisma.order.findUniqueOrThrow({ where: { id: o.id } })).toMatchObject({
+        status: 'PAID',
+        stripeCheckoutSessionId: o.stripeCheckoutSessionId,
+      });
+    });
+
+    it('a delayed payment method: completed unpaid waits, async_payment_succeeded marks it PAID', async () => {
+      const l = await listing();
+      const o = await placed(l);
+      expect((await deliver(await sessionEvent('checkout.session.completed', o, { payment_status: 'unpaid' }))).status).toBe(200);
+      expect((await prisma.order.findUniqueOrThrow({ where: { id: o.id } })).status).toBe('PENDING_PAYMENT');
+      expect((await deliver(await sessionEvent('checkout.session.async_payment_succeeded', o))).status).toBe(200);
+      expect(await prisma.order.findUniqueOrThrow({ where: { id: o.id } })).toMatchObject({ status: 'PAID', sequenceNo: 1 });
+    });
+
+    it('a delayed payment that fails ends the order and frees its places', async () => {
+      const l = await listing();
+      const o = await placed(l);
+      await deliver(await sessionEvent('checkout.session.completed', o, { payment_status: 'unpaid' }));
+      expect((await deliver(await sessionEvent('checkout.session.async_payment_failed', o))).status).toBe(200);
+      expect((await prisma.order.findUniqueOrThrow({ where: { id: o.id } })).status).toBe('EXPIRED');
+      expect(await counts(l)).toMatchObject({ options: [{ sold: 0, reserved: 0 }] });
+    });
+
     it('an expired event arriving after the payment leaves the order PAID', async () => {
       const l = await listing();
       const o = await placed(l);
@@ -434,6 +524,33 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
       expect(t.stripe.refunds).toHaveLength(1);
       // The option had room, the listing did not: nothing of the attempt may remain.
       expect(await counts(l)).toEqual({ options: [{ sold: 1, reserved: 0 }], listing: { sold: 1, reserved: 0, seq: 1 } });
+    });
+  });
+
+  describe('late payment refund decision', () => {
+    it('once a late payment is judged sold out it is refunded, even if places free up before the retry', async () => {
+      const l = await listing({ capacities: [1] });
+      const late = await placed(l);
+      await prisma.order.update({ where: { id: late.id }, data: { reservationExpiresAt: new Date(Date.now() - 1000) } });
+      await t.app.get(ExpiryJob).expireDue();
+      const other = await placed(l, { buyer: buyer(2) });
+      await deliver(await sessionEvent('checkout.session.completed', other));
+
+      const event = await sessionEvent('checkout.session.completed', late);
+      t.stripe.failRefund = true;
+      expect((await deliver(event)).status).toBe(502); // Stripe will retry the event
+      // Decided, not done: the refund is on record as pending, and no money is shown as refunded yet.
+      expect(await prisma.refund.findMany({ where: { orderId: late.id } })).toEqual([expect.objectContaining({ status: 'PENDING', stripeRefundId: null })]);
+      expect((await prisma.order.findUniqueOrThrow({ where: { id: late.id } })).refundedCents).toBe(0);
+      // Places free up meanwhile (say, the merchant raised capacity).
+      await prisma.listingOption.update({ where: { id: l.options[0].id }, data: { capacity: 5 } });
+      t.stripe.failRefund = false;
+      expect((await deliver({ ...event, id: `evt_${randomUUID()}` })).status).toBe(200);
+
+      expect(await prisma.order.findUniqueOrThrow({ where: { id: late.id } })).toMatchObject({ status: 'EXPIRED', refundedCents: 3900 });
+      expect(t.stripe.refunds).toHaveLength(1);
+      expect(await prisma.notificationOutbox.count({ where: { type: 'ORDER_CONFIRMED', recipient: 'amy@example.test' } })).toBe(0);
+      expect(await counts(l)).toMatchObject({ options: [{ sold: 1, reserved: 0 }] });
     });
   });
 

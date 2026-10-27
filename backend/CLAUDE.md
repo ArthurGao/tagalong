@@ -68,9 +68,13 @@ backend/
 
 - `modules/orders/`:
   - `order-state-machine.ts`: `transitionOrder(tx, order, to, data)` is the only status write. It is a conditional `updateMany` on the expected status, so a concurrent change fails instead of overwriting.
-  - `reservation.ts`: `reserve` / `release` / `sell` are raw conditional UPDATEs. Options are locked in id order. Listing counters (`sold_count`, `reserved_count`) always move with the options, and `sell` returns the next `paid_seq`.
+  - `reservation.ts`: `reserve` / `release` / `sell` are raw conditional UPDATEs.
+    - **Lock order everywhere:** order row → listing row → options by id, the same as `ListingsService.mutate()` (listing, then options). Inverting it deadlocked in tests.
+    - `reserve` locks the listing (`FOR UPDATE`, merchant `FOR SHARE`) and runs `assertOrderable(availabilityOf(...))` on the locked rows, so the public page's rules decide and a close or suspension mid-request cannot slip through.
+    - `sellAfresh` owns the savepoint for a late payment and returns null when sold out.
+    - Listing counters (`sold_count`, `reserved_count`) always move with the options, and `sell` returns the next `paid_seq`.
+    - Order creation retries deadlocks and serialization failures (`isRetryableTransactionError`).
   - `order-ops.ts`: the shared steps. `orderDetail` include, `lockOrder` (FOR UPDATE + load), `endUnpaid` (→ EXPIRED/CANCELLED + release), `sessionsToEnd` / `expireSessions`, and `checkoutRequest(env, order)`, which builds the Checkout request from the stored order only, so a replay is byte-identical.
-  - `reservation.ts`: `sellAfresh` owns the savepoint for a late payment and returns null when sold out.
   - `availability.ts`: `assertOrderable` maps each non-OPEN state to its error code (exhaustive).
   - `orders.service.ts`: create, replay, status and cancel.
   - `checkout-webhooks.service.ts`: `completed` / `expired`.
@@ -80,9 +84,13 @@ backend/
   - in one tx: expire the same email's unpaid order, reserve, create;
   - **after commit**, create the Checkout session (Stripe idempotency key `checkout:{orderId}`).
   - If Stripe fails, the order is expired, its stock released and its `idempotencyKey` cleared, so the buyer's retry starts afresh.
-  - A replayed key calls `createCheckoutSession` again with the identical request: Stripe returns the original session, so no URL is stored.
+  - Only a Stripe error rolls the order back. If saving the session id fails afterwards, the order stays pending: a replay recovers the session, and a payment for it is still accepted.
+  - Checkout `expires_at` = `reservationExpiresAt` + 2 min (Stripe needs 30 min from creation); derived, so replays match.
+  - **Replay:** with a saved session it reads the URL back (`retrieveCheckoutUrl`); without one it resends the stored request under the same key. Stripe's `idempotency_key_in_use` → `ORDER_IN_PROGRESS`.
 - **Webhooks:** each one locks the order row and applies only the transition that still applies.
   - An event counts only for the order's own connected account and Checkout session (and, for `completed`, its amount in NZD). Otherwise it is ignored with a warning: a valid signature does not prove the payment is for this order.
+  - **Async payments:** `async_payment_succeeded` is handled like a paid `completed`, and `async_payment_failed` like `expired`. Payment methods follow the connected account's settings, and this API version cannot restrict them from Checkout.
+  - **Late refunds:** the decision is a `Refund` row (`PENDING`, no `stripeRefundId`) written under the order lock before Stripe is called; a later delivery only resumes it. Stripe's answer fills the id, and only then does `refundedCents` move.
   - **EXPIRED + completed:** `sell(…, fromReserved=false)` inside a savepoint.
     - Places still free → PAID.
     - SOLD_OUT → full refund after the tx (`late-refund:{orderId}`), recorded once via the Refund row; the order stays EXPIRED.

@@ -154,7 +154,8 @@ Merchant 1──* MerchantNote (admin 内部备注)
 - `id`, `orderId`, `optionId`, `quantity`, `unitPriceCents`, `attendeeName?`（课程类订单填写学员姓名）, `attendeeAnswers` (json，`scope=attendee` 的字段答案)
 
 **Refund**
-- `id`, `orderId`, `amountCents`, `reason?`, `stripeRefundId`, `status`, `createdAt`
+- `id`, `orderId`, `amountCents`, `reason?`, `stripeRefundId?`, `status`, `createdAt`
+- 决定退款时先写一行 `PENDING`（`stripeRefundId` 为空），Stripe 返回后补上 id 并改为 `SUCCEEDED`；订单的 `refundedCents` 只在退款成功后增加
 
 **ListingCancellation**（商家或 admin 取消整条接龙时创建）
 - `id`, `listingId`, `initiatedByUserId`, `reason`, `refundAll` (bool)
@@ -257,7 +258,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 
 ## 7. 库存预占与防超卖（核心）
 
-1. 买家提交订单后，在一个事务里对每个 option 执行：
+1. 买家提交订单后，在一个事务里先锁住接龙行（`FOR UPDATE`，商家行 `FOR SHARE`），在锁内重新判断接龙是否可下单（与公开页同一套 availability 规则：状态、`opensAt`/`closesAt`、商家停用），再给接龙加 `reserved_count`（设置了 `totalCapacity` 时带容量条件），最后按 id 顺序对每个 option 执行：
    ```sql
    UPDATE listing_option
    SET reserved_count = reserved_count + :q
@@ -266,18 +267,19 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
    RETURNING id;
    ```
    如果影响行数为 0，整个事务回滚，返回 `409 SOLD_OUT`。
-   如果接龙设置了 `totalCapacity`，再对 listing 执行同样形式的条件 UPDATE（`reserved_count + :sumQ`），任一失败都回滚。
+   任一失败都回滚。加锁顺序处处一致：订单行 → 接龙行 → option（按 id），与商家编辑接龙相同，避免死锁。
 2. 创建 Order（状态 `PENDING_PAYMENT`），设置 `reservationExpiresAt = now + 30min`。
-   - **幂等**：公开下单接口要求 `Idempotency-Key` 请求头（前端生成 UUID，表单打开时生成一次，提交失败重试时沿用）。同一个 key 在 24 小时内重复提交，直接返回第一次的结果（`checkoutUrl` 或 `publicCode`），不再创建订单。实现方式：`Order.idempotencyKey` 唯一索引，捕获唯一冲突后查询原订单返回。
+   - **幂等**：公开下单接口要求 `Idempotency-Key` 请求头（前端生成 UUID，表单打开时生成一次，提交失败重试时沿用）。同一个 key 在 24 小时内重复提交，直接返回第一次的结果（`checkoutUrl` 或 `publicCode`），不再创建订单。实现方式：`Order.idempotencyKey` 唯一索引，捕获唯一冲突后查询原订单返回。已保存会话的订单重放时读取该会话的 URL（不再重发请求，商家之后改名也不影响）；还没保存会话的订单用同一个 Stripe 幂等键重发同样的请求，找回并补存会话，Stripe 仍在处理第一次请求时返回 `409 ORDER_IN_PROGRESS`。
    - 一个接龙里同一邮箱只能有一个未支付的 `PENDING_PAYMENT` 订单；再次提交时让旧订单过期并释放库存，再创建新订单。
      - **已知取舍（2026-10-28 决定保留）**：知道某买家邮箱的人可以借此让对方的未付款订单过期；对方若随后付款，按第 5 步重新预占或自动全额退款，不会丢钱。换来的是放弃付款的买家能立刻重下。M5b 的 Turnstile 和每 IP 限流用来抑制批量滥用。
-3. 在商家的 connected account 上创建 Checkout Session，并设置 `expires_at` 与 `reservationExpiresAt` 一致（Stripe 要求最短 30 分钟）。
+3. 在商家的 connected account 上创建 Checkout Session，`expires_at` 见 §8.2（预留截止 + 2 分钟，满足 Stripe 最短 30 分钟）。
 4. 由一个定时任务（`@nestjs/schedule`，每分钟运行）扫描已超时的 `PENDING_PAYMENT` 订单：
    - 调用 `checkout.sessions.expire` 让对应的 Checkout 失效
    - 将订单置为 `EXPIRED`，并释放预占的库存
 5. **边界情况**：如果订单已经是 `EXPIRED`，却又收到了 `checkout.session.completed`（买家在过期前一刻付款），就尝试重新预占库存：
    - 预占成功：订单转为 `PAID`
    - 预占失败：自动全额退款，并给买家发邮件说明
+   - 「退款」这个决定在订单行锁内先写成一行 `PENDING` 的 Refund，再调 Stripe；之后重发或并发的同一事件只会继续完成这笔退款，不会因为名额又空出来而改成 PAID
 6. **免费报名**：同样使用第 1 步的条件 UPDATE，只是改为直接对 `sold_count` 加 q（不经过 reserved），然后在同一事务中创建 `CONFIRMED` 订单并分配序号。
    - 如果 `onePerEmail=true`，用部分唯一索引来保证：`UNIQUE (listing_id, lower(buyer_email)) WHERE one_per_email AND status IN ('CONFIRMED','FULFILLED')`。`one_per_email` 是订单上的快照字段；不带这个条件的话，`onePerEmail=false` 的接龙也会被拦住。
    - 冲突时返回 `409 ALREADY_REGISTERED`，并重新给该邮箱发送一次原报名的确认邮件（但**不在接口响应里透露**该邮箱已报名的任何信息）。
@@ -301,7 +303,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - `payment_intent_data.application_fee_amount = platformFeeCents`
   - `metadata.orderId`
   - `customer_email`
-  - `expires_at`
+  - `expires_at` = `reservationExpiresAt` + 2 分钟（取整到秒）：Stripe 要求从创建起至少 30 分钟，而会话在预留时间写入之后片刻才创建；过期任务仍在 `reservationExpiresAt` 主动结束会话
   - `success_url = {APP_URL}/o/{publicCode}?t={accessToken}&paid=1`
   - `cancel_url = {APP_URL}/l/{shortCode}`
 - 平台费计算：`platformFeeCents = round(subtotal * PLATFORM_FEE_BPS / 10000)`（可再加一个固定费用，均可配置）。
@@ -317,13 +319,14 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   2. `INSERT ... ON CONFLICT DO NOTHING` 写入 StripeEvent 表；**只有 `processedAt` 已有值时**才视为重复事件、直接返回 200。（如果按「行已存在就跳过」，第一次处理抛错返回 500 的事件在 Stripe 重试时会被跳过而丢失；所以处理失败时 `processedAt` 保持为空，重试会再次处理，处理逻辑必须幂等。）
   3. 处理业务逻辑
   4. 写入 `processedAt`
-- 处理的事件：
+- 处理的事件（付款方式由商家账户的设置决定，可能有延迟到账的方式）：
   - `checkout.session.completed`：订单转为 PAID，并把 `ORDER_CONFIRMED` 写入 NotificationOutbox（**不直接发邮件**，见第 12 节）
-  - `checkout.session.expired`：订单转为 EXPIRED
+  - `checkout.session.async_payment_succeeded`：与已付款的 completed 相同；`completed` 但 `payment_status` 未付时不做任何事
+  - `checkout.session.expired` / `checkout.session.async_payment_failed`：订单转为 EXPIRED
   - `charge.refunded`：同步退款状态（用于商家在 Stripe Dashboard 里直接退款的情况）
   - `charge.dispute.created`：记录日志并邮件通知商家
   - `account.updated`：同步商家的 Stripe 状态
-- **签名只证明事件来自 Stripe，不证明这笔钱付给了这个订单**（任何入驻商家都能在自己账户的 Checkout 里写别人的 `metadata.orderId`）。所以 checkout 事件只有在 `event.account` 是该订单商家的账户、`session.id` 等于订单记录的 `stripeCheckoutSessionId`、`amount_total` 等于 `totalCents` 且币种为 NZD 时才生效，否则记录警告并忽略。
+- **签名只证明事件来自 Stripe，不证明这笔钱付给了这个订单**（任何入驻商家都能在自己账户的 Checkout 里写别人的 `metadata.orderId`）。所以 checkout 事件只有在 `event.account` 是该订单商家的账户、`session.id` 等于订单记录的 `stripeCheckoutSessionId`、`amount_total` 等于 `totalCents` 且币种为 NZD 时才生效，否则记录警告并忽略。订单还没来得及保存 session id 时（请求在 Stripe 返回后崩溃），接受该商家账户上金额一致的会话并补存 id。
 - 业务处理必须幂等，并能容忍事件乱序到达。`account.updated` 与 `GET …/stripe/status` 共用的同步逻辑按账户加 Postgres advisory 锁（跨实例），持锁读取 Stripe 并写库，避免慢请求用旧结果覆盖新结果。
 - Stripe SDK 抛出的错误统一转为 `502 STRIPE_ERROR`（`details.stripeCode`），不把 Stripe 的原始消息返回给前端。
 

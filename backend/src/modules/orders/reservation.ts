@@ -1,5 +1,6 @@
 import type { Prisma } from '../../generated/prisma/client.js';
 import { AppError } from '../../common/errors/app-error.js';
+import { assertOrderable, availabilityOf } from '../listings/availability.js';
 
 export interface ItemQty {
   optionId: string;
@@ -7,43 +8,55 @@ export interface ItemQty {
 }
 
 const total = (items: ItemQty[]) => items.reduce((sum, i) => sum + i.quantity, 0);
-// Same lock order in every transaction, so two multi-option orders cannot deadlock.
+// Lock order everywhere: order row → listing row → options by id. ListingsService.mutate() also takes the listing
+// before its options, so ordering, payments, expiry and merchant edits never wait on each other in a cycle.
 const sorted = (items: ItemQty[]) => [...items].sort((a, b) => a.optionId.localeCompare(b.optionId));
 const soldOut = () => new AppError('SOLD_OUT', 'Not enough places left');
 const isSoldOut = (e: unknown) => e instanceof AppError && e.code === 'SOLD_OUT';
 
 /**
- * DESIGN §7: hold stock for an unpaid order with conditional UPDATEs, never read-then-write (root CLAUDE.md rule 4).
- * Any 0-row UPDATE throws SOLD_OUT, which rolls back the caller's transaction. The CHECK constraints on
- * listing_option and listing are the last line of defence.
+ * DESIGN §7: hold stock for an unpaid order. The listing row is locked first (merchant row shared), so whether the
+ * listing still takes orders is decided by the same rules as the public page (`availabilityOf`) on rows nobody can
+ * change meanwhile: a close or suspension during the request cannot slip through. The counters then move with
+ * conditional UPDATEs, never read-then-write (root CLAUDE.md rule 4); any refusal throws and rolls back the caller's
+ * transaction, and the CHECK constraints on listing and listing_option are the last line of defence.
  */
-export async function reserve(tx: Prisma.TransactionClient, listingId: string, items: ItemQty[]): Promise<void> {
+export async function reserve(tx: Prisma.TransactionClient, listingId: string, items: ItemQty[], now = new Date()): Promise<void> {
+  await tx.$queryRaw`
+    SELECT l.id FROM listing l JOIN merchant m ON m.id = l.merchant_id
+    WHERE l.id = ${listingId}::uuid
+    FOR UPDATE OF l FOR SHARE OF m`;
+  const listing = await tx.listing.findUniqueOrThrow({
+    where: { id: listingId },
+    include: { options: true, merchant: { select: { status: true } } },
+  });
+  assertOrderable(availabilityOf(listing, now));
+  const sum = total(items);
+  const rows = await tx.$queryRaw<unknown[]>`
+    UPDATE listing SET reserved_count = reserved_count + ${sum}, updated_at = now()
+    WHERE id = ${listingId}::uuid AND (total_capacity IS NULL OR sold_count + reserved_count + ${sum} <= total_capacity)
+    RETURNING id`;
+  if (!rows.length) throw soldOut();
   for (const i of sorted(items)) {
-    const rows = await tx.$queryRaw<unknown[]>`
+    const updated = await tx.$queryRaw<unknown[]>`
       UPDATE listing_option SET reserved_count = reserved_count + ${i.quantity}, updated_at = now()
       WHERE id = ${i.optionId}::uuid AND listing_id = ${listingId}::uuid AND active
         AND (capacity IS NULL OR sold_count + reserved_count + ${i.quantity} <= capacity)
       RETURNING id`;
-    if (!rows.length) throw soldOut();
+    if (!updated.length) throw soldOut();
   }
-  const rows = await tx.$queryRaw<unknown[]>`
-    UPDATE listing SET reserved_count = reserved_count + ${total(items)}, updated_at = now()
-    WHERE id = ${listingId}::uuid
-      AND (total_capacity IS NULL OR sold_count + reserved_count + ${total(items)} <= total_capacity)
-    RETURNING id`;
-  if (!rows.length) throw soldOut();
 }
 
 /** Gives held stock back when an unpaid order expires or is cancelled (DESIGN §6). */
 export async function release(tx: Prisma.TransactionClient, listingId: string, items: ItemQty[]): Promise<void> {
+  await tx.$executeRaw`
+    UPDATE listing SET reserved_count = reserved_count - ${total(items)}, updated_at = now()
+    WHERE id = ${listingId}::uuid`;
   for (const i of sorted(items)) {
     await tx.$executeRaw`
       UPDATE listing_option SET reserved_count = reserved_count - ${i.quantity}, updated_at = now()
       WHERE id = ${i.optionId}::uuid`;
   }
-  await tx.$executeRaw`
-    UPDATE listing SET reserved_count = reserved_count - ${total(items)}, updated_at = now()
-    WHERE id = ${listingId}::uuid`;
 }
 
 /**
@@ -51,15 +64,6 @@ export async function release(tx: Prisma.TransactionClient, listingId: string, i
  * `held`: the places were reserved for this order. Otherwise they are taken afresh under the capacity conditions.
  */
 async function moveToSold(tx: Prisma.TransactionClient, listingId: string, items: ItemQty[], held: boolean): Promise<number> {
-  for (const i of sorted(items)) {
-    const rows = await tx.$queryRaw<unknown[]>`
-      UPDATE listing_option
-      SET sold_count = sold_count + ${i.quantity}, reserved_count = reserved_count - ${held ? i.quantity : 0}, updated_at = now()
-      WHERE id = ${i.optionId}::uuid
-        AND (${held}::boolean OR capacity IS NULL OR sold_count + reserved_count + ${i.quantity} <= capacity)
-      RETURNING id`;
-    if (!rows.length) throw soldOut();
-  }
   const sum = total(items);
   const [row] = await tx.$queryRaw<{ paid_seq: number }[]>`
     UPDATE listing
@@ -69,6 +73,15 @@ async function moveToSold(tx: Prisma.TransactionClient, listingId: string, items
       AND (${held}::boolean OR total_capacity IS NULL OR sold_count + reserved_count + ${sum} <= total_capacity)
     RETURNING paid_seq`;
   if (!row) throw soldOut();
+  for (const i of sorted(items)) {
+    const rows = await tx.$queryRaw<unknown[]>`
+      UPDATE listing_option
+      SET sold_count = sold_count + ${i.quantity}, reserved_count = reserved_count - ${held ? i.quantity : 0}, updated_at = now()
+      WHERE id = ${i.optionId}::uuid
+        AND (${held}::boolean OR capacity IS NULL OR sold_count + reserved_count + ${i.quantity} <= capacity)
+      RETURNING id`;
+    if (!rows.length) throw soldOut();
+  }
   return row.paid_seq;
 }
 

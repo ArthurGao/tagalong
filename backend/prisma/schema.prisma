@@ -313,7 +313,7 @@ model Refund {
   orderId        String       @map("order_id") @db.Uuid
   amountCents    Int          @map("amount_cents")
   reason         String?
-  stripeRefundId String       @unique @map("stripe_refund_id")
+  stripeRefundId String?      @unique @map("stripe_refund_id") // null while a decided refund waits for Stripe
   status         RefundStatus
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")

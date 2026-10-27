@@ -40,6 +40,11 @@ export async function callStripe<T>(request: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Stripe's own error code from a STRIPE_ERROR thrown by callStripe, e.g. 'idempotency_key_in_use'. */
+export function stripeErrorCode(e: unknown): string | undefined {
+  return e instanceof AppError && e.code === 'STRIPE_ERROR' ? (e.details as { stripeCode?: string } | undefined)?.stripeCode : undefined;
+}
+
 // Business code never touches the SDK class (backend/CLAUDE.md); tests swap this token for a fake.
 export abstract class StripeClient {
   abstract createConnectedAccount(merchantId: string, email: string): Promise<string>;
@@ -47,6 +52,8 @@ export abstract class StripeClient {
   abstract retrieveAccount(accountId: string): Promise<StripeAccountState>;
   /** Direct charge on the merchant's account (D2); idempotent per order. */
   abstract createCheckoutSession(request: CheckoutRequest): Promise<{ id: string; url: string }>;
+  /** The URL of an existing session, or null once it is no longer open (paid or expired). */
+  abstract retrieveCheckoutUrl(accountId: string, sessionId: string): Promise<string | null>;
   /** Ends an open session; a session that is already complete or expired is not an error. */
   abstract expireCheckoutSession(accountId: string, sessionId: string): Promise<void>;
   /** Full or partial refund on the merchant's account; `idempotencyKey` makes retries safe. */
@@ -139,9 +146,18 @@ export class StripeSdkClient extends StripeClient {
     return { id: session.id, url: session.url };
   }
 
-  async expireCheckoutSession(accountId: string, sessionId: string): Promise<void> {
+  /** The session while it is still open, else null. */
+  private async openSession(accountId: string, sessionId: string): Promise<Stripe.Checkout.Session | null> {
     const session = await callStripe(() => this.stripe.checkout.sessions.retrieve(sessionId, {}, { stripeAccount: accountId }));
-    if (session.status !== 'open') return;
+    return session.status === 'open' ? session : null;
+  }
+
+  async retrieveCheckoutUrl(accountId: string, sessionId: string): Promise<string | null> {
+    return (await this.openSession(accountId, sessionId))?.url ?? null;
+  }
+
+  async expireCheckoutSession(accountId: string, sessionId: string): Promise<void> {
+    if (!(await this.openSession(accountId, sessionId))) return;
     await callStripe(() => this.stripe.checkout.sessions.expire(sessionId, {}, { stripeAccount: accountId }));
   }
 

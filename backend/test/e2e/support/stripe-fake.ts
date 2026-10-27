@@ -10,6 +10,10 @@ export function signStripeEvent(event: object, secret: string): { body: string; 
   return { body, signature: sdk.webhooks.generateTestHeaderString({ payload: body, secret }) };
 }
 
+const stripeError = (stripeCode: string) => new AppError('STRIPE_ERROR', 'Stripe request failed', { stripeCode });
+const sessionIdFor = (orderId: string) => `cs_test_${orderId.replace(/-/g, '').slice(-16)}`;
+const checkoutUrlFor = (sessionId: string) => `https://checkout.stripe.test/${sessionId}`;
+
 export class FakeStripeClient implements StripeClient {
   readonly createdFor: string[] = [];
   readonly links: { accountId: string; refreshUrl: string; returnUrl: string }[] = [];
@@ -23,6 +27,9 @@ export class FakeStripeClient implements StripeClient {
   readonly refunds: { accountId: string; paymentIntentId: string; amountCents: number; idempotencyKey: string }[] = [];
   failCheckout = false;
   failExpire = false;
+  failRefund = false;
+  /** Like Stripe while the first request with the same idempotency key is still running. */
+  checkoutInUse = false;
 
   reset(): void {
     this.sessions.length = 0;
@@ -30,6 +37,8 @@ export class FakeStripeClient implements StripeClient {
     this.refunds.length = 0;
     this.failCheckout = false;
     this.failExpire = false;
+    this.failRefund = false;
+    this.checkoutInUse = false;
     this.createdFor.length = 0;
     this.links.length = 0;
     this.retrieveCalls.length = 0;
@@ -64,23 +73,36 @@ export class FakeStripeClient implements StripeClient {
   }
 
   async createCheckoutSession(request: CheckoutRequest): Promise<{ id: string; url: string }> {
-    if (this.failCheckout) throw new AppError('STRIPE_ERROR', 'Stripe request failed', { stripeCode: 'api_error' });
-    // Like Stripe: reusing an idempotency key (checkout:{orderId}) with different parameters is an error.
+    if (this.failCheckout) throw stripeError('api_error');
+    if (this.checkoutInUse) throw stripeError('idempotency_key_in_use');
+    // Like Stripe: reusing an idempotency key (checkout:{orderId}) with different parameters is an error,
+    // and an identical retry returns the stored response without validating again.
     const earlier = this.sessions.find((s) => s.orderId === request.orderId);
     if (earlier && JSON.stringify(earlier) !== JSON.stringify(request)) {
-      throw new AppError('STRIPE_ERROR', 'Stripe request failed', { stripeCode: 'idempotency_error' });
+      throw stripeError('idempotency_error');
+    }
+    // Like Stripe: a session must stay open for at least 30 minutes from its creation.
+    if (!earlier && request.expiresAt.getTime() - Date.now() < 30 * 60_000) {
+      throw stripeError('parameter_invalid_integer');
     }
     this.sessions.push(request);
-    const id = `cs_test_${request.orderId.replace(/-/g, '').slice(-16)}`;
-    return { id, url: `https://checkout.stripe.test/${id}` };
+    const id = sessionIdFor(request.orderId);
+    return { id, url: checkoutUrlFor(id) };
+  }
+
+  async retrieveCheckoutUrl(accountId: string, sessionId: string): Promise<string | null> {
+    const request = this.sessions.find((s) => sessionIdFor(s.orderId) === sessionId);
+    if (!request || request.accountId !== accountId) throw stripeError('resource_missing');
+    return this.expired.some((e) => e.sessionId === sessionId) ? null : checkoutUrlFor(sessionId);
   }
 
   async expireCheckoutSession(accountId: string, sessionId: string): Promise<void> {
-    if (this.failExpire) throw new AppError('STRIPE_ERROR', 'Stripe request failed', { stripeCode: 'api_error' });
+    if (this.failExpire) throw stripeError('api_error');
     this.expired.push({ accountId, sessionId });
   }
 
   async refundPayment(accountId: string, paymentIntentId: string, amountCents: number, idempotencyKey: string) {
+    if (this.failRefund) throw stripeError('api_error');
     this.refunds.push({ accountId, paymentIntentId, amountCents, idempotencyKey });
     return { id: `re_${idempotencyKey.replace(/[^a-z0-9]/gi, '').slice(-16)}`, status: 'succeeded' };
   }
