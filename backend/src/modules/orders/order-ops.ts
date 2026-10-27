@@ -1,19 +1,24 @@
 import type { Logger } from '@nestjs/common';
 import type { Env } from '../../config/env.js';
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
+import type { OrderStatus } from '../../generated/prisma/enums.js';
+import type { CalendarEvent } from '../notifications/ics.js';
 import type { NotificationsService } from '../notifications/notifications.service.js';
-import type { RegistrationCancelledPayload } from '../notifications/templates.js';
+import type { MerchantLine, RegistrationCancelledPayload } from '../notifications/templates.js';
 import type { CheckoutRequest, StripeClient } from '../stripe/stripe-client.js';
 import { transitionOrder } from './order-state-machine.js';
 import { release, releaseSold } from './reservation.js';
 import { listingUrl, orderUrl } from './urls.js';
 
-// What every order path loads: items with option names, the listing, the pickup point and the merchant's account.
+// What every order path loads: items with their options (names, sessions), the listing, the pickup point and the
+// merchant's account and receipt details.
 export const orderDetail = {
-  items: { select: { optionId: true, quantity: true, unitPriceCents: true, option: { select: { name: true } } } },
-  listing: { select: { title: true, shortCode: true, allowSelfCancel: true, selfCancelUntil: true } },
+  items: {
+    select: { optionId: true, quantity: true, unitPriceCents: true, option: { select: { name: true, startsAt: true, endsAt: true, location: true } } },
+  },
+  listing: { select: { title: true, shortCode: true, type: true, allowSelfCancel: true, selfCancelUntil: true } },
   pickupPoint: { select: { label: true, address: true, windowStart: true, windowEnd: true, notes: true } },
-  merchant: { select: { stripeAccountId: true } },
+  merchant: { select: { stripeAccountId: true, displayName: true, gstNumber: true } },
 } satisfies Prisma.OrderInclude;
 
 export type OrderDetail = Prisma.OrderGetPayload<{ include: typeof orderDetail }>;
@@ -140,4 +145,43 @@ export function checkoutRequest(env: Env, order: OrderDetail): CheckoutRequest {
     cancelUrl: listingUrl(env, order.locale, order.listing.shortCode),
     locale: order.locale,
   };
+}
+
+/** Orders that will attend (or did): paid, registered, or already checked in. */
+export const ATTENDING: OrderStatus[] = ['PAID', 'CONFIRMED', 'FULFILLED'];
+
+/**
+ * The dated sessions of an event or lesson order: the one rule for calendar files, the order page's "add to calendar"
+ * and reminders (reminder.job's SQL mirrors it: listing type SESSION/EVENT, option starts_at set). Retail has none.
+ */
+function sessionsOf(order: OrderDetail) {
+  return order.listing.type === 'RETAIL' ? [] : order.items.filter((i) => i.option.startsAt);
+}
+
+/** An attending event or lesson order with at least one dated session: it has a calendar. */
+export function hasCalendar(order: OrderDetail): boolean {
+  return ATTENDING.includes(order.status) && sessionsOf(order).length > 0;
+}
+
+/**
+ * The calendar entries of an event or lesson order (DESIGN §3): one per session it booked (an order holds each option
+ * once), at the session's place or the pickup point's.
+ */
+export function calendarEvents(env: Env, order: OrderDetail): CalendarEvent[] {
+  const url = orderUrl(env, order.locale, order.publicCode, order.accessToken);
+  const sessions = sessionsOf(order);
+  return sessions.map(({ optionId, option }) => ({
+    uid: `${order.publicCode}-${optionId}@tagalong`,
+    title: sessions.length > 1 ? `${order.listing.title} · ${option.name}` : order.listing.title,
+    startsAt: option.startsAt!.toISOString(),
+    endsAt: option.endsAt?.toISOString() ?? null,
+    location: option.location ?? order.pickupPoint?.address ?? null,
+    description: `TagAlong ${order.publicCode}\n${url}`,
+    url,
+  }));
+}
+
+/** The seller line on receipts: its name and GST number (DESIGN §12). */
+export function merchantLine(order: OrderDetail): MerchantLine {
+  return { name: order.merchant.displayName, gstNumber: order.merchant.gstNumber };
 }

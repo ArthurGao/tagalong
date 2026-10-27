@@ -1,4 +1,3 @@
-import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { setRequestLocale } from 'next-intl/server';
 import { OrderView } from '@/components/public/OrderView';
@@ -10,7 +9,6 @@ type Props = {
 };
 
 // The buyer's private link: never indexed, never cached.
-export const metadata: Metadata = { robots: { index: false, follow: false } };
 export const dynamic = 'force-dynamic';
 
 export default async function OrderPage({ params, searchParams }: Props) {

@@ -1,9 +1,11 @@
 import { formatCents as money } from '../../common/money.js';
 import { formatNzDateTime as nzTime } from '../../common/time.js';
-import type { OutgoingEmail } from './email.service.js';
+import type { EmailAttachment, OutgoingEmail } from './email.service.js';
+import { type CalendarEvent, icsCalendar, icsFilename } from './ics.js';
 
-// Short bilingual emails; the polished templates and .ics attachments arrive in M7 (DESIGN §12).
-// Payloads carry everything needed to render: nothing is read from the database at send time.
+// Bilingual emails in one shared layout (DESIGN §12). Hand-written rather than React Email / MJML: the backend has no
+// JSX build, the emails are short, and escaping stays in one place. Payloads carry everything needed to render:
+// nothing is read from the database at send time.
 
 // Type aliases (not interfaces) so they are assignable to Prisma JSON.
 export type OrderConfirmedPayload = {
@@ -14,6 +16,9 @@ export type OrderConfirmedPayload = {
   totalCents: number;
   orderUrl: string;
   pickup: { label: string; address: string } | null;
+  /** Shown on confirmations and receipts (DESIGN §12); absent on rows queued before M7. */
+  merchant?: MerchantLine;
+  events?: CalendarEvent[];
 };
 export type OrderAutoRefundedPayload = {
   publicCode: string;
@@ -31,6 +36,8 @@ export type RegistrationConfirmedPayload = {
   canSelfCancel: boolean;
   /** ISO time, or null when cancelling is open until the event (or not allowed). */
   selfCancelUntil: string | null;
+  merchant?: MerchantLine;
+  events?: CalendarEvent[];
 };
 export type RegistrationCancelledPayload = {
   listingTitle: string;
@@ -45,6 +52,7 @@ export type OrderRefundedPayload = {
   totalCents: number;
   reason: string | null;
   orderUrl: string;
+  merchant?: MerchantLine;
 };
 export type MerchantDisputePayload = {
   publicCode: string;
@@ -73,46 +81,106 @@ export type AdminSignInPayload = {
   signedInAt: string;
 };
 
+export type MerchantLine = { name: string; gstNumber: string | null };
+export type EventReminderPayload = {
+  publicCode: string;
+  listingTitle: string;
+  orderUrl: string;
+  /** The sessions still ahead, first one first. */
+  events: CalendarEvent[];
+};
+export type OrderRecoveryPayload = {
+  orders: { listingTitle: string; publicCode: string; createdAt: string; url: string }[];
+};
+
 export class UnknownTemplateError extends Error {}
 
+/** What every email needs besides its payload. */
+export interface RenderContext {
+  appUrl: string;
+}
 
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
-/** Plain lines → text body, and an HTML body with every line escaped (merchant and buyer text is untrusted). */
-function email(to: string, subject: string, lines: string[], link?: { label: string; url: string }): OutgoingEmail {
-  const text = [...lines, ...(link ? ['', `${link.label}: ${link.url}`] : [])].join('\n');
-  const html = [
-    ...lines.map((l) => (l ? `<p>${escapeHtml(l)}</p>` : '')),
-    link ? `<p><a href="${escapeHtml(link.url)}">${escapeHtml(link.label)}</a></p>` : '',
+/**
+ * Plain lines → a text body, and an HTML body in the shared layout with every line escaped (merchant and buyer text is
+ * untrusted). Buyer emails end with the find-my-orders footer.
+ */
+function email(
+  to: string,
+  subject: string,
+  lines: string[],
+  link: { label: string; url: string } | undefined,
+  footer: string[] | null,
+  attachments?: EmailAttachment[],
+): OutgoingEmail {
+  const text = [...lines, ...(link ? ['', `${link.label}: ${link.url}`] : []), ...(footer ? ['', '—', ...footer] : [])].join('\n');
+  const body = [
+    ...lines.map((l) => (l ? `<p style="margin:0 0 12px">${escapeHtml(l)}</p>` : '')),
+    link
+      ? `<p style="margin:20px 0"><a href="${escapeHtml(link.url)}" style="background:#1f2937;color:#ffffff;padding:10px 16px;border-radius:6px;text-decoration:none">${escapeHtml(link.label)}</a></p>`
+      : '',
   ].join('\n');
-  return { to, subject, text, html };
+  const foot = footer ? footer.map((l) => `<p style="margin:0 0 6px">${linkify(l)}</p>`).join('\n') : '';
+  const html = `<div style="font-family:-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1f2937;font-size:15px;line-height:1.5">
+<p style="margin:0 0 20px;font-weight:700;font-size:18px">TagAlong</p>
+${body}
+${foot ? `<div style="margin-top:28px;padding-top:12px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:13px">\n${foot}\n</div>` : ''}
+</div>`;
+  return { to, subject, text, html, ...(attachments?.length && { attachments }) };
 }
 
-export function renderEmail(type: string, locale: string, to: string, payload: unknown): OutgoingEmail {
+/** Escapes a footer line and turns its one URL into a link. */
+function linkify(line: string): string {
+  return escapeHtml(line).replace(/https?:\/\/\S+/, (url) => `<a href="${url}" style="color:#6b7280">${url}</a>`);
+}
+
+
+/** "商家：X · GST 123-456-789" (DESIGN §12: the platform issues no tax invoices; the merchant's GST number is shown). */
+function merchantLine(zh: boolean, m: MerchantLine | undefined): string[] {
+  if (!m) return [];
+  const gst = m.gstNumber ? ` · GST ${m.gstNumber}` : '';
+  return [zh ? `商家：${m.name}${gst}` : `Sold by ${m.name}${gst}`];
+}
+
+export function renderEmail(type: string, locale: string, to: string, payload: unknown, ctx: RenderContext): OutgoingEmail {
   const zh = locale !== 'en';
+  type Link = { label: string; url: string };
+  const footer = zh
+    ? ['你收到这封邮件，是因为你在 TagAlong 下单或报名。', `找回你的所有订单：${ctx.appUrl}/${locale}/find-order`]
+    : ['You received this because you ordered or registered on TagAlong.', `Find all your orders: ${ctx.appUrl}/${locale}/find-order`];
+  /** To a buyer: the find-my-orders footer, and an order's sessions as an attached .ics (with a line saying so). */
+  const toBuyer = (subject: string, lines: string[], link?: Link, calendar?: { publicCode: string; events?: CalendarEvent[] }) => {
+    if (!calendar?.events?.length) return email(to, subject, lines, link, footer);
+    const ics: EmailAttachment = { filename: icsFilename(calendar.publicCode), content: icsCalendar(calendar.events), contentType: 'text/calendar; charset=utf-8' };
+    const note = zh ? '附件是日历文件，可以加入你的日历。' : 'The attached calendar file adds this to your calendar.';
+    return email(to, subject, [...lines, note], link, footer, [ics]);
+  };
+  /** To a merchant or an admin: no buyer footer. */
+  const toStaff = (subject: string, lines: string[]) => email(to, subject, lines, undefined, null);
   switch (type) {
     case 'ORDER_CONFIRMED': {
       const p = payload as OrderConfirmedPayload;
       const items = p.items.map((i) => `${i.name} ×${i.quantity}  ${money(i.unitPriceCents * i.quantity)}`);
       const pickup = p.pickup ? [zh ? `取货：${p.pickup.label}，${p.pickup.address}` : `Pickup: ${p.pickup.label}, ${p.pickup.address}`] : [];
-      return email(
-        to,
+      return toBuyer(
         zh ? `接龙成功 #${p.seq}：${p.listingTitle}` : `You're in (#${p.seq}): ${p.listingTitle}`,
         [
           zh ? `付款成功，你是第 ${p.seq} 位。订单号 ${p.publicCode}` : `Payment received. You are #${p.seq}. Order ${p.publicCode}`,
           ...items,
           zh ? `合计 ${money(p.totalCents)}（含 GST）` : `Total ${money(p.totalCents)} (incl. GST)`,
+          ...merchantLine(zh, p.merchant),
           ...pickup,
         ],
         { label: zh ? '查看订单' : 'View your order', url: p.orderUrl },
+        p,
       );
     }
     case 'ORDER_AUTO_REFUNDED': {
       const p = payload as OrderAutoRefundedPayload;
-      return email(
-        to,
+      return toBuyer(
         zh ? `已自动退款：${p.listingTitle}` : `Refunded: ${p.listingTitle}`,
         [
           zh
@@ -129,22 +197,22 @@ export function renderEmail(type: string, locale: string, to: string, payload: u
       const cancelLine = !p.canSelfCancel
         ? []
         : [until ? (zh ? `如需取消，请在 ${until} 前通过下面的链接操作。` : `To cancel, use the link below before ${until}.`) : zh ? '如需取消，可通过下面的链接操作。' : 'To cancel, use the link below.'];
-      return email(
-        to,
+      return toBuyer(
         zh ? `报名成功 #${p.seq}：${p.listingTitle}` : `You're registered (#${p.seq}): ${p.listingTitle}`,
         [
           zh ? `报名成功，你是第 ${p.seq} 位。报名号 ${p.publicCode}` : `You're registered as #${p.seq}. Reference ${p.publicCode}`,
           ...p.items.map((i) => `${i.name} ×${i.quantity}`),
           ...(p.pickup ? [zh ? `地点：${p.pickup.label}，${p.pickup.address}` : `Place: ${p.pickup.label}, ${p.pickup.address}`] : []),
           ...cancelLine,
+          ...merchantLine(zh, p.merchant),
         ],
         { label: zh ? '查看报名' : 'View your registration', url: p.orderUrl },
+        p,
       );
     }
     case 'REGISTRATION_CANCELLED': {
       const p = payload as RegistrationCancelledPayload;
-      return email(
-        to,
+      return toBuyer(
         zh ? `报名已被取消：${p.listingTitle}` : `Registration cancelled: ${p.listingTitle}`,
         [
           zh ? `商家取消了你在「${p.listingTitle}」的报名。` : `The organiser cancelled your registration for "${p.listingTitle}".`,
@@ -156,20 +224,44 @@ export function renderEmail(type: string, locale: string, to: string, payload: u
     case 'ORDER_REFUNDED': {
       const p = payload as OrderRefundedPayload;
       const full = p.refundedCents >= p.totalCents;
-      return email(
-        to,
+      return toBuyer(
         zh ? `已退款 ${money(p.amountCents)}：${p.listingTitle}` : `Refund of ${money(p.amountCents)}: ${p.listingTitle}`,
         [
           zh ? `商家已为订单 ${p.publicCode} 退款 ${money(p.amountCents)}${full ? '（全额）' : ''}。` : `The seller refunded ${money(p.amountCents)}${full ? ' (in full)' : ''} for order ${p.publicCode}.`,
           ...(p.reason ? [zh ? `原因：${p.reason}` : `Reason: ${p.reason}`] : []),
           zh ? '退款通常在 5–10 个工作日内回到原支付方式。' : 'Refunds usually reach your card within 5–10 business days.',
+          ...merchantLine(zh, p.merchant),
         ],
         { label: zh ? '查看订单' : 'View your order', url: p.orderUrl },
       );
     }
+    case 'EVENT_REMINDER': {
+      const p = payload as EventReminderPayload;
+      const [first] = p.events;
+      const when = nzTime(first.startsAt, locale);
+      return toBuyer(
+        zh ? `活动提醒：${p.listingTitle}（${when}）` : `Reminder: ${p.listingTitle} (${when})`,
+        [
+          zh ? `提醒你：「${p.listingTitle}」将于 ${when}（新西兰时间）开始。` : `"${p.listingTitle}" starts at ${when} (New Zealand time).`,
+          ...(first.location ? [zh ? `地点：${first.location}` : `Where: ${first.location}`] : []),
+          zh ? `订单号 ${p.publicCode}` : `Order ${p.publicCode}`,
+        ],
+        { label: zh ? '查看订单' : 'View your order', url: p.orderUrl },
+        p,
+      );
+    }
+    case 'ORDER_RECOVERY': {
+      const p = payload as OrderRecoveryPayload;
+      return toBuyer(zh ? '你在 TagAlong 的订单' : 'Your TagAlong orders', [
+        zh ? '这是你最近 90 天在 TagAlong 的订单，点链接可以查看：' : 'Here are your TagAlong orders from the last 90 days:',
+        ...p.orders.flatMap((o) => ['', `${o.listingTitle} · ${o.publicCode} · ${nzTime(o.createdAt, locale)}`, o.url]),
+        '',
+        zh ? '如果不是你本人申请的，可以忽略这封邮件。' : "If you didn't ask for this, you can ignore this email.",
+      ]);
+    }
     case 'MERCHANT_DISPUTE': {
       const p = payload as MerchantDisputePayload;
-      return email(to, zh ? `付款争议：订单 ${p.publicCode}` : `Payment dispute: order ${p.publicCode}`, [
+      return toStaff(zh ? `付款争议：订单 ${p.publicCode}` : `Payment dispute: order ${p.publicCode}`, [
         zh
           ? `买家对「${p.listingTitle}」的订单 ${p.publicCode}（${money(p.amountCents)}）提出了付款争议，原因：${p.reason}。请尽快在 Stripe Dashboard 提交证据。`
           : `A buyer disputed order ${p.publicCode} (${money(p.amountCents)}) for "${p.listingTitle}", reason: ${p.reason}. Submit evidence in your Stripe Dashboard soon.`,
@@ -177,7 +269,7 @@ export function renderEmail(type: string, locale: string, to: string, payload: u
     }
     case 'REFUND_FAILED': {
       const p = payload as RefundFailedPayload;
-      return email(to, zh ? `退款失败：订单 ${p.publicCode}` : `Refund failed: order ${p.publicCode}`, [
+      return toStaff(zh ? `退款失败：订单 ${p.publicCode}` : `Refund failed: order ${p.publicCode}`, [
         zh
           ? `「${p.listingTitle}」订单 ${p.publicCode} 的 ${money(p.amountCents)} 退款多次尝试仍未成功（${p.error}）。这笔钱没有退回，可以在订单列表重新退款，或在 Stripe Dashboard 处理。`
           : `The ${money(p.amountCents)} refund on order ${p.publicCode} for "${p.listingTitle}" failed after several tries (${p.error}). Nothing was refunded; refund again from your orders, or in your Stripe Dashboard.`,
@@ -185,20 +277,20 @@ export function renderEmail(type: string, locale: string, to: string, payload: u
     }
     case 'CANCELLATION_FINISHED': {
       const p = payload as CancellationFinishedPayload;
-      return email(to, zh ? `接龙已取消：${p.listingTitle}` : `Listing cancelled: ${p.listingTitle}`, [
+      return toStaff(zh ? `接龙已取消：${p.listingTitle}` : `Listing cancelled: ${p.listingTitle}`, [
         zh ? `退款完成 ${p.succeeded} 笔，失败 ${p.failed} 笔。` : `${p.succeeded} refund(s) done, ${p.failed} failed.`,
         ...(p.failed ? [zh ? '失败的退款会由平台跟进处理。' : 'The platform will follow up on the failed refunds.'] : []),
       ]);
     }
     case 'PICKUP_POINT_CHANGED': {
       const p = payload as PickupPointChangedPayload;
-      return email(to, zh ? '取货地点已变更' : 'Your pickup point changed', [
+      return toBuyer(zh ? '取货地点已变更' : 'Your pickup point changed', [
         zh ? `新的取货地点：${p.label}，${p.address}` : `New pickup point: ${p.label}, ${p.address}`,
       ]);
     }
     case 'ADMIN_SIGN_IN': {
       const p = payload as AdminSignInPayload;
-      return email(to, 'TagAlong admin sign-in', [`${p.adminEmail} signed in to the admin console at ${p.signedInAt} (session ${p.sessionId}).`]);
+      return toStaff('TagAlong admin sign-in', [`${p.adminEmail} signed in to the admin console at ${p.signedInAt} (session ${p.sessionId}).`]);
     }
     default:
       throw new UnknownTemplateError(`No email template for ${type}`);

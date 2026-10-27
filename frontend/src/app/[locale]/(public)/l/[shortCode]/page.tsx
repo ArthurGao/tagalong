@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { cache } from 'react';
@@ -28,14 +29,14 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   if (!listing) return {};
   if (listing.availability === 'TAKEN_DOWN') {
     const t = await getTranslations({ locale, namespace: 'public.listing' });
-    return { title: t('stateNotice.TAKEN_DOWN'), robots: { index: false, follow: false } };
+    return { title: t('stateNotice.TAKEN_DOWN') };
   }
   const description = listing.description.slice(0, 160);
   return {
     title: listing.title,
     description,
-    // D15: listings stay out of search engines unless the merchant opts in
-    robots: listing.indexable ? undefined : { index: false, follow: false },
+    // D15: listings stay out of search engines (the root default) unless the merchant opts in
+    ...(listing.indexable && { robots: { index: true, follow: true } }),
     openGraph: { title: listing.title, description, type: 'website' },
   };
 }
@@ -59,7 +60,9 @@ export default async function ListingPage({ params }: { params: Params }) {
           <header className="flex flex-col gap-2">
             <h1 className="font-display text-[28px] leading-tight font-bold">{listing.title}</h1>
             <p className="text-muted-foreground">
-              {t('by', { merchant: listing.merchant.displayName })}
+              <Link href={`/${locale}/m/${listing.merchant.slug}`} className="underline-offset-2 hover:underline">
+                {t('by', { merchant: listing.merchant.displayName })}
+              </Link>
               {listing.merchant.verified && <span className="ml-2 text-sm text-foreground">✓ {t('verified')}</span>}
             </p>
           </header>

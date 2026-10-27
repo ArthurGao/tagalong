@@ -6,7 +6,8 @@ import type { ReactNode } from 'react';
 import { routing } from '@/i18n/routing';
 import '../globals.css';
 
-export const metadata: Metadata = { title: 'TagAlong' };
+// Out of search engines unless a page opts in (D15): the landing page does, and a listing whose merchant chose to.
+export const metadata: Metadata = { title: 'TagAlong', robots: { index: false, follow: false } };
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));

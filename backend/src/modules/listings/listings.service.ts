@@ -18,6 +18,7 @@ import type {
   UpdateListingDto,
 } from './listing.dto.js';
 import { assertListingTransition } from './listing-state-machine.js';
+import { shareInfo } from './share-info.js';
 import {
   applyListingDefaults,
   defaultSelfCancelUntil,
@@ -51,6 +52,10 @@ const summarySelect = {
   totalCapacity: true,
   closesAt: true,
   createdAt: true,
+  reservedCount: true,
+  // For the share text (shareInfo): active options only, and the first pickup point.
+  options: { where: { active: true }, select: { active: true, priceCents: true, capacity: true, soldCount: true, reservedCount: true, startsAt: true, location: true } },
+  pickupPoints: { select: { label: true, createdAt: true }, orderBy: { createdAt: 'asc' }, take: 1 },
 } satisfies Prisma.ListingSelect;
 
 export function toListingSummary(l: Prisma.ListingGetPayload<{ select: typeof summarySelect }>): ListingSummaryDto {
@@ -65,6 +70,7 @@ export function toListingSummary(l: Prisma.ListingGetPayload<{ select: typeof su
     totalCapacity: l.totalCapacity,
     closesAt: l.closesAt,
     createdAt: l.createdAt,
+    share: shareInfo(l),
   };
 }
 

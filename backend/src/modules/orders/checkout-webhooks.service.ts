@@ -11,7 +11,7 @@ import { RefundProcessor } from './refund-processor.js';
 import { type ClaimedRefund, markRefundSucceeded, queueRefund, settleRefund } from './refunds.js';
 import { StripeClient } from '../stripe/stripe-client.js';
 import { transitionOrder } from './order-state-machine.js';
-import { endUnpaid, lockOrder, type OrderDetail, orderDetail, recoverCheckoutSession } from './order-ops.js';
+import { calendarEvents, endUnpaid, lockOrder, merchantLine, type OrderDetail, orderDetail, recoverCheckoutSession } from './order-ops.js';
 import { sell, sellAfresh } from './reservation.js';
 import { orderUrl } from './urls.js';
 
@@ -190,6 +190,8 @@ export class CheckoutWebhooksService {
         totalCents: order.totalCents,
         orderUrl: orderUrl(this.env, order.locale, order.publicCode, order.accessToken),
         pickup: order.pickupPoint && { label: order.pickupPoint.label, address: order.pickupPoint.address },
+        merchant: merchantLine(order),
+        events: calendarEvents(this.env, order),
       } satisfies OrderConfirmedPayload,
       dedupeKey: `ORDER_CONFIRMED:${order.id}`,
     });

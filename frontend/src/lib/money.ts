@@ -11,6 +11,16 @@ export function priceSpan(prices: number[]): { min: number; max: number } | null
   return prices.length ? { min: Math.min(...prices), max: Math.max(...prices) } : null;
 }
 
+/**
+ * The price a listing shows: "free" for free listings (or no prices), "$39.00" for one price, "from $39.00" for a
+ * range. Wording comes from the caller's message catalog.
+ */
+export function priceLabel(pricing: 'FREE' | 'PAID', prices: number[], words: { free: string; from: (price: string) => string }): string {
+  const span = priceSpan(prices);
+  if (pricing === 'FREE' || !span) return words.free;
+  return span.min === span.max ? formatCents(span.min) : words.from(formatCents(span.min));
+}
+
 /** "$39.00" for one price (or equal prices), "$39.00 – $59.00" for a range, null for none. */
 export function formatPriceRange(prices: number[]): string | null {
   const span = priceSpan(prices);

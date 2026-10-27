@@ -130,7 +130,32 @@
       "cancelRegistration": "Cancel registration",
       "cancelRegistrationTitle": "Cancel your registration?",
       "cancelRegistrationBody": "Your place will be given to someone else.",
-      "titleFree": "Registration {code}"
+      "titleFree": "Registration {code}",
+      "addToCalendar": "Add to calendar"
+    },
+    "footer": {
+      "findOrder": "Find my orders",
+      "about": "TagAlong · group buys in New Zealand"
+    },
+    "wechat": {
+      "text": "Apple Pay doesn't work inside WeChat. Tap “…” at the top right and choose “Open in Browser”.",
+      "copy": "Copy link",
+      "copied": "Copied. Paste it in your browser."
+    },
+    "findOrder": {
+      "title": "Find my orders",
+      "intro": "Enter the email you used to order or register, and we'll send links to your orders from the last 90 days.",
+      "email": "Email",
+      "submit": "Send my order links",
+      "sending": "Sending…",
+      "sent": "If this email has orders, we'll send the links. Check your inbox (and spam)."
+    },
+    "merchant": {
+      "listingsTitle": "Listings",
+      "empty": "No listings right now.",
+      "suspended": "This seller is paused.",
+      "open": "Open",
+      "closes": "Closes {date}"
     }
   },
   "admin": {
@@ -373,6 +398,19 @@
         "COMPLETED": "All {total} refunds are done.",
         "COMPLETED_WITH_FAILURES": "{succeeded} of {total} refunds are done; {failed} failed and will be followed up by TagAlong."
       }
+    },
+    "share": {
+      "button": "Copy share text",
+      "copied": "Copied",
+      "head": "[{kind}] {title} {price}",
+      "kindPAID": "Group buy",
+      "kindFREE": "Sign-up",
+      "free": "Free",
+      "from": "from {price}",
+      "joinedPAID": "{count} joined",
+      "joinedFREE": "{count} registered",
+      "left": ", {count} left",
+      "link": "👉 {url}"
     }
   },
   "orders": {
@@ -412,5 +450,9 @@
     "refundBody": "Up to {amount} can still be refunded. Stripe fees are not returned to you.",
     "refundAmount": "Amount (NZD)",
     "confirmRefund": "Refund {amount}"
+  },
+  "common": {
+    "switchTo": "中文",
+    "switchToLabel": "Switch to Chinese"
   }
 }

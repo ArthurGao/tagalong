@@ -335,6 +335,47 @@
         ]
       }
     },
+    "/api/v1/public/orders/recover": {
+      "post": {
+        "operationId": "PublicOrdersController_recover",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoverOrdersDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoverOrdersResultDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
+    },
     "/api/v1/public/orders/{publicCode}": {
       "get": {
         "operationId": "PublicOrdersController_get",
@@ -364,6 +405,55 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PublicOrderDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/api/v1/public/orders/{publicCode}/calendar.ics": {
+      "get": {
+        "operationId": "PublicOrdersController_calendar",
+        "parameters": [
+          {
+            "name": "publicCode",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Order-Token",
+            "in": "header",
+            "description": "Access token from the order link",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "RFC 5545 calendar file",
+            "content": {
+              "text/calendar": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -1459,6 +1549,46 @@
           "public"
         ]
       }
+    },
+    "/api/v1/public/merchants/{slug}": {
+      "get": {
+        "operationId": "PublicMerchantsController_get",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantPageDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
     }
   },
   "info": {
@@ -1835,6 +1965,42 @@
           "kind"
         ]
       },
+      "RecoverOrdersDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "turnstileToken": {
+            "type": "string",
+            "description": "Cloudflare Turnstile token (DESIGN §10)"
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "zh-CN",
+              "en"
+            ],
+            "description": "Language of the email"
+          }
+        },
+        "required": [
+          "email",
+          "turnstileToken"
+        ]
+      },
+      "RecoverOrdersResultDto": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "description": "Always true: the answer never says whether the email has orders (DESIGN §9)"
+          }
+        },
+        "required": [
+          "ok"
+        ]
+      },
       "OrderStatus": {
         "type": "string",
         "enum": [
@@ -1988,6 +2154,10 @@
             "format": "date-time",
             "nullable": true,
             "description": "Free: self-cancel allowed until"
+          },
+          "hasCalendar": {
+            "type": "boolean",
+            "description": "A calendar file is available (GET …/calendar.ics): a confirmed event or lesson order"
           }
         },
         "required": [
@@ -2006,7 +2176,8 @@
           "createdAt",
           "paidAt",
           "reservationExpiresAt",
-          "selfCancelUntil"
+          "selfCancelUntil",
+          "hasCalendar"
         ]
       },
       "CancellationPreviewDto": {
@@ -2396,6 +2567,42 @@
           "EVENT"
         ]
       },
+      "ListingShareInfoDto": {
+        "type": "object",
+        "properties": {
+          "minPriceCents": {
+            "type": "number",
+            "nullable": true
+          },
+          "maxPriceCents": {
+            "type": "number",
+            "nullable": true
+          },
+          "remaining": {
+            "type": "number",
+            "nullable": true,
+            "description": "Places left; null when unlimited"
+          },
+          "place": {
+            "type": "string",
+            "nullable": true,
+            "description": "First pickup point, or first session location"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "First session start"
+          }
+        },
+        "required": [
+          "minPriceCents",
+          "maxPriceCents",
+          "remaining",
+          "place",
+          "startsAt"
+        ]
+      },
       "ListingSummaryDto": {
         "type": "object",
         "properties": {
@@ -2444,6 +2651,9 @@
           "createdAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "share": {
+            "$ref": "#/components/schemas/ListingShareInfoDto"
           }
         },
         "required": [
@@ -2456,7 +2666,8 @@
           "soldCount",
           "totalCapacity",
           "closesAt",
-          "createdAt"
+          "createdAt",
+          "share"
         ]
       },
       "Fulfilment": {
@@ -2689,6 +2900,9 @@
             "format": "date-time",
             "type": "string"
           },
+          "share": {
+            "$ref": "#/components/schemas/ListingShareInfoDto"
+          },
           "fulfilment": {
             "allOf": [
               {
@@ -2791,6 +3005,7 @@
           "totalCapacity",
           "closesAt",
           "createdAt",
+          "share",
           "fulfilment",
           "revision",
           "description",
@@ -3328,6 +3543,104 @@
         "required": [
           "items",
           "nextCursor"
+        ]
+      },
+      "MerchantPageListingDto": {
+        "type": "object",
+        "properties": {
+          "shortCode": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "coverImageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingType"
+              }
+            ]
+          },
+          "pricing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Pricing"
+              }
+            ]
+          },
+          "minPriceCents": {
+            "type": "number",
+            "nullable": true,
+            "description": "Cheapest active option (null when none)"
+          },
+          "maxPriceCents": {
+            "type": "number",
+            "nullable": true
+          },
+          "availability": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Availability"
+              }
+            ]
+          },
+          "closesAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "shortCode",
+          "title",
+          "coverImageUrl",
+          "type",
+          "pricing",
+          "minPriceCents",
+          "maxPriceCents",
+          "availability",
+          "closesAt"
+        ]
+      },
+      "MerchantPageDto": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "suspended": {
+            "type": "boolean",
+            "description": "Suspended by the platform: no listings are shown"
+          },
+          "listings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MerchantPageListingDto"
+            }
+          }
+        },
+        "required": [
+          "slug",
+          "displayName",
+          "description",
+          "logoUrl",
+          "suspended",
+          "listings"
         ]
       }
     }

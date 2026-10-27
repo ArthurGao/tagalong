@@ -116,6 +116,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/orders/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["PublicOrdersController_recover"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/orders/{publicCode}": {
         parameters: {
             query?: never;
@@ -124,6 +140,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["PublicOrdersController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/orders/{publicCode}/calendar.ics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PublicOrdersController_calendar"];
         put?: never;
         post?: never;
         delete?: never;
@@ -452,6 +484,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/merchants/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PublicMerchantsController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -561,6 +609,20 @@ export interface components {
             /** @description Free listings: the order link token */
             accessToken?: string;
         };
+        RecoverOrdersDto: {
+            email: string;
+            /** @description Cloudflare Turnstile token (DESIGN §10) */
+            turnstileToken: string;
+            /**
+             * @description Language of the email
+             * @enum {string}
+             */
+            locale?: "zh-CN" | "en";
+        };
+        RecoverOrdersResultDto: {
+            /** @description Always true: the answer never says whether the email has orders (DESIGN §9) */
+            ok: boolean;
+        };
         /** @enum {string} */
         OrderStatus: "PENDING_PAYMENT" | "PAID" | "CONFIRMED" | "FULFILLED" | "EXPIRED" | "CANCELLED" | "REFUNDED" | "PARTIALLY_REFUNDED" | "NO_SHOW";
         PublicOrderItemDto: {
@@ -606,6 +668,8 @@ export interface components {
              * @description Free: self-cancel allowed until
              */
             selfCancelUntil: string | null;
+            /** @description A calendar file is available (GET …/calendar.ics): a confirmed event or lesson order */
+            hasCalendar: boolean;
         };
         CancellationPreviewDto: {
             /** @description Paid orders that will be refunded */
@@ -717,6 +781,19 @@ export interface components {
         };
         /** @enum {string} */
         ListingType: "RETAIL" | "SESSION" | "EVENT";
+        ListingShareInfoDto: {
+            minPriceCents: number | null;
+            maxPriceCents: number | null;
+            /** @description Places left; null when unlimited */
+            remaining: number | null;
+            /** @description First pickup point, or first session location */
+            place: string | null;
+            /**
+             * Format: date-time
+             * @description First session start
+             */
+            startsAt: string | null;
+        };
         ListingSummaryDto: {
             id: string;
             shortCode: string;
@@ -730,6 +807,7 @@ export interface components {
             closesAt: string | null;
             /** Format: date-time */
             createdAt: string;
+            share: components["schemas"]["ListingShareInfoDto"];
         };
         /** @enum {string} */
         Fulfilment: "PICKUP" | "ONSITE";
@@ -788,6 +866,7 @@ export interface components {
             closesAt: string | null;
             /** Format: date-time */
             createdAt: string;
+            share: components["schemas"]["ListingShareInfoDto"];
             fulfilment: components["schemas"]["Fulfilment"];
             /** @description Send it back with edits (optimistic concurrency) */
             revision: number;
@@ -953,6 +1032,28 @@ export interface components {
             items: components["schemas"]["ParticipantDto"][];
             /** @description Pass as cursor for the next (older) page */
             nextCursor: number | null;
+        };
+        MerchantPageListingDto: {
+            shortCode: string;
+            title: string;
+            coverImageUrl: string | null;
+            type: components["schemas"]["ListingType"];
+            pricing: components["schemas"]["Pricing"];
+            /** @description Cheapest active option (null when none) */
+            minPriceCents: number | null;
+            maxPriceCents: number | null;
+            availability: components["schemas"]["Availability"];
+            /** Format: date-time */
+            closesAt: string | null;
+        };
+        MerchantPageDto: {
+            slug: string;
+            displayName: string;
+            description: string | null;
+            logoUrl: string | null;
+            /** @description Suspended by the platform: no listings are shown */
+            suspended: boolean;
+            listings: components["schemas"]["MerchantPageListingDto"][];
         };
     };
     responses: never;
@@ -1213,6 +1314,38 @@ export interface operations {
             };
         };
     };
+    PublicOrdersController_recover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoverOrdersDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoverOrdersResultDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
     PublicOrdersController_get: {
         parameters: {
             query?: never;
@@ -1233,6 +1366,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublicOrderDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    PublicOrdersController_calendar: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Access token from the order link */
+                "X-Order-Token": string;
+            };
+            path: {
+                publicCode: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description RFC 5545 calendar file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/calendar": string;
                 };
             };
             /** @description Error (code from DESIGN §17) */
@@ -1932,6 +2099,36 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ParticipantPageDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    PublicMerchantsController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantPageDto"];
                 };
             };
             /** @description Error (code from DESIGN §17) */

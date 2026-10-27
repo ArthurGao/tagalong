@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import type { components } from '@/lib/api/schema';
 import { formatNzDateTime } from '@/lib/time';
+import { ShareTextButton } from './ShareTextButton';
 
 type Summary = components['schemas']['ListingSummaryDto'];
 
@@ -33,6 +34,7 @@ export async function ListingRows({ listings, locale }: { listings: Summary[]; l
               {t(l.pricing === 'FREE' ? 'registrations' : 'orders')}
             </Link>
           )}
+          {l.status === 'PUBLISHED' && <ShareTextButton listing={l} />}
         </li>
       ))}
     </ul>

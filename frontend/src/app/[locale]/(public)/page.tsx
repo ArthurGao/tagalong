@@ -1,6 +1,9 @@
+import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Button } from '@/components/ui/button';
 import { formatCents } from '@/lib/money';
+
+export const metadata: Metadata = { robots: { index: true, follow: true } };
 
 export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;

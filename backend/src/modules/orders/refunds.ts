@@ -4,7 +4,7 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import type { NotificationsService } from '../notifications/notifications.service.js';
 import type { OrderAutoRefundedPayload, OrderRefundedPayload } from '../notifications/templates.js';
 import { canTransition, transitionOrder } from './order-state-machine.js';
-import type { OrderDetail } from './order-ops.js';
+import { merchantLine, type OrderDetail } from './order-ops.js';
 import { listingUrl, orderUrl } from './urls.js';
 
 // Every platform refund (merchant, late payment, listing cancellation) is a Refund row and a RefundTask with the same
@@ -176,6 +176,7 @@ export async function settleRefund(
             totalCents: order.totalCents,
             reason,
             orderUrl: orderUrl(deps.env, order.locale, order.publicCode, order.accessToken),
+            merchant: merchantLine(order),
           } satisfies OrderRefundedPayload,
           dedupeKey: `ORDER_REFUNDED:${dedupeKey}`,
         },

@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { formatCents, priceSpan } from '@/lib/money';
+import { priceLabel } from '@/lib/money';
 import { useLiveListing } from './live-listing';
 import { OrderSheet } from './OrderSheet';
 
@@ -13,18 +13,12 @@ export function StickyBuyBar() {
   const l = useLiveListing();
   const [sheetOpen, setSheetOpen] = useState(false);
   const open = l.availability === 'OPEN';
-  const span = priceSpan(l.options.map((o) => o.priceCents));
-  const priceLabel =
-    l.pricing === 'FREE' || !span
-      ? t('free')
-      : span.min === span.max
-        ? formatCents(span.min)
-        : t('priceFrom', { price: formatCents(span.min) });
+  const price = priceLabel(l.pricing, l.options.map((o) => o.priceCents), { free: t('free'), from: (p) => t('priceFrom', { price: p }) });
   return (
     <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-card/95 backdrop-blur">
       <div className="mx-auto flex max-w-[480px] items-center justify-between gap-4 px-4 py-3">
         <div className="flex flex-col">
-          <span className="font-display text-2xl font-bold tabular-nums">{priceLabel}</span>
+          <span className="font-display text-2xl font-bold tabular-nums">{price}</span>
         </div>
         <Button size="lg" className="min-w-32" disabled={!open} onClick={() => setSheetOpen(true)}>
           {open ? t(`buy.${l.pricing}`) : t(`state.${l.availability}`)}

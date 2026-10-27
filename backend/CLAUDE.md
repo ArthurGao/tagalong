@@ -100,7 +100,9 @@ backend/
   - `outbox.job.ts` claims a batch with a 5-minute lease (`SKIP LOCKED`) and sends outside the tx.
   - Retries follow 1/5/30 min, 2 h, 12 h; the 6th failure → FAILED. A missing template → FAILED at once.
   - `EmailService`: SMTP (Mailpit) or Resend by `EMAIL_PROVIDER`. e2e tests use `test/e2e/support/email-fake.ts`.
-  - Templates live in `templates.ts`, are short and bilingual, and escape everything. The buyer's language is `order.locale`.
+  - Templates live in `templates.ts`: hand-written, bilingual, one shared layout, everything escaped. The buyer's language is `order.locale`. `renderEmail(type, locale, to, payload, { appUrl })`; buyer emails carry the find-my-orders footer.
+  - Payloads carry everything (nothing is read at send time): confirmations and refunds carry `merchant` (name + GST number), event/lesson confirmations and reminders carry `events` for the `.ics` attachment (`ics.ts`, `order-ops.calendarEvents`).
+  - `OutgoingEmail.attachments` go through nodemailer (Mailpit) or base64 to Resend.
 - **Free registration (M5b):**
   - `reservation.registerFree` goes straight to sold (same lock-and-check as `reserve`); `releaseSold` gives the places back when a registration is cancelled (by the buyer within `selfCancelUntil`, or by the merchant).
   - `onePerEmail` is enforced twice: an up-front check (which re-sends the confirmation, once an hour, and answers `ALREADY_REGISTERED`) and the partial unique index as the race backstop.
@@ -126,6 +128,10 @@ backend/
   - `refund.job.ts`: every 30 s, 20 tasks, lease token plus SKIP LOCKED; retries after 1/2/4/8 min; FAILED after 5 attempts. Every run finishes any RUNNING cancellation with nothing pending (COMPLETED(_WITH_FAILURES), merchant emailed).
   - `retryFailed()` is for the admin console (M8): a refund Stripe refused gets a new id (its key would replay the refusal); one that only met errors keeps its id.
 - `orders-csv.ts` builds the merchant CSV (pure, one column table; BOM, CRLF, formula-safe cells).
+- **Find my orders** (`OrdersService.recover`): Turnstile + per-IP throttler, always `202 { ok: true }`, at most 3 ORDER_RECOVERY emails per address per clock hour: the n-th has dedupe key `ORDER_RECOVERY:{email}:{hour}:{n}`, so the unique key holds the limit under races.
+- `GET /public/orders/:code/calendar.ics`: the order's `.ics` for attending event/lesson orders (`hasCalendar` on the DTO).
+- `modules/public/public-merchants.*`: `GET /public/merchants/:slug` (merchant page; PUBLISHED/CLOSED listings only, nothing private).
+- DTO class names must be unique (`src/dto-names.spec.ts`): Swagger names schemas after classes and silently overwrites duplicates.
 - `merchant-orders.*`: the merchant's list (`?status=&q=`), fulfil (check-in or hand-over), cancel (free only, emails the reason) and no-show (only after the event starts).
 - `StripeClient` lives in `StripeClientModule`, so orders and the Stripe module can both inject it without a cycle.
 
@@ -200,7 +206,7 @@ Merchants and admins share **one Clerk application** and are distinguished by ro
 - `outbox.job.ts` runs every 10 seconds (DESIGN §12 backoff schedule).
 - `refund.job.ts` runs every 30 seconds, 20 tasks per batch (every queued refund: merchant, late payment, cancellation), with `refund:{RefundTask.id}` as the Stripe idempotency key and a per-run lease token.
 - `pii-retention.job.ts` runs daily and anonymizes buyer PII on orders whose listing ended more than 12 months ago.
-- `reminder.job.ts` runs every 15 minutes. It sends event reminders for SESSION/EVENT orders and is idempotent via `Order.reminderSentAt`.
+- `reminder.job.ts` (orders module) runs every 15 minutes. One UPDATE … SKIP LOCKED claims PAID/CONFIRMED SESSION/EVENT orders with a session starting within `remindBeforeHours` (default 24; candidates found through the `listing_option.starts_at` index) and sets `reminderSentAt`; the EVENT_REMINDER emails are queued in the same transaction. Past sessions are never reminded. `order-ops.hasCalendar` / `calendarEvents` are the TS side of the same rule.
 - `expiry.job.ts` runs every minute. It only applies to paid orders. It processes in batches, uses `FOR UPDATE SKIP LOCKED` so that multiple instances are safe, expires the Stripe session, then transitions the order to EXPIRED.
 
 ## Testing

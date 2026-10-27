@@ -9,7 +9,14 @@ import { OrderView } from './OrderView';
 const post = vi.fn();
 vi.mock('@/lib/api/client', () => ({ api: { POST: (...args: unknown[]) => post(...args) } }));
 const fetchOrder = vi.fn();
-vi.mock('@/lib/api/public', () => ({ fetchOrder: (...args: unknown[]) => fetchOrder(...args) }));
+const fetchOrderCalendar = vi.fn();
+vi.mock('@/lib/api/public', () => ({
+  fetchOrder: (...args: unknown[]) => fetchOrder(...args),
+  fetchOrderCalendar: (...args: unknown[]) => fetchOrderCalendar(...args),
+}));
+// Saving a file is the browser's job.
+const saveFile = vi.fn();
+vi.mock('@/lib/download', () => ({ saveFile: (...args: unknown[]) => saveFile(...args) }));
 
 const t = messages.public.order;
 const order = (over: Partial<PublicOrder> = {}): PublicOrder => ({
@@ -29,6 +36,7 @@ const order = (over: Partial<PublicOrder> = {}): PublicOrder => ({
   paidAt: null,
   reservationExpiresAt: '2026-10-27T00:30:00.000Z',
   selfCancelUntil: null,
+  hasCalendar: false,
   ...over,
 });
 const status = () => screen.getByRole('status').textContent;
@@ -80,6 +88,17 @@ describe('OrderView', () => {
       params: { path: { publicCode: 'TA-K7M2Q9' }, header: { 'X-Order-Token': 'tok' } },
     });
     expect(fetchOrder).not.toHaveBeenCalled();
+  });
+
+  it('adds an event order to the calendar with the token, and offers nothing for other orders', async () => {
+    fetchOrderCalendar.mockResolvedValue('BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n');
+    renderWithIntl(<OrderView initial={order({ status: 'PAID', sequenceNo: 3, canCancel: false, hasCalendar: true })} token="tok" paid={false} />);
+    fireEvent.click(screen.getByRole('button', { name: t.addToCalendar }));
+    await waitFor(() => expect(saveFile).toHaveBeenCalledWith('tagalong-TA-K7M2Q9.ics', 'BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n', 'text/calendar'));
+    expect(fetchOrderCalendar).toHaveBeenCalledWith('TA-K7M2Q9', 'tok');
+    cleanup();
+    renderWithIntl(<OrderView initial={order({ status: 'PAID', sequenceNo: 3, canCancel: false })} token="tok" paid={false} />);
+    expect(screen.queryByRole('button', { name: t.addToCalendar })).toBeNull();
   });
 
   it('explains an automatic refund of a late payment', () => {

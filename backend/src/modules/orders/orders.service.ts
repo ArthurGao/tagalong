@@ -2,6 +2,8 @@ import { timingSafeEqual } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { isUUID } from 'class-validator';
 import { AppError } from '../../common/errors/app-error.js';
+import { normalizeEmail } from '../../common/email.js';
+import { DAY_MS } from '../../common/time.js';
 import { accessToken, publicCode } from '../../common/ids.js';
 import { DEFAULT_LOCALE } from '../../common/locale.js';
 import { platformFee } from '../../common/money.js';
@@ -12,19 +14,24 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { isRetryableTransactionError, isUniqueViolation } from '../../prisma/errors.js';
 import { TurnstileVerifier } from '../../common/security/turnstile.js';
 import { answerIssues, readFormFields } from '../listings/form-fields.js';
+import { icsCalendar } from '../notifications/ics.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import type { RegistrationConfirmedPayload } from '../notifications/templates.js';
+import type { OrderRecoveryPayload, RegistrationConfirmedPayload } from '../notifications/templates.js';
 import { assertOrderable, availabilityOf } from '../listings/availability.js';
 import { StripeClient, stripeErrorCode } from '../stripe/stripe-client.js';
-import type { CreateOrderDto, CreateOrderResultDto, PublicOrderDto } from './order.dto.js';
+import type { CreateOrderDto, CreateOrderResultDto, PublicOrderDto, RecoverOrdersDto, RecoverOrdersResultDto } from './order.dto.js';
 import {
   canSelfCancel,
+  ATTENDING,
+  calendarEvents,
   cancelFree,
   type CheckoutSessionRef,
   checkoutRequest,
   endUnpaid,
   expireSessions,
+  hasCalendar,
   lockOrder,
+  merchantLine,
   type OrderDetail,
   orderDetail,
   recoverCheckoutSession,
@@ -69,6 +76,9 @@ function orderLines(listing: OrderListing, dto: CreateOrderDto) {
 }
 
 
+const RECOVERY_DAYS = 90;
+const RECOVERIES_PER_HOUR = 3;
+
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
@@ -87,7 +97,7 @@ export class OrdersService {
     // A replay needs no new Turnstile token (they are single-use); everything new is human-verified first.
     const replay = await this.replay(key);
     if (replay) return replay;
-    if (!(await this.turnstile.verify(dto.turnstileToken, remoteIp))) throw new AppError('TURNSTILE_FAILED', 'Verification failed');
+    await this.assertHuman(dto.turnstileToken, remoteIp);
 
     const listing = await this.prisma.listing.findFirst({
       where: { shortCode, status: { not: 'DRAFT' } },
@@ -234,6 +244,8 @@ export class OrdersService {
         pickup: order.pickupPoint && { label: order.pickupPoint.label, address: order.pickupPoint.address },
         selfCancelUntil: selfCancelDeadline(order)?.toISOString() ?? null,
         canSelfCancel: order.listing.allowSelfCancel,
+        merchant: merchantLine(order),
+        events: calendarEvents(this.env, order),
       } satisfies RegistrationConfirmedPayload,
       dedupeKey,
     };
@@ -283,6 +295,61 @@ export class OrdersService {
     return toPublicOrder(order);
   }
 
+  /** Turnstile (DESIGN §10): every new order and every find-my-orders request is human-verified first. */
+  private async assertHuman(token: string, remoteIp?: string): Promise<void> {
+    if (!(await this.turnstile.verify(token, remoteIp))) throw new AppError('TURNSTILE_FAILED', 'Verification failed');
+  }
+
+  /**
+   * POST /public/orders/recover (DESIGN §9): one email with links to this address's orders of the last 90 days that
+   * are paid, registered or done. The answer is the same whether or not there are any, and at most 3 emails per
+   * address per clock hour are sent, so it reveals nothing and cannot be used to flood an inbox.
+   */
+  async recover(dto: RecoverOrdersDto, remoteIp?: string, now = new Date()): Promise<RecoverOrdersResultDto> {
+    await this.assertHuman(dto.turnstileToken, remoteIp);
+    const email = normalizeEmail(dto.email);
+    const locale = dto.locale ?? DEFAULT_LOCALE;
+    // The n-th email of this clock hour has key …:{hour}:{n}, so the unique key holds the limit even under races.
+    const hour = now.toISOString().slice(0, 13);
+    const sentThisHour = await this.prisma.notificationOutbox.count({
+      where: { type: 'ORDER_RECOVERY', recipient: email, createdAt: { gte: new Date(`${hour}:00:00.000Z`) } },
+    });
+    if (sentThisHour >= RECOVERIES_PER_HOUR) return { ok: true };
+    const orders = await this.prisma.order.findMany({
+      where: {
+        buyerEmail: { equals: email, mode: 'insensitive' },
+        status: { in: ATTENDING },
+        createdAt: { gt: new Date(now.getTime() - RECOVERY_DAYS * DAY_MS) },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { publicCode: true, accessToken: true, createdAt: true, listing: { select: { title: true } } },
+    });
+    if (orders.length) {
+      await this.notifications.enqueue(this.prisma, {
+        type: 'ORDER_RECOVERY',
+        recipient: email,
+        locale,
+        payload: {
+          orders: orders.map((o) => ({
+            listingTitle: o.listing.title,
+            publicCode: o.publicCode,
+            createdAt: o.createdAt.toISOString(),
+            url: orderUrl(this.env, locale, o.publicCode, o.accessToken),
+          })),
+        } satisfies OrderRecoveryPayload,
+        dedupeKey: `ORDER_RECOVERY:${email}:${hour}:${sentThisHour + 1}`,
+      });
+    }
+    return { ok: true };
+  }
+
+  /** GET /public/orders/:publicCode/calendar.ics (X-Order-Token) — the .ics of a confirmed event or lesson order. */
+  async calendar(code: string, token: string): Promise<string> {
+    const order = await this.prisma.order.findUnique({ where: { publicCode: code }, include: orderDetail });
+    if (!order || !tokenMatches(order.accessToken, token) || !hasCalendar(order)) throw new AppError('NOT_FOUND', 'Order not found');
+    return icsCalendar(calendarEvents(this.env, order));
+  }
+
   /**
    * POST /public/orders/:publicCode/cancel (X-Order-Token): a paid order while unpaid, or a free registration within
    * its self-cancel window (DESIGN §9), which gives its places back.
@@ -323,6 +390,7 @@ function toPublicOrder(order: OrderDetail): PublicOrderDto {
     paidAt: order.paidAt,
     reservationExpiresAt: order.reservationExpiresAt,
     selfCancelUntil: selfCancelDeadline(order),
+    hasCalendar: hasCalendar(order),
   };
 }
 

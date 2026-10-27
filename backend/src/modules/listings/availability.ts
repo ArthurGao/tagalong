@@ -46,6 +46,11 @@ interface Counted {
   reservedCount: number;
 }
 
+/** Cheapest and dearest of these prices (null when there are none): the "from $x" on merchant pages and share text. */
+export function priceSpan(prices: number[]): { minPriceCents: number | null; maxPriceCents: number | null } {
+  return prices.length ? { minPriceCents: Math.min(...prices), maxPriceCents: Math.max(...prices) } : { minPriceCents: null, maxPriceCents: null };
+}
+
 /** Availability straight from a listing row with its options and merchant: the public page and ordering share it. */
 export function availabilityOf(
   l: Omit<AvailabilityInput, 'merchantStatus' | 'totalRemaining' | 'optionRemaining'> & {

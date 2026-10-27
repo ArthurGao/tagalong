@@ -423,14 +423,15 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - 请求体中额外包含 `formAnswers`、`items[].attendeeAnswers`、`turnstileToken`
   - 服务端会按接龙的 `formFields` 校验答案：必填项、类型、选项是否合法
 - `GET /public/orders/:publicCode`（请求头 `X-Order-Token: {accessToken}`）：返回订单状态；`PENDING_PAYMENT` 且带有 `stripeCheckoutSessionId` 时，前端据此显示「正在确认付款」
-- `POST /public/orders/recover` {email, turnstileToken}：**找回订单**。把该邮箱最近 90 天内所有有效订单（PAID / CONFIRMED / FULFILLED）的链接汇总成一封邮件发送；无论邮箱是否存在，接口都返回相同的成功响应；限流为同一邮箱每小时 3 次
+- `POST /public/orders/recover` {email, turnstileToken, locale?}：**找回订单**。把该邮箱最近 90 天内所有有效订单（PAID / CONFIRMED / FULFILLED）的链接汇总成一封邮件发送；无论邮箱是否存在，接口都返回相同的 `202 { ok: true }`；限流为同一邮箱每个整点小时 3 次（第 n 封的去重键是 `ORDER_RECOVERY:{email}:{小时}:{n}`，并发时由唯一键保证；超出时不发但回答不变），另有按 IP 的限流和 Turnstile
+- `GET /public/orders/:publicCode/calendar.ics`（请求头 `X-Order-Token`）：活动/课程订单（PAID / CONFIRMED / FULFILLED，且有开始时间的场次）的 .ics 日历文件，其它情况 404；订单接口的 `hasCalendar` 表示是否可用
 - **Origin 校验（CSRF 补充防线，全局 `OriginGuard`）**：所有公开写接口，以及所有带 cookie 的写请求（POST/PUT/PATCH/DELETE），`Origin` 请求头都必须是我们自己的域名（`APP_URL` 和 `CLERK_AUTHORIZED_PARTIES`），否则返回 403。Clerk 的 `__session` 是 SameSite=Lax，但 admin 子域名与主站同站，所以仍需这道检查；不带 cookie 的调用（webhook、Bearer 客户端）不受影响
 - `POST /public/orders/:publicCode/cancel`（同样用 `X-Order-Token` 请求头）。买家看到的链接仍是 `/o/{publicCode}?t=`，但 API 不接受查询串里的 token，避免它出现在代理和平台的请求日志里；订单页设置 `Referrer-Policy: no-referrer`
   - 付费订单：仅限 `PENDING_PAYMENT` 状态
   - 免费订单：`CONFIRMED` 状态，且 `allowSelfCancel` 为 true、当前时间早于 `selfCancelUntil`
 - `POST /merchants/me/orders/:id/cancel` {reason}：商家取消免费报名，并通知买家
 - `POST /merchants/me/orders/:id/no-show`：商家标记免费报名为未到；只在活动已开始后允许（订单所选场次最早的 `startsAt` 已过，没有场次时间则以接龙 `closesAt` 为准）
-- `GET /public/merchants/:slug`
+- `GET /public/merchants/:slug`：商家公开主页，返回名称、简介、logo、是否暂停，以及 PUBLISHED / CLOSED 的接龙（标题、封面、价格区间、可下单状态、截止时间）；草稿和已取消的接龙不出现；商家暂停时不返回接龙；不返回联系方式、GST 号、Stripe 账户或任何内部 id
 
 **Admin（需要 role=ADMIN；所有写操作都要求填写 `reason`，并写入 AuditLog）**
 - `GET /admin/stats`：今日新商家数、GMV（7 天 / 30 天）、待处理争议数
@@ -583,7 +584,8 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 
 - **Outbox 机制（D16）**：业务代码只调用 `notifications.enqueue(type, recipient, payload, dedupeKey)`，在业务事务内写入 `NotificationOutbox`。`outbox.job.ts` 每 10 秒取一批 `PENDING` 记录（`FOR UPDATE SKIP LOCKED`）发送：成功写 `sentAt`，失败则 `attempts += 1` 并按 1、5、30 分钟、2 小时、12 小时退避（首次发送 + 5 次重试），第 6 次仍失败才标记 `FAILED` 并上报 Sentry；没有对应模板的类型直接 `FAILED`，不重试。发送前用租约认领（把 `nextAttemptAt` 推后 5 分钟），发送本身不在事务里，进程中途崩溃的行租约到期后会被重发（至少一次）。`dedupeKey` 保证重复的 webhook 不会发两封邮件。
 - 使用 `EmailService` 抽象层：开发环境用 Mailpit，生产环境用 Resend 或 AWS SES。
-- 邮件模板使用 React Email 或 MJML，支持中英双语。
+- 邮件模板为手写的中英双语模板（`notifications/templates.ts`），共用一个布局：后端没有 JSX 构建，邮件都很短，转义集中在一处，所以没有用 React Email / MJML。买家邮件页脚带「找回你的所有订单」链接（`/{locale}/find-order`）。
+- 活动/课程订单的付款确认、报名确认和活动提醒附带 .ics 日历文件（`notifications/ics.ts`，RFC 5545，时间写成 UTC），每个已订场次一个事件，地点为场次地点或取货点地址。
 - 需要发送的邮件：
   - 买家：付款确认、退款通知、订单被自动退款（超时边界情况）
   - 免费报名：报名成功确认（附取消链接和 .ics 文件）、商家取消报名的通知

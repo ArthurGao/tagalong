@@ -6,8 +6,9 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { api } from '@/lib/api/client';
-import { fetchOrder, type PublicOrder } from '@/lib/api/public';
+import { fetchOrder, fetchOrderCalendar, type PublicOrder } from '@/lib/api/public';
 import { useSave } from '@/lib/api/use-save';
+import { saveFile } from '@/lib/download';
 import { formatCents } from '@/lib/money';
 import { statusKey } from '@/lib/order-status';
 import { formatNzDateTime } from '@/lib/time';
@@ -62,6 +63,11 @@ export function OrderView({ initial, token, paid }: { initial: PublicOrder; toke
       setOrder(updated);
       setConfirmCancel(false);
     }
+  };
+
+  const addToCalendar = async () => {
+    const ics = await fetchOrderCalendar(order.publicCode, token).catch(() => null);
+    if (ics) saveFile(`tagalong-${order.publicCode}.ics`, ics, 'text/calendar');
   };
 
   const pending = order.status === 'PENDING_PAYMENT';
@@ -128,6 +134,11 @@ export function OrderView({ initial, token, paid }: { initial: PublicOrder; toke
         <Link href={`/${locale}/l/${order.listing.shortCode}`} className="underline">
           {t('backToListing')}
         </Link>
+        {order.hasCalendar && (
+          <Button variant="outline" onClick={addToCalendar}>
+            {t('addToCalendar')}
+          </Button>
+        )}
         {order.canCancel && !paid && (
           <Button variant="outline" onClick={() => setConfirmCancel(true)}>
             {t(free ? 'cancelRegistration' : 'cancel')}

@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { errorText } from '../../common/errors/error-text.js';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { errorText } from '../../common/errors/error-text.js';
+import { ENV } from '../../config/config.module.js';
+import type { Env } from '../../config/env.js';
 import type { NotificationOutbox } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { EmailService } from './email.service.js';
@@ -26,6 +28,7 @@ export class OutboxJob {
   constructor(
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   @Cron(CronExpression.EVERY_10_SECONDS, { name: 'outbox' })
@@ -44,7 +47,7 @@ export class OutboxJob {
     const result = { sent: 0, retrying: 0, failed: 0 };
     for (const row of rows) {
       try {
-        await this.email.send(renderEmail(row.type, row.locale, row.recipient, row.payload));
+        await this.email.send(renderEmail(row.type, row.locale, row.recipient, row.payload, { appUrl: this.env.APP_URL }));
         await this.prisma.notificationOutbox.update({ where: { id: row.id }, data: { status: 'SENT', sentAt: new Date() } });
         result.sent++;
       } catch (e) {

@@ -98,8 +98,13 @@ frontend/
   - `components/public/DynamicFields` renders a listing's `formFields`. Attendee-scope fields repeat once per quantity.
   - The zod schema is built at runtime from `formFields`.
   - The merchant-side editor is `components/merchant/FormFieldBuilder`: add, reorder and delete fields, with at most 10.
-- **WeChat:** `WeChatBanner` renders when the UA contains `MicroMessenger`: a persistent top banner that explains Apple Pay is unavailable and shows how to open in the browser, plus a copy-link button.
-- **Robots:** listing and merchant pages set `robots: { index: false }` in `generateMetadata` unless `listing.indexable` is true. The landing and legal pages are indexable.
+- **WeChat:** `WeChatBanner` (in the public layout) renders when the UA contains `MicroMessenger`: a persistent top banner that explains Apple Pay is unavailable and shows how to open in the browser, plus a copy-link button. The UA is read with `useSyncExternalStore` (false on the server), so cached HTML stays shared.
+- **Public footer** (`PublicFooter`, in the public layout): find-my-orders link and the language switch. `/find-order` (`FindOrderForm`) always shows the same message after a successful submit.
+- **Language switch:** `LocaleSwitch` (one per surface; logic in `lib/locale-switch.ts`) swaps the locale segment and keeps the query string (the order token). Public: footer; merchant: dashboard and auth layouts.
+- **Merchant page** `/m/[slug]`: SSR, `revalidate: 60`, always noindex; `MerchantListings` renders the cards. The listing page's seller name links to it.
+- **Share text:** `lib/share-text.ts` builds the group-chat message from `ListingSummaryDto.share` with `listings.share.*` strings; `ShareTextButton` (published rows in `ListingRows`) copies it with this site's origin.
+- **Calendar:** `OrderView` shows "add to calendar" when `hasCalendar`; it fetches `calendar.ics` with the token header and saves it through `lib/download.ts`.
+- **Robots:** `[locale]/layout.tsx` sets `robots: { index: false, follow: false }` for every page; a page opts in with `{ index: true, follow: true }`: the landing page (and legal pages, M9), and a listing whose `indexable` is true. New routes are therefore private by default.
 - **Error codes:** `lib/api/errors.ts` maps every code in DESIGN §17 to an i18n key. An unknown code falls back to `errors.INTERNAL`; don't invent codes on the frontend.
 - **Free vs paid copy:**
   - Button labels, list titles and the fulfil/check-in wording come from i18n keys selected by `listing.pricing`.

@@ -130,7 +130,32 @@
       "cancelRegistration": "取消报名",
       "cancelRegistrationTitle": "确定取消报名？",
       "cancelRegistrationBody": "你的名额会让给其他人。",
-      "titleFree": "报名号 {code}"
+      "titleFree": "报名号 {code}",
+      "addToCalendar": "加入日历"
+    },
+    "footer": {
+      "findOrder": "找回我的订单",
+      "about": "TagAlong · 新西兰接龙"
+    },
+    "wechat": {
+      "text": "微信内无法使用 Apple Pay。建议点右上角「…」，选择「在浏览器打开」。",
+      "copy": "复制链接",
+      "copied": "已复制，去浏览器粘贴打开"
+    },
+    "findOrder": {
+      "title": "找回我的订单",
+      "intro": "输入下单或报名时用的邮箱，我们会把你最近 90 天的订单链接发过去。",
+      "email": "邮箱",
+      "submit": "发送订单链接",
+      "sending": "发送中…",
+      "sent": "如果该邮箱有订单，我们会把链接发过去。请查收邮件（也看看垃圾箱）。"
+    },
+    "merchant": {
+      "listingsTitle": "接龙",
+      "empty": "暂时没有进行中的接龙。",
+      "suspended": "该商家已暂停销售。",
+      "open": "进行中",
+      "closes": "{date} 截止"
     }
   },
   "admin": {
@@ -373,6 +398,19 @@
         "COMPLETED": "{total} 笔退款已全部完成。",
         "COMPLETED_WITH_FAILURES": "已完成 {succeeded} / {total} 笔退款，{failed} 笔失败，平台会跟进处理。"
       }
+    },
+    "share": {
+      "button": "复制分享文案",
+      "copied": "已复制",
+      "head": "【{kind}】{title} {price}",
+      "kindPAID": "接龙",
+      "kindFREE": "报名",
+      "free": "免费",
+      "from": "{price} 起",
+      "joinedPAID": "已接龙 {count} 人",
+      "joinedFREE": "已报名 {count} 人",
+      "left": "，剩 {count} 份",
+      "link": "👉 {url}"
     }
   },
   "orders": {
@@ -412,5 +450,9 @@
     "refundBody": "最多还可退 {amount}。Stripe 手续费不退还给你。",
     "refundAmount": "金额（NZD）",
     "confirmRefund": "退款 {amount}"
+  },
+  "common": {
+    "switchTo": "English",
+    "switchToLabel": "切换到英文"
   }
 }

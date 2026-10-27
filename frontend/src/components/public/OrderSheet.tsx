@@ -12,9 +12,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
-import { routing } from '@/i18n/routing';
 import { api } from '@/lib/api/client';
 import { useSave } from '@/lib/api/use-save';
+import { asLocale } from '@/lib/locale-switch';
 import { formatCents } from '@/lib/money';
 import { goTo } from '@/lib/navigate';
 import { type AnswerProblem, type Answers, answerProblems, cleanAnswers } from './answers';
@@ -111,7 +111,7 @@ export function OrderSheet({ open, onOpenChange }: { open: boolean; onOpenChange
           ...(buyer.note.trim() ? { note: buyer.note.trim() } : {}),
           ...(orderFields.length ? { formAnswers: cleanAnswers(orderFields, orderAnswers) } : {}),
           anonymous: buyer.anonymous,
-          locale: routing.locales.find((x) => x === locale) ?? routing.defaultLocale,
+          locale: asLocale(locale),
           turnstileToken,
         },
       }),

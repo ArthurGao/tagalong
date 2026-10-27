@@ -113,4 +113,19 @@ export class PublicOrderDto {
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) reservationExpiresAt!: Date | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Free: self-cancel allowed until' })
   selfCancelUntil!: Date | null;
+  @ApiProperty({ description: 'A calendar file is available (GET …/calendar.ics): a confirmed event or lesson order' })
+  hasCalendar!: boolean;
+}
+
+export class RecoverOrdersDto {
+  @ApiProperty() @IsEmail() @MaxLength(254) email!: string;
+  @ApiProperty({ description: 'Cloudflare Turnstile token (DESIGN §10)' }) @IsString() @Length(1, 2048) turnstileToken!: string;
+  @ApiPropertyOptional({ enum: LOCALES, description: 'Language of the email' })
+  @IsOptional()
+  @IsIn(LOCALES)
+  locale?: Locale;
+}
+
+export class RecoverOrdersResultDto {
+  @ApiProperty({ description: 'Always true: the answer never says whether the email has orders (DESIGN §9)' }) ok!: boolean;
 }

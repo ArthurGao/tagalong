@@ -203,6 +203,15 @@ export class PickupPointDto {
   @ApiProperty({ type: String, nullable: true }) notes!: string | null;
 }
 
+/** What the merchant's "copy share text" needs (DESIGN §11), computed on the server from the live counters. */
+export class ListingShareInfoDto {
+  @ApiProperty({ type: Number, nullable: true }) minPriceCents!: number | null;
+  @ApiProperty({ type: Number, nullable: true }) maxPriceCents!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Places left; null when unlimited' }) remaining!: number | null;
+  @ApiProperty({ type: String, nullable: true, description: 'First pickup point, or first session location' }) place!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'First session start' }) startsAt!: Date | null;
+}
+
 export class ListingSummaryDto {
   @ApiProperty() id!: string;
   @ApiProperty() shortCode!: string;
@@ -214,6 +223,7 @@ export class ListingSummaryDto {
   @ApiProperty({ type: Number, nullable: true }) totalCapacity!: number | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) closesAt!: Date | null;
   @ApiProperty() createdAt!: Date;
+  @ApiProperty({ type: ListingShareInfoDto }) share!: ListingShareInfoDto;
 }
 
 export class ListingDto extends ListingSummaryDto {

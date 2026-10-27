@@ -220,6 +220,7 @@ model ListingOption {
   orderItems OrderItem[]
 
   @@index([listingId, sortOrder])
+  @@index([startsAt]) // reminder.job: sessions starting soon
   @@map("listing_option")
 }
 
@@ -383,6 +384,7 @@ model NotificationOutbox {
   createdAt     DateTime           @default(now()) @map("created_at")
 
   @@index([status, nextAttemptAt]) // outbox.job
+  @@index([recipient, type, createdAt]) // find-my-orders: emails per address per hour
   @@map("notification_outbox")
 }
 

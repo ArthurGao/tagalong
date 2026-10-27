@@ -1,5 +1,7 @@
 import { escapeHtml, renderEmail, UnknownTemplateError } from './templates.js';
 
+const CTX = { appUrl: 'https://tagalong.test' };
+
 const confirmed = {
   publicCode: 'TA-K7M2Q9',
   listingTitle: '<b>Cherries</b> & more',
@@ -12,13 +14,13 @@ const confirmed = {
 
 describe('email templates', () => {
   it('renders the confirmation in the buyer language with the amounts and the order link', () => {
-    const zh = renderEmail('ORDER_CONFIRMED', 'zh-CN', 'amy@example.test', confirmed);
+    const zh = renderEmail('ORDER_CONFIRMED', 'zh-CN', 'amy@example.test', confirmed, CTX);
     expect(zh.subject).toBe('接龙成功 #12：<b>Cherries</b> & more');
     expect(zh.text).toContain('2kg ×2  $78.00');
     expect(zh.text).toContain('合计 $78.00（含 GST）');
     expect(zh.text).toContain('取货：Albany，1 Main St');
     expect(zh.text).toContain(confirmed.orderUrl);
-    const en = renderEmail('ORDER_CONFIRMED', 'en', 'amy@example.test', confirmed);
+    const en = renderEmail('ORDER_CONFIRMED', 'en', 'amy@example.test', confirmed, CTX);
     expect(en.subject).toBe("You're in (#12): <b>Cherries</b> & more");
   });
 
@@ -26,7 +28,7 @@ describe('email templates', () => {
     const { html } = renderEmail('ORDER_CONFIRMED', 'en', 'amy@example.test', {
       ...confirmed,
       items: [{ name: '<script>x</script>', quantity: 1, unitPriceCents: 100 }],
-    });
+    }, CTX);
     expect(html).not.toContain('<script>');
     expect(html).toContain('&lt;script&gt;x&lt;/script&gt; ×1');
     expect(html).toContain('href="https://tagalong.test/o/TA-K7M2Q9?t=abc&amp;paid=1"');
@@ -34,7 +36,7 @@ describe('email templates', () => {
   });
 
   it('throws for a type without a template', () => {
-    expect(() => renderEmail('NOPE', 'en', 'a@example.test', {})).toThrow(UnknownTemplateError);
+    expect(() => renderEmail('NOPE', 'en', 'a@example.test', {}, CTX)).toThrow(UnknownTemplateError);
   });
 });
 
@@ -51,16 +53,16 @@ describe('registration emails', () => {
   };
 
   it('confirms with the number, the cancel deadline in Auckland time, and the order link', () => {
-    const zh = renderEmail('REGISTRATION_CONFIRMED', 'zh-CN', 'amy@example.test', registered);
+    const zh = renderEmail('REGISTRATION_CONFIRMED', 'zh-CN', 'amy@example.test', registered, CTX);
     expect(zh.subject).toBe('报名成功 #3：Yoga');
     expect(zh.text).toContain('2026年11月2日 09:00'); // 20:00 UTC = 09:00 NZDT next day
     expect(zh.text).toContain(registered.orderUrl);
-    const en = renderEmail('REGISTRATION_CONFIRMED', 'en', 'amy@example.test', { ...registered, canSelfCancel: false, selfCancelUntil: null });
+    const en = renderEmail('REGISTRATION_CONFIRMED', 'en', 'amy@example.test', { ...registered, canSelfCancel: false, selfCancelUntil: null }, CTX);
     expect(en.text).not.toContain('cancel');
   });
 
   it('tells the buyer why the organiser cancelled, escaped', () => {
-    const { html, subject } = renderEmail('REGISTRATION_CANCELLED', 'en', 'a@example.test', { listingTitle: 'Yoga', reason: '<b>rain</b>', listingUrl: 'https://x' });
+    const { html, subject } = renderEmail('REGISTRATION_CANCELLED', 'en', 'a@example.test', { listingTitle: 'Yoga', reason: '<b>rain</b>', listingUrl: 'https://x' }, CTX);
     expect(subject).toBe('Registration cancelled: Yoga');
     expect(html).toContain('Reason: &lt;b&gt;rain&lt;/b&gt;');
   });
@@ -69,12 +71,77 @@ describe('registration emails', () => {
 describe('refund email', () => {
   it('says how much, whether it is the whole amount, and why', () => {
     const base = { publicCode: 'TA-1', listingTitle: 'Cherries', amountCents: 1000, refundedCents: 1000, totalCents: 3900, reason: 'Short', orderUrl: 'https://x' };
-    const part = renderEmail('ORDER_REFUNDED', 'zh-CN', 'a@example.test', base);
+    const part = renderEmail('ORDER_REFUNDED', 'zh-CN', 'a@example.test', base, CTX);
     expect(part.subject).toBe('已退款 $10.00：Cherries');
     expect(part.text).not.toContain('全额');
     expect(part.text).toContain('原因：Short');
-    const full = renderEmail('ORDER_REFUNDED', 'en', 'a@example.test', { ...base, amountCents: 2900, refundedCents: 3900, reason: null });
+    const full = renderEmail('ORDER_REFUNDED', 'en', 'a@example.test', { ...base, amountCents: 2900, refundedCents: 3900, reason: null }, CTX);
     expect(full.text).toContain('$29.00 (in full)');
     expect(full.text).not.toContain('Reason');
+  });
+});
+
+describe('layout, receipts and calendar files (M7)', () => {
+  const event = {
+    uid: 'TA-K7M2Q9-o1@tagalong.nz',
+    title: 'Yoga',
+    startsAt: '2026-11-07T20:30:00.000Z',
+    endsAt: null,
+    location: 'Albany Hall',
+    description: 'Order TA-K7M2Q9',
+    url: 'https://tagalong.test/en/o/TA-K7M2Q9?t=abc',
+  };
+
+  it('ends buyer emails with the find-my-orders link, in their language; merchant emails without it', () => {
+    const zh = renderEmail('ORDER_CONFIRMED', 'zh-CN', 'amy@example.test', confirmed, CTX);
+    expect(zh.text).toContain('找回你的所有订单：https://tagalong.test/zh-CN/find-order');
+    expect(zh.html).toContain('<a href="https://tagalong.test/zh-CN/find-order"');
+    const en = renderEmail('ORDER_CONFIRMED', 'en', 'amy@example.test', confirmed, CTX);
+    expect(en.text).toContain('Find all your orders: https://tagalong.test/en/find-order');
+    const merchant = renderEmail('MERCHANT_DISPUTE', 'zh-CN', 'shop@example.test', { publicCode: 'TA-1', listingTitle: 'x', amountCents: 100, reason: 'fraudulent' }, CTX);
+    expect(merchant.text).not.toContain('find-order');
+  });
+
+  it("shows the seller and its GST number on confirmations and refunds", () => {
+    const merchant = { name: 'Kiwi Fruit Co', gstNumber: '123-456-789' };
+    expect(renderEmail('ORDER_CONFIRMED', 'zh-CN', 'a@example.test', { ...confirmed, merchant }, CTX).text).toContain('商家：Kiwi Fruit Co · GST 123-456-789');
+    expect(renderEmail('ORDER_CONFIRMED', 'en', 'a@example.test', { ...confirmed, merchant: { ...merchant, gstNumber: null } }, CTX).text).toContain('Sold by Kiwi Fruit Co\n');
+    const refund = { publicCode: 'TA-1', listingTitle: 'x', amountCents: 100, refundedCents: 100, totalCents: 100, reason: null, orderUrl: 'u', merchant };
+    expect(renderEmail('ORDER_REFUNDED', 'en', 'a@example.test', refund, CTX).text).toContain('Sold by Kiwi Fruit Co · GST 123-456-789');
+  });
+
+  it('attaches the .ics only when the order has sessions', () => {
+    const withEvents = renderEmail('ORDER_CONFIRMED', 'en', 'a@example.test', { ...confirmed, events: [event] }, CTX);
+    expect(withEvents.attachments).toEqual([
+      expect.objectContaining({ filename: 'tagalong-TA-K7M2Q9.ics', contentType: 'text/calendar; charset=utf-8', content: expect.stringContaining('DTSTART:20261107T203000Z') }),
+    ]);
+    expect(renderEmail('ORDER_CONFIRMED', 'en', 'a@example.test', confirmed, CTX).attachments).toBeUndefined();
+  });
+
+  it('reminds in Auckland time with the place and the calendar file', () => {
+    const r = renderEmail(
+      'EVENT_REMINDER',
+      'en',
+      'a@example.test',
+      { publicCode: 'TA-K7M2Q9', listingTitle: 'Yoga', startsAt: event.startsAt, location: 'Albany Hall', orderUrl: event.url, events: [event] },
+      CTX,
+    );
+    expect(r.subject).toBe('Reminder: Yoga (8 Nov 2026, 09:30)'); // 20:30 UTC = 09:30 NZDT the next day
+    expect(r.text).toContain('Where: Albany Hall');
+    expect(r.attachments).toHaveLength(1);
+  });
+
+  it('lists recovered orders with their links, escaped', () => {
+    const r = renderEmail(
+      'ORDER_RECOVERY',
+      'zh-CN',
+      'a@example.test',
+      { orders: [{ listingTitle: '<b>Cherries</b>', publicCode: 'TA-1', createdAt: '2026-10-01T00:00:00Z', url: 'https://tagalong.test/zh-CN/o/TA-1?t=x' }] },
+      CTX,
+    );
+    expect(r.subject).toBe('你在 TagAlong 的订单');
+    expect(r.text).toContain('https://tagalong.test/zh-CN/o/TA-1?t=x');
+    expect(r.html).toContain('&lt;b&gt;Cherries&lt;/b&gt; · TA-1');
+    expect(r.html).not.toContain('<b>Cherries');
   });
 });
