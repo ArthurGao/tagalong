@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api/client';
-import { isoToNzInput, nzInputToIso } from '@/lib/time';
+import { instantForInput, isoToNzInput } from '@/lib/time';
 import { ImageUploader } from './ImageUploader';
 import { SaveBar } from './SaveBar';
 import type { StepProps } from './types';
@@ -23,8 +23,9 @@ const schema = z.object({
 
 export function ContentStep({ listing, onSaved }: StepProps) {
   const t = useTranslations('listings.fields');
+  const tListings = useTranslations('listings');
   const save = useSave();
-  const { register, control, handleSubmit } = useForm<z.infer<typeof schema>>({
+  const { register, control, handleSubmit, setError, reset, formState } = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
     defaultValues: {
       title: listing.title,
@@ -35,13 +36,21 @@ export function ContentStep({ listing, onSaved }: StepProps) {
   });
 
   const onSubmit = handleSubmit(async (v) => {
+    const closesAt = instantForInput(listing.closesAt, v.closesAt);
+    if (v.closesAt && closesAt === null) {
+      setError('closesAt', { message: tListings('timeInvalid') });
+      return;
+    }
     const updated = await save.run(() =>
       api.PATCH('/api/v1/merchants/me/listings/{id}', {
         params: { path: { id: listing.id } },
-        body: { title: v.title, description: v.description, images: v.images, closesAt: nzInputToIso(v.closesAt) },
+        body: { revision: listing.revision, title: v.title, description: v.description, images: v.images, closesAt },
       }),
     );
-    if (updated) onSaved(updated);
+    if (updated) {
+      reset({ ...v, closesAt: isoToNzInput(updated.closesAt) });
+      onSaved(updated);
+    }
   });
 
   return (
@@ -56,7 +65,12 @@ export function ContentStep({ listing, onSaved }: StepProps) {
       </div>
       <div className="flex flex-col gap-1">
         <Label htmlFor="closesAt">{t('closesAt')}</Label>
-        <Input id="closesAt" type="datetime-local" {...register('closesAt')} />
+        <Input id="closesAt" type="datetime-local" aria-invalid={Boolean(formState.errors.closesAt)} {...register('closesAt')} />
+        {formState.errors.closesAt && (
+          <p role="alert" className="text-sm text-destructive">
+            {formState.errors.closesAt.message}
+          </p>
+        )}
       </div>
       <div className="flex flex-col gap-1">
         <span className="text-sm font-bold">{t('images')}</span>

@@ -57,7 +57,8 @@ backend/
 ## Listings and uploads
 
 - Pure rules live next to the module: `listing-state-machine.ts` (§5b transitions), `publish-rules.ts` (locked fields, capacity, option deletion, price ranges, publish checks, defaults), `form-fields.ts` (≤10 fields, sensitive-label warnings). The service only loads data and calls them.
-- Status changes use a conditional `updateMany` on the status that was validated, so a concurrent change (e.g. `listing-close.job.ts`) wins cleanly.
+- Every change to an existing listing goes through `ListingsService.mutate()`: `SELECT … FOR UPDATE` on the row, `LISTING_STALE` if the request's `revision` is older, validation against the locked state, then the write with `revision + 1`. The close job bumps `revision` too.
+- `reopen` accepts only CLOSED and re-runs the publish checks. Pickup point deletion relies on the `RESTRICT` foreign key (P2003 → `PICKUP_POINT_HAS_ORDERS`).
 - `listing-close.job.ts` is one conditional UPDATE every minute. Jobs know nothing about tests: `createTestApp` stops every registered cron after init, and tests call the job method (`closeDue()`) directly.
 - `ObjectStorage` (`modules/uploads/object-storage.ts`) presigns a PUT with `Content-Length` signed (R2 has no POST policies) and owns the key layout (`merchantImageKey`, `isMerchantImage`); e2e tests use `test/e2e/support/storage-fake.ts`.
 - `formFields` is a Json column: cross that boundary only through `readFormFields` / `toFormFieldsJson` in `form-fields.ts`.

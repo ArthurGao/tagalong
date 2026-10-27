@@ -72,7 +72,8 @@ frontend/
   - The remaining-count and participant list refresh on the client every 15s, using TanStack Query with `refetchInterval`.
 - **Forms:** use react-hook-form with zod. Validation mirrors the backend DTOs, but the backend is the authority. Show backend error `code`s using the i18n mapping.
 - **Money:** display it only via `formatCents`, never by dividing inline. Price inputs are typed in dollars and converted with `dollarsToCents()` (string arithmetic) / `centsToDollarsInput()` in `lib/money.ts`.
-- **Times in inputs:** `datetime-local` values are Auckland wall-clock time; convert with `nzInputToIso()` / `isoToNzInput()` in `lib/time.ts`, whatever the browser's time zone. Never compute totals for submission; the backend computes them. A display-only subtotal is fine.
+- **Times in inputs:** `datetime-local` values are Auckland wall-clock time. Display with `isoToNzInput()`; save with `instantForInput(original, input)` from `lib/time.ts`, which keeps an untouched value at its original instant and returns null for a time skipped by daylight saving (show `listings.timeInvalid`). A repeated autumn hour resolves to the earlier instant.
+- **Listing edits** send the `revision` they loaded and `reset()` the form from the response (new rows get their ids); `LISTING_STALE` means reload. Never compute totals for submission; the backend computes them. A display-only subtotal is fine.
 - **Checkout:**
   - The `POST /public/listings/:shortCode/orders` request returns a `checkoutUrl`; redirect to it with `window.location.href = checkoutUrl`.
   - Handle `SOLD_OUT` by refreshing the options and showing a toast.

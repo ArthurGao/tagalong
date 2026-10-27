@@ -62,6 +62,11 @@ export class CreateListingDto {
 
 // pricing / type / fulfilment / title as on create (locked ones are checked by publish-rules), plus the rest.
 export class UpdateListingDto extends PartialType(CreateListingDto) {
+  @ApiProperty({ description: 'The revision this edit is based on; a newer one on the server → LISTING_STALE' })
+  @IsInt()
+  @Min(0)
+  revision!: number;
+
   @ApiPropertyOptional({ description: 'Markdown' }) @IsOptional() @IsString() @MaxLength(10_000) description?: string;
 
   @ApiPropertyOptional({ type: [String] })
@@ -136,6 +141,8 @@ export class OptionInputDto {
 }
 
 export class ReplaceOptionsDto {
+  @ApiProperty({ description: 'The revision this edit is based on' }) @IsInt() @Min(0) revision!: number;
+
   @ApiProperty({ type: [OptionInputDto] })
   @IsArray()
   @ArrayMaxSize(50)
@@ -159,6 +166,8 @@ export class PickupPointInputDto {
 }
 
 export class ReplacePickupPointsDto {
+  @ApiProperty({ description: 'The revision this edit is based on' }) @IsInt() @Min(0) revision!: number;
+
   @ApiProperty({ type: [PickupPointInputDto] })
   @IsArray()
   @ArrayMaxSize(20)
@@ -209,6 +218,7 @@ export class ListingSummaryDto {
 
 export class ListingDto extends ListingSummaryDto {
   @ApiProperty({ enum: Fulfilment, enumName: 'Fulfilment' }) fulfilment!: Fulfilment;
+  @ApiProperty({ description: 'Send it back with edits (optimistic concurrency)' }) revision!: number;
   @ApiProperty() description!: string;
   @ApiProperty({ type: [String] }) images!: string[];
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) opensAt!: Date | null;

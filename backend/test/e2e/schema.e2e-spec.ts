@@ -44,6 +44,14 @@ describe('database constraints (hand-written migration SQL)', () => {
     ).rejects.toThrow(/listing_option_within_capacity/);
   });
 
+  it('a pickup point used by an order cannot be deleted, even bypassing the service', async () => {
+    const listing = await createListing(prisma, { onePerEmail: false });
+    const point = await prisma.pickupPoint.create({ data: { listingId: listing.id, label: 'A', address: '1 Main St' } });
+    const order = await createFreeOrder(prisma, listing, 'amy@example.test');
+    await prisma.order.update({ where: { id: order.id }, data: { pickupPointId: point.id } });
+    await expect(prisma.pickupPoint.delete({ where: { id: point.id } })).rejects.toMatchObject({ code: 'P2003' });
+  });
+
   it('audit_log rejects UPDATE and DELETE', async () => {
     const admin = await createUser(prisma, { role: 'ADMIN' });
     const row = await prisma.auditLog.create({

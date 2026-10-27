@@ -7,12 +7,15 @@ import type { Listing } from '@/components/merchant/listing-editor/types';
 
 export { messages };
 
+// As a wrapper (not a parent element) so rerender() keeps the provider.
 export const renderWithIntl = (ui: ReactElement) =>
-  render(
-    <NextIntlClientProvider locale="en" messages={messages} timeZone={NZ_TIME_ZONE}>
-      {ui}
-    </NextIntlClientProvider>,
-  );
+  render(ui, {
+    wrapper: ({ children }) => (
+      <NextIntlClientProvider locale="en" messages={messages} timeZone={NZ_TIME_ZONE}>
+        {children}
+      </NextIntlClientProvider>
+    ),
+  });
 
 export function listingFixture(over: Partial<Listing> = {}): Listing {
   return {

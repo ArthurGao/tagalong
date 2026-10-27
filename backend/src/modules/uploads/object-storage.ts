@@ -4,6 +4,9 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 
+/** File names the upload endpoint issues: a random UUID and the extension for the declared type. */
+const ISSUED_FILE_NAME = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp)$/;
+
 export interface PresignedUpload {
   /** PUT the file here with the same Content-Type; the browser sends the signed Content-Length. */
   uploadUrl: string;
@@ -21,9 +24,25 @@ export abstract class ObjectStorage {
     return `listings/${merchantId}/${fileName}`;
   }
 
-  /** True for a URL this storage serves from the merchant's own image folder. */
+  /**
+   * True only for a URL of an image this storage issued to the merchant: same origin as the public base,
+   * no query or fragment, and a path (after URL normalisation, so "../" cannot escape) of exactly
+   * <base path>/listings/{merchantId}/{uuid}.{jpg|png|webp}.
+   */
   isMerchantImage(url: string, merchantId: string): boolean {
-    return this.configured && url.startsWith(`${this.publicBaseUrl}/${this.merchantImageKey(merchantId, '')}`);
+    if (!this.configured) return false;
+    let parsed: URL;
+    let base: URL;
+    try {
+      parsed = new URL(url);
+      base = new URL(this.publicBaseUrl);
+    } catch {
+      return false;
+    }
+    if (parsed.origin !== base.origin || parsed.search || parsed.hash || parsed.username || parsed.password) return false;
+    const folder = `${base.pathname.replace(/\/$/, '')}/${this.merchantImageKey(merchantId, '')}`;
+    if (!parsed.pathname.startsWith(folder)) return false;
+    return ISSUED_FILE_NAME.test(parsed.pathname.slice(folder.length));
   }
 }
 

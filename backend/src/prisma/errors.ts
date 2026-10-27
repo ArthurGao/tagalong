@@ -5,3 +5,6 @@ export const isUniqueViolation = (e: unknown): boolean =>
 
 export const isRecordNotFound = (e: unknown): boolean =>
   e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025';
+
+export const isForeignKeyViolation = (e: unknown): boolean =>
+  e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2003';

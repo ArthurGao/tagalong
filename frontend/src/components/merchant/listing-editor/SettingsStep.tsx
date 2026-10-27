@@ -64,6 +64,7 @@ export function SettingsStep({ listing, onSaved }: StepProps) {
       api.PATCH('/api/v1/merchants/me/listings/{id}', {
         params: { path: { id: listing.id } },
         body: {
+          revision: listing.revision,
           policyText: v.policyText,
           maxQtyPerOrder: Number(v.maxQtyPerOrder),
           totalCapacity: toIntOrNull(v.totalCapacity),

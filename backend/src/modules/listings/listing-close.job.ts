@@ -14,7 +14,7 @@ export class ListingCloseJob {
   async closeDue(now = new Date()): Promise<number> {
     const { count } = await this.prisma.listing.updateMany({
       where: { status: 'PUBLISHED', closesAt: { lte: now } },
-      data: { status: 'CLOSED', closedAt: now },
+      data: { status: 'CLOSED', closedAt: now, revision: { increment: 1 } },
     });
     if (count) this.logger.log(`listing-close: closed ${count} listing(s)`);
     return count;

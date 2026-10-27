@@ -200,7 +200,8 @@ PUBLISHED / CLOSED ──(商家取消 / admin 下架)──▶ CANCELLED（终�
 - **发布前检查**（D11/D12）：商家未停用；PAID 需 `chargesEnabled`；在售规格价格合规（FREE 全为 0，PAID 为 $1–$20,000）；至少一个在售规格；标题和退款政策非空；`closesAt` 若设置须在未来；PICKUP 至少一个取货点；SESSION / EVENT 每个在售规格都要有开始时间。缺项以 `VALIDATION_FAILED` 的 `details` 列出。
 - **创建时的默认值**：FREE 为 `onePerEmail` / `allowSelfCancel` 开、`maxQtyPerOrder=1`（上限 10）；PAID 为关、`maxQtyPerOrder=10`（上限 50）；SESSION / EVENT 的 `remindBeforeHours=24`；发布时若允许自助取消且未设截止时间，取最早场次开始前 2 小时。
 - **自动关闭**：`listing-close.job.ts` 每分钟扫描 `PUBLISHED` 且 `closesAt <= now` 的接龙，置为 `CLOSED`。公开页同时做前端倒计时，但以后端状态为准。
-- **CLOSED → PUBLISHED**：允许重新开放，商家可以顺便修改 `closesAt`；已有订单和序号不受影响。
+- **CLOSED → PUBLISHED**：允许重新开放（`reopen` 只接受 CLOSED，草稿必须走 `publish`），商家可以顺便修改 `closesAt`；重新开放时再跑一遍发布前检查（商家可能已被停用或 Stripe 收款被关闭）；已有订单和序号不受影响。
+- **并发**：同一条接龙的所有修改（编辑、规格/取货点替换、发布、截止、重开、自动截止任务）都在事务里锁住该行串行执行，并在锁住的快照上校验。编辑请求必须带上读到的 `revision`，服务端每次修改都让它加一；过期的请求返回 `LISTING_STALE`，避免两个页面互相覆盖（例如一边新增的规格被另一边的替换请求删掉）。
 - **CANCELLED** 是终态：取消会触发批量退款（PAID）或批量取消报名（FREE），见第 8.5 节；下架后的恢复（admin `restore`）只允许在没有执行退款或取消的情况下，恢复后状态为 `CLOSED`。
 - 取消或下架时，所有 `PENDING_PAYMENT` 订单立即 `EXPIRED`，并让对应的 Checkout 失效。
 
@@ -217,7 +218,7 @@ PUBLISHED / CLOSED ──(商家取消 / admin 下架)──▶ CANCELLED（终�
 | 新增 option | 可以 | |
 | `totalCapacity` | 可改 | 同样不能低于已售加预占的总数 |
 | `formFields` | 有订单后只能新增非必填字段 | 否则已有订单的答案会缺字段 |
-| `pickupPoints` | 可增，有订单引用的不能删（`PICKUP_POINT_HAS_ORDERS`） | 修改地址时为每个使用该取货点的订单写入一条 `PICKUP_POINT_CHANGED` 通知（Outbox，按订单 + 新地址去重） |
+| `pickupPoints` | 可增，有订单引用的不能删（`PICKUP_POINT_HAS_ORDERS`，由 `RESTRICT` 外键保证，无竞态） | 修改地址时为每个使用该取货点的订单写入一条 `PICKUP_POINT_CHANGED` 通知（Outbox，按订单 + 新地址去重） |
 
 ## 6. 订单状态机
 
@@ -395,7 +396,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - `POST /merchants/me/orders/:id/refund` {amountCents, reason}
 
 **上传 (Uploads)**
-- `POST /uploads/presign` {contentType, contentLength} → {uploadUrl, publicUrl}（S3 / R2 预签名 **PUT**，限 jpeg / png / webp，最大 5MB）。R2 不支持带 POST policy 的表单上传，所以把 `Content-Length` 一起签进 URL：实际上传大小与声明不符时签名失效，以此在服务端强制 5MB 上限。对象键为 `listings/{merchantId}/{uuid}.{ext}`；接龙的 `images` 只接受本商家前缀下的 URL（最多 9 张），不允许外链
+- `POST /uploads/presign` {contentType, contentLength} → {uploadUrl, publicUrl}（S3 / R2 预签名 **PUT**，限 jpeg / png / webp，最大 5MB）。R2 不支持带 POST policy 的表单上传，所以把 `Content-Length` 一起签进 URL：实际上传大小与声明不符时签名失效，以此在服务端强制 5MB 上限。对象键为 `listings/{merchantId}/{uuid}.{ext}`；接龙的 `images` 只接受本商家通过该接口拿到的 URL（最多 9 张）：解析并规范化后须与存储同源、不带查询串，路径恰好是 `listings/{merchantId}/{uuid}.{jpg|png|webp}`，`../` 之类无法绕过
 
 **公开接口 (Public)，无需登录**
 - `GET /public/listings/:shortCode`：返回接龙详情、各 option 的剩余数量、商家公开信息
@@ -518,7 +519,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - 公开首页 `/` 上的「商家登录」按钮链接到这里。
 - `/dashboard`：概览，以及待办事项（如未完成 Stripe 入驻）
 - `/dashboard/onboarding`、`/dashboard/onboarding/return`
-- `/dashboard/listings`、`/new`、`/[id]/edit`：编辑器分步骤进行：类型 → 内容 → 规格/场次 → 取货/地点 → 政策 → 预览发布
+- `/dashboard/listings`、`/new`、`/[id]/edit`：编辑器分步骤进行：类型 → 内容 → 规格/场次 → 取货/地点 → 政策 → 预览发布。时间输入一律按新西兰本地时间理解：夏令时开始时不存在的时间直接拒绝，结束时重复的一小时取较早的时刻，未改动的时间原样保留
 - `/dashboard/listings/[id]/orders`：订单列表，支持搜索、按状态筛选、一键核销、退款弹窗、导出 CSV、复制分享文案
 - `/dashboard/settings`：商家资料、Stripe Dashboard 链接（固定为 `https://dashboard.stripe.com/`）
 
@@ -678,6 +679,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 | `CAPACITY_BELOW_SOLD` | 409 | 容量改到低于已售 |
 | `OPTION_HAS_ORDERS` | 409 | 删除有订单的 option |
 | `PICKUP_POINT_HAS_ORDERS` | 409 | 删除有订单引用的取货点 |
+| `LISTING_STALE` | 409 | 接龙已被其他请求修改（提交的 `revision` 已过期），需刷新后重试 |
 | `SELF_CANCEL_WINDOW_PASSED` | 409 | 超过自助取消时间 |
 | `REFUND_EXCEEDS_TOTAL` | 409 | 退款超过可退金额 |
 | `PRICE_OUT_OF_RANGE` | 422 | 价格低于 $1 或超过上限 |

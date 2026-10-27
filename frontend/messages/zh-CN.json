@@ -35,6 +35,7 @@
     "CAPACITY_BELOW_SOLD": "容量不能低于已售出和已预留的数量。",
     "OPTION_HAS_ORDERS": "这个规格已有订单，请改为停用，不能删除。",
     "PICKUP_POINT_HAS_ORDERS": "已有订单使用这个取货点，不能删除；可以改为修改地址。",
+    "LISTING_STALE": "这条接龙在别处被修改过（其他页面或系统自动截止）。请刷新后再保存。",
     "SELF_CANCEL_WINDOW_PASSED": "已过自助取消截止时间，请联系商家。",
     "REFUND_EXCEEDS_TOTAL": "退款金额超过了剩余可退金额。",
     "PRICE_OUT_OF_RANGE": "价格需在 $1.00 到 $20,000.00 之间。",
@@ -165,7 +166,9 @@
       "notes": "备注",
       "add": "添加取货点",
       "remove": "删除",
-      "onsite": "现场类接龙使用各规格的地点，不需要取货点。"
+      "onsite": "现场类接龙使用各规格的地点，不需要取货点。",
+      "windowStart": "取货开始（新西兰时间）",
+      "windowEnd": "取货结束"
     },
     "formFields": {
       "title": "报名问题",
@@ -222,6 +225,7 @@
     },
     "pricingLabel": "定价方式",
     "typeLabel": "类型",
-    "fulfilmentLabel": "交付方式"
+    "fulfilmentLabel": "交付方式",
+    "timeInvalid": "这个时间在新西兰不存在（夏令时开始时跳过的一小时），请换一个时间。"
   }
 }

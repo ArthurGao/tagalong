@@ -171,6 +171,8 @@ model Listing {
   soldCount         Int           @default(0) @map("sold_count")
   reservedCount     Int           @default(0) @map("reserved_count")
   paidSeq           Int           @default(0) @map("paid_seq")
+  // Optimistic concurrency: every change bumps it; editors send the revision they saw (LISTING_STALE).
+  revision          Int           @default(0)
   indexable         Boolean       @default(false)
   showParticipants  Boolean       @default(true) @map("show_participants")
   formFields        Json          @default("[]") @map("form_fields")
@@ -273,7 +275,8 @@ model Order {
 
   listing     Listing       @relation(fields: [listingId], references: [id])
   merchant    Merchant      @relation(fields: [merchantId], references: [id])
-  pickupPoint PickupPoint?  @relation(fields: [pickupPointId], references: [id])
+  // RESTRICT: a pickup point that orders use can never be deleted (DESIGN §5b), even under a race.
+  pickupPoint PickupPoint?  @relation(fields: [pickupPointId], references: [id], onDelete: Restrict)
   items       OrderItem[]
   refunds     Refund[]
   refundTasks RefundTask[]

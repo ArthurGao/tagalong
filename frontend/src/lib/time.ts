@@ -34,14 +34,24 @@ export function isoToNzInput(iso: string | Date | null): string {
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 }
 
-/** "YYYY-MM-DDTHH:mm" typed as Auckland wall-clock time → UTC ISO string (whatever the browser's zone). */
+const HOUR = 60 * 60 * 1000;
+
+/**
+ * "YYYY-MM-DDTHH:mm" typed as Auckland wall-clock time → UTC ISO string (whatever the browser's zone).
+ * Auckland is UTC+12 or +13, so try both offsets and keep the ones that read back as the same wall time:
+ * none means the time does not exist (the spring-forward gap) → null; two means the autumn hour that
+ * repeats → the earlier instant.
+ */
 export function nzInputToIso(local: string): string | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(local);
   if (!m) return null;
   const asUtc = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
-  // Auckland's offset at that moment; the second pass settles instants near a DST switch.
-  const offsetAt = (t: number) => Date.parse(`${isoToNzInput(new Date(t))}:00Z`) - t;
-  let utc = asUtc - offsetAt(asUtc);
-  utc = asUtc - offsetAt(utc);
-  return new Date(utc).toISOString();
+  const match = [13, 12].map((offset) => asUtc - offset * HOUR).find((t) => isoToNzInput(new Date(t)) === local);
+  return match === undefined ? null : new Date(match).toISOString();
+}
+
+/** The instant to save for an input: an untouched value keeps its original instant (no DST drift). */
+export function instantForInput(original: string | null, input: string): string | null {
+  if (original !== null && isoToNzInput(original) === input) return new Date(original).toISOString();
+  return nzInputToIso(input);
 }

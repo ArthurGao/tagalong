@@ -278,7 +278,7 @@ export interface components {
         };
         ErrorBodyDto: {
             /** @enum {string} */
-            code: "VALIDATION_FAILED" | "TURNSTILE_FAILED" | "BAD_REQUEST" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "LISTING_NOT_PUBLISHED" | "LISTING_CLOSED" | "MERCHANT_SUSPENDED" | "MERCHANT_PROFILE_EXISTS" | "SLUG_TAKEN" | "MERCHANT_NOT_CHARGEABLE" | "SOLD_OUT" | "ALREADY_REGISTERED" | "QTY_EXCEEDS_LIMIT" | "INVALID_STATE_TRANSITION" | "FIELD_LOCKED_AFTER_PUBLISH" | "CAPACITY_BELOW_SOLD" | "OPTION_HAS_ORDERS" | "PICKUP_POINT_HAS_ORDERS" | "SELF_CANCEL_WINDOW_PASSED" | "REFUND_EXCEEDS_TOTAL" | "PRICE_OUT_OF_RANGE" | "RATE_LIMITED" | "STRIPE_ERROR" | "INTERNAL";
+            code: "VALIDATION_FAILED" | "TURNSTILE_FAILED" | "BAD_REQUEST" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "LISTING_NOT_PUBLISHED" | "LISTING_CLOSED" | "MERCHANT_SUSPENDED" | "MERCHANT_PROFILE_EXISTS" | "SLUG_TAKEN" | "MERCHANT_NOT_CHARGEABLE" | "SOLD_OUT" | "ALREADY_REGISTERED" | "QTY_EXCEEDS_LIMIT" | "INVALID_STATE_TRANSITION" | "FIELD_LOCKED_AFTER_PUBLISH" | "CAPACITY_BELOW_SOLD" | "OPTION_HAS_ORDERS" | "PICKUP_POINT_HAS_ORDERS" | "LISTING_STALE" | "SELF_CANCEL_WINDOW_PASSED" | "REFUND_EXCEEDS_TOTAL" | "PRICE_OUT_OF_RANGE" | "RATE_LIMITED" | "STRIPE_ERROR" | "INTERNAL";
             message: string;
             details?: Record<string, never>;
         };
@@ -383,6 +383,8 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
             fulfilment: components["schemas"]["Fulfilment"];
+            /** @description Send it back with edits (optimistic concurrency) */
+            revision: number;
             description: string;
             images: string[];
             /** Format: date-time */
@@ -412,6 +414,8 @@ export interface components {
             type?: components["schemas"]["ListingType"];
             fulfilment?: components["schemas"]["Fulfilment"];
             title?: string;
+            /** @description The revision this edit is based on; a newer one on the server → LISTING_STALE */
+            revision: number;
             /** @description Markdown */
             description?: string;
             images?: string[];
@@ -447,6 +451,8 @@ export interface components {
             active: boolean;
         };
         ReplaceOptionsDto: {
+            /** @description The revision this edit is based on */
+            revision: number;
             options: components["schemas"]["OptionInputDto"][];
         };
         PickupPointInputDto: {
@@ -460,6 +466,8 @@ export interface components {
             notes?: string | null;
         };
         ReplacePickupPointsDto: {
+            /** @description The revision this edit is based on */
+            revision: number;
             pickupPoints: components["schemas"]["PickupPointInputDto"][];
         };
         ReopenListingDto: {

@@ -957,6 +957,7 @@
               "CAPACITY_BELOW_SOLD",
               "OPTION_HAS_ORDERS",
               "PICKUP_POINT_HAS_ORDERS",
+              "LISTING_STALE",
               "SELF_CANCEL_WINDOW_PASSED",
               "REFUND_EXCEEDS_TOTAL",
               "PRICE_OUT_OF_RANGE",
@@ -1374,6 +1375,10 @@
               }
             ]
           },
+          "revision": {
+            "type": "number",
+            "description": "Send it back with edits (optimistic concurrency)"
+          },
           "description": {
             "type": "string"
           },
@@ -1466,6 +1471,7 @@
           "closesAt",
           "createdAt",
           "fulfilment",
+          "revision",
           "description",
           "images",
           "opensAt",
@@ -1512,6 +1518,10 @@
           },
           "title": {
             "type": "string"
+          },
+          "revision": {
+            "type": "number",
+            "description": "The revision this edit is based on; a newer one on the server → LISTING_STALE"
           },
           "description": {
             "type": "string",
@@ -1570,7 +1580,10 @@
           "policyText": {
             "type": "string"
           }
-        }
+        },
+        "required": [
+          "revision"
+        ]
       },
       "OptionInputDto": {
         "type": "object",
@@ -1619,6 +1632,10 @@
       "ReplaceOptionsDto": {
         "type": "object",
         "properties": {
+          "revision": {
+            "type": "number",
+            "description": "The revision this edit is based on"
+          },
           "options": {
             "type": "array",
             "items": {
@@ -1627,6 +1644,7 @@
           }
         },
         "required": [
+          "revision",
           "options"
         ]
       },
@@ -1665,6 +1683,10 @@
       "ReplacePickupPointsDto": {
         "type": "object",
         "properties": {
+          "revision": {
+            "type": "number",
+            "description": "The revision this edit is based on"
+          },
           "pickupPoints": {
             "type": "array",
             "items": {
@@ -1673,6 +1695,7 @@
           }
         },
         "required": [
+          "revision",
           "pickupPoints"
         ]
       },

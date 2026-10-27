@@ -17,7 +17,10 @@ export function PublishStep({ listing, onSaved }: StepProps) {
   const tMissing = useTranslations('listings.missing');
   const locale = useLocale();
   const save = useSave();
+  const tListings = useTranslations('listings');
   const [reopenUntil, setReopenUntil] = useState('');
+  const reopenAt = reopenUntil ? nzInputToIso(reopenUntil) : null;
+  const reopenInvalid = Boolean(reopenUntil) && reopenAt === null; // a time skipped by daylight saving
   const path = { params: { path: { id: listing.id } } };
   const shareUrl = `${typeof window === 'undefined' ? '' : window.location.origin}/l/${listing.shortCode}`;
   const missing = save.details.filter((d) => MISSING_KEYS.includes(d));
@@ -63,16 +66,27 @@ export function PublishStep({ listing, onSaved }: StepProps) {
           <p>{t('closed')}</p>
           <div className="flex flex-col gap-1">
             <Label htmlFor="reopenUntil">{t('reopenUntil')}</Label>
-            <Input id="reopenUntil" type="datetime-local" value={reopenUntil} onChange={(e) => setReopenUntil(e.target.value)} />
+            <Input
+              id="reopenUntil"
+              type="datetime-local"
+              value={reopenUntil}
+              aria-invalid={reopenInvalid}
+              onChange={(e) => setReopenUntil(e.target.value)}
+            />
+            {reopenInvalid && (
+              <p role="alert" className="text-sm text-destructive">
+                {tListings('timeInvalid')}
+              </p>
+            )}
           </div>
           <Button
             className="self-start"
-            disabled={save.saving}
+            disabled={save.saving || reopenInvalid}
             onClick={() =>
               act(() =>
                 api.POST('/api/v1/merchants/me/listings/{id}/reopen', {
                   ...path,
-                  body: reopenUntil ? { closesAt: nzInputToIso(reopenUntil) ?? undefined } : {},
+                  body: reopenAt ? { closesAt: reopenAt } : {},
                 }),
               )
             }

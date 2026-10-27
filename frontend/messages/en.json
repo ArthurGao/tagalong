@@ -35,6 +35,7 @@
     "CAPACITY_BELOW_SOLD": "Capacity cannot go below what is already sold or reserved.",
     "OPTION_HAS_ORDERS": "This option has orders. Turn it off instead of deleting it.",
     "PICKUP_POINT_HAS_ORDERS": "Orders use this pickup point. Keep it, or change its address instead.",
+    "LISTING_STALE": "This listing changed in another tab or by the system. Reload to see the latest, then save again.",
     "SELF_CANCEL_WINDOW_PASSED": "The self-cancel deadline has passed. Contact the seller.",
     "REFUND_EXCEEDS_TOTAL": "The refund is more than what can still be refunded.",
     "PRICE_OUT_OF_RANGE": "Prices must be between $1.00 and $20,000.00.",
@@ -165,7 +166,9 @@
       "notes": "Notes",
       "add": "Add pickup point",
       "remove": "Remove",
-      "onsite": "On-site listings use each option's location; no pickup points needed."
+      "onsite": "On-site listings use each option's location; no pickup points needed.",
+      "windowStart": "Pickup from (NZ time)",
+      "windowEnd": "Pickup until"
     },
     "formFields": {
       "title": "Sign-up questions",
@@ -222,6 +225,7 @@
     },
     "pricingLabel": "Pricing",
     "typeLabel": "Type",
-    "fulfilmentLabel": "Fulfilment"
+    "fulfilmentLabel": "Fulfilment",
+    "timeInvalid": "That time doesn't exist in New Zealand (daylight saving starts). Pick another."
   }
 }
