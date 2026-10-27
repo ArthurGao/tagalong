@@ -1,0 +1,10 @@
+// Models arrive in M1 (DESIGN §5). Conventions: backend/CLAUDE.md "Prisma conventions".
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}

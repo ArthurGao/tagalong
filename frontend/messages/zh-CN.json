@@ -1,0 +1,24 @@
+{
+  "public": {
+    "home": {
+      "title": "TagAlong",
+      "tagline": "发布接龙，分享链接，买家在线付款，无需注册。",
+      "sampleListing": "车厘子 2kg 接龙",
+      "sampleJoined": "已接龙 {count} 人",
+      "join": "接龙"
+    }
+  },
+  "dashboard": {
+    "home": {
+      "title": "我的接龙",
+      "empty": "还没有接龙。",
+      "create": "发布第一条接龙"
+    }
+  },
+  "admin": {
+    "home": {
+      "title": "概览",
+      "placeholder": "管理后台。商家、接龙、订单和审计日志将在 M8 实现。"
+    }
+  }
+}

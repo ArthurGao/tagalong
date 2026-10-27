@@ -1,0 +1,21 @@
+{
+  "name": "tagalong",
+  "private": true,
+  "packageManager": "pnpm@10.34.7",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c blue,green \"pnpm --filter backend dev\" \"pnpm --filter frontend dev\"",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "format": "prettier --write .",
+    "gen:api": "pnpm --filter backend openapi:export && pnpm --filter frontend gen:types"
+  },
+  "devDependencies": {
+    "concurrently": "10.0.6",
+    "prettier": "3.9.10"
+  }
+}

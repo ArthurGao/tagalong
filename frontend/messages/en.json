@@ -1,0 +1,24 @@
+{
+  "public": {
+    "home": {
+      "title": "TagAlong",
+      "tagline": "Publish a group buy, share the link, buyers pay online. No account needed to join.",
+      "sampleListing": "Cherries 2kg group buy",
+      "sampleJoined": "{count} joined",
+      "join": "Join"
+    }
+  },
+  "dashboard": {
+    "home": {
+      "title": "My listings",
+      "empty": "No listings yet.",
+      "create": "Publish your first listing"
+    }
+  },
+  "admin": {
+    "home": {
+      "title": "Overview",
+      "placeholder": "Admin console. Merchants, listings, orders and the audit log arrive in M8."
+    }
+  }
+}

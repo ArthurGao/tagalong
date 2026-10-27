@@ -1,0 +1,5 @@
+pnpm-lock.yaml
+frontend/openapi.json
+frontend/src/lib/api/schema.d.ts
+**/CLAUDE.md
+docs/

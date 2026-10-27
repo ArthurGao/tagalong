@@ -1,0 +1,125 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/* Tokens per surface: docs/UI-STYLE.md. Components use the semantic names only, never raw colours. */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--ring);
+  --font-display: var(--surface-font-display);
+  --font-sans: var(--surface-font-body);
+  --font-mono: var(--surface-font-mono);
+}
+
+:root {
+  /* CJK falls back to system fonts on every surface; web CJK fonts are never loaded. */
+  --cjk-stack: 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --surface-font-mono: ui-monospace, monospace; /* admin overrides with IBM Plex Mono */
+}
+
+/* public — 集市报名单 (light only) */
+[data-surface='public'] {
+  --background: #f2f5ef; /* Leaf mist */
+  --card: #ffffff; /* Paper */
+  --card-foreground: #1a2b22;
+  --foreground: #1a2b22; /* Bush ink */
+  --primary: #c92a39; /* Pōhutukawa: join button + progress bar only */
+  --primary-foreground: #ffffff;
+  --warning: #f3c534; /* Kōwhai: low-stock hint only */
+  --warning-foreground: #1a2b22;
+  --muted: #e6ece2;
+  --muted-foreground: #4a5a50;
+  --destructive: #b42318;
+  --border: #d3dccf; /* Rule */
+  --ring: #1a2b22;
+  --radius: 14px;
+  --surface-font-display: var(--font-bricolage), var(--cjk-stack);
+  --surface-font-body: var(--font-figtree), var(--cjk-stack);
+  font-size: 17px;
+}
+
+/* merchant — 摊主账本 (light default, follows the system dark setting) */
+[data-surface='merchant'] {
+  --background: #f1f2ee; /* Shelf */
+  --card: #ffffff; /* Paper */
+  --card-foreground: #1a2b22;
+  --foreground: #1a2b22; /* Bush ink */
+  --primary: #1f6b4a; /* Fern */
+  --primary-foreground: #ffffff;
+  --warning: #a86a12; /* Status: pending */
+  --warning-foreground: #ffffff;
+  --muted: #e4e6e0;
+  --muted-foreground: #4f5a52;
+  --destructive: #b42318; /* Danger: destructive actions only */
+  --border: #d5d9d0;
+  --ring: #1f6b4a;
+  --radius: 8px;
+  --surface-font-display: var(--font-atkinson), var(--cjk-stack);
+  --surface-font-body: var(--font-atkinson), var(--cjk-stack);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  /* UI-STYLE.md gives no dark palette for merchant; provisional values derived from Bush ink. */
+  [data-surface='merchant'] {
+    --background: #121c17;
+    --card: #1a2620;
+    --card-foreground: #e4ebe6;
+    --foreground: #e4ebe6;
+    --primary: #3f9a72;
+    --muted: #22302a;
+    --muted-foreground: #a3b2a9;
+    --border: #2e3d35;
+    --ring: #3f9a72;
+  }
+}
+
+/* admin — 控制室 (dark only) */
+[data-surface='admin'] {
+  --background: #1a1f26; /* Slate deep */
+  --card: #232a33; /* Slate panel */
+  --card-foreground: #e2e7ec;
+  --foreground: #e2e7ec; /* Text */
+  --primary: #7aaef2; /* Link */
+  --primary-foreground: #1a1f26;
+  --warning: #e5a23a; /* Signal amber: risk flags */
+  --warning-foreground: #1a1f26;
+  --muted: #2a323c;
+  --muted-foreground: #93a0ad; /* Muted */
+  --destructive: #e5484d; /* Danger + production banner */
+  --border: #323b46; /* Line */
+  --ring: #7aaef2;
+  --radius: 4px;
+  --surface-font-display: var(--font-plex-sans), var(--cjk-stack);
+  --surface-font-body: var(--font-plex-sans), var(--cjk-stack);
+  --surface-font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 14px;
+  color-scheme: dark;
+}
+
+[data-surface] {
+  min-height: 100dvh;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--surface-font-body);
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
