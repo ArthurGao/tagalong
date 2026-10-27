@@ -275,6 +275,488 @@
           "stripe"
         ]
       }
+    },
+    "/api/v1/uploads/presign": {
+      "post": {
+        "operationId": "UploadsController_presign",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresignUploadDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresignedUploadDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "uploads"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/listings": {
+      "get": {
+        "operationId": "ListingsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ListingSummaryDto"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "listings"
+        ]
+      },
+      "post": {
+        "operationId": "ListingsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateListingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "listings"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/listings/{id}": {
+      "get": {
+        "operationId": "ListingsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "listings"
+        ]
+      },
+      "patch": {
+        "operationId": "ListingsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateListingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "listings"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/listings/{id}/options": {
+      "put": {
+        "operationId": "ListingsController_replaceOptions",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceOptionsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "listings"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/listings/{id}/pickup-points": {
+      "put": {
+        "operationId": "ListingsController_replacePickupPoints",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplacePickupPointsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "listings"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/listings/{id}/publish": {
+      "post": {
+        "operationId": "ListingsController_publish",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "listings"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/listings/{id}/close": {
+      "post": {
+        "operationId": "ListingsController_close",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "listings"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/listings/{id}/reopen": {
+      "post": {
+        "operationId": "ListingsController_reopen",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReopenListingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "listings"
+        ]
+      }
     }
   },
   "info": {
@@ -474,6 +956,7 @@
               "FIELD_LOCKED_AFTER_PUBLISH",
               "CAPACITY_BELOW_SOLD",
               "OPTION_HAS_ORDERS",
+              "PICKUP_POINT_HAS_ORDERS",
               "SELF_CANCEL_WINDOW_PASSED",
               "REFUND_EXCEEDS_TOTAL",
               "PRICE_OUT_OF_RANGE",
@@ -529,6 +1012,678 @@
         "required": [
           "url"
         ]
+      },
+      "PresignUploadDto": {
+        "type": "object",
+        "properties": {
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "image/webp"
+            ]
+          },
+          "contentLength": {
+            "type": "number",
+            "description": "File size in bytes; signed into the upload URL",
+            "maximum": 5242880
+          }
+        },
+        "required": [
+          "contentType",
+          "contentLength"
+        ]
+      },
+      "PresignedUploadDto": {
+        "type": "object",
+        "properties": {
+          "uploadUrl": {
+            "type": "string"
+          },
+          "publicUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uploadUrl",
+          "publicUrl"
+        ]
+      },
+      "ListingStatus": {
+        "type": "string",
+        "enum": [
+          "DRAFT",
+          "PUBLISHED",
+          "CLOSED",
+          "CANCELLED"
+        ]
+      },
+      "Pricing": {
+        "type": "string",
+        "enum": [
+          "FREE",
+          "PAID"
+        ]
+      },
+      "ListingType": {
+        "type": "string",
+        "enum": [
+          "RETAIL",
+          "SESSION",
+          "EVENT"
+        ]
+      },
+      "ListingSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "shortCode": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingStatus"
+              }
+            ]
+          },
+          "pricing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Pricing"
+              }
+            ]
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingType"
+              }
+            ]
+          },
+          "soldCount": {
+            "type": "number"
+          },
+          "totalCapacity": {
+            "type": "number",
+            "nullable": true
+          },
+          "closesAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "shortCode",
+          "title",
+          "status",
+          "pricing",
+          "type",
+          "soldCount",
+          "totalCapacity",
+          "closesAt",
+          "createdAt"
+        ]
+      },
+      "Fulfilment": {
+        "type": "string",
+        "enum": [
+          "PICKUP",
+          "ONSITE"
+        ]
+      },
+      "CreateListingDto": {
+        "type": "object",
+        "properties": {
+          "pricing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Pricing"
+              }
+            ]
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingType"
+              }
+            ]
+          },
+          "fulfilment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Fulfilment"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pricing",
+          "type",
+          "fulfilment",
+          "title"
+        ]
+      },
+      "FormFieldDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "child_age"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "textarea",
+              "number",
+              "select",
+              "multiselect",
+              "checkbox"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "order",
+              "attendee"
+            ]
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "type",
+          "required",
+          "scope"
+        ]
+      },
+      "ListingOptionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "priceCents": {
+            "type": "number"
+          },
+          "capacity": {
+            "type": "number",
+            "nullable": true
+          },
+          "soldCount": {
+            "type": "number"
+          },
+          "reservedCount": {
+            "type": "number"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "location": {
+            "type": "string",
+            "nullable": true
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "priceCents",
+          "capacity",
+          "soldCount",
+          "reservedCount",
+          "startsAt",
+          "endsAt",
+          "location",
+          "sortOrder",
+          "active"
+        ]
+      },
+      "PickupPointDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "windowStart": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "windowEnd": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "address",
+          "windowStart",
+          "windowEnd",
+          "notes"
+        ]
+      },
+      "ListingDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "shortCode": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingStatus"
+              }
+            ]
+          },
+          "pricing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Pricing"
+              }
+            ]
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingType"
+              }
+            ]
+          },
+          "soldCount": {
+            "type": "number"
+          },
+          "totalCapacity": {
+            "type": "number",
+            "nullable": true
+          },
+          "closesAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "fulfilment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Fulfilment"
+              }
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "opensAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "maxQtyPerOrder": {
+            "type": "number"
+          },
+          "reservedCount": {
+            "type": "number"
+          },
+          "indexable": {
+            "type": "boolean"
+          },
+          "showParticipants": {
+            "type": "boolean"
+          },
+          "formFields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FormFieldDto"
+            }
+          },
+          "formFieldWarnings": {
+            "description": "Keys of form fields whose label asks for sensitive data (DESIGN §10)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "onePerEmail": {
+            "type": "boolean"
+          },
+          "allowSelfCancel": {
+            "type": "boolean"
+          },
+          "selfCancelUntil": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "remindBeforeHours": {
+            "type": "number",
+            "nullable": true
+          },
+          "policyText": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "closedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ListingOptionDto"
+            }
+          },
+          "pickupPoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PickupPointDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "shortCode",
+          "title",
+          "status",
+          "pricing",
+          "type",
+          "soldCount",
+          "totalCapacity",
+          "closesAt",
+          "createdAt",
+          "fulfilment",
+          "description",
+          "images",
+          "opensAt",
+          "maxQtyPerOrder",
+          "reservedCount",
+          "indexable",
+          "showParticipants",
+          "formFields",
+          "formFieldWarnings",
+          "onePerEmail",
+          "allowSelfCancel",
+          "selfCancelUntil",
+          "remindBeforeHours",
+          "policyText",
+          "publishedAt",
+          "closedAt",
+          "options",
+          "pickupPoints"
+        ]
+      },
+      "UpdateListingDto": {
+        "type": "object",
+        "properties": {
+          "pricing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Pricing"
+              }
+            ]
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingType"
+              }
+            ]
+          },
+          "fulfilment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Fulfilment"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "description": "Markdown"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "opensAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "closesAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "maxQtyPerOrder": {
+            "type": "number"
+          },
+          "totalCapacity": {
+            "type": "number",
+            "nullable": true
+          },
+          "indexable": {
+            "type": "boolean"
+          },
+          "showParticipants": {
+            "type": "boolean"
+          },
+          "formFields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FormFieldDto"
+            }
+          },
+          "onePerEmail": {
+            "type": "boolean"
+          },
+          "allowSelfCancel": {
+            "type": "boolean"
+          },
+          "selfCancelUntil": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "remindBeforeHours": {
+            "type": "number",
+            "nullable": true
+          },
+          "policyText": {
+            "type": "string"
+          }
+        }
+      },
+      "OptionInputDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Existing option id; omit to create"
+          },
+          "name": {
+            "type": "string"
+          },
+          "priceCents": {
+            "type": "number",
+            "description": "Integer NZD cents, GST inclusive"
+          },
+          "capacity": {
+            "type": "number",
+            "nullable": true,
+            "description": "null = unlimited"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "location": {
+            "type": "string",
+            "nullable": true
+          },
+          "active": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "priceCents",
+          "capacity",
+          "active"
+        ]
+      },
+      "ReplaceOptionsDto": {
+        "type": "object",
+        "properties": {
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OptionInputDto"
+            }
+          }
+        },
+        "required": [
+          "options"
+        ]
+      },
+      "PickupPointInputDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "windowStart": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "windowEnd": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "label",
+          "address"
+        ]
+      },
+      "ReplacePickupPointsDto": {
+        "type": "object",
+        "properties": {
+          "pickupPoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PickupPointInputDto"
+            }
+          }
+        },
+        "required": [
+          "pickupPoints"
+        ]
+      },
+      "ReopenListingDto": {
+        "type": "object",
+        "properties": {
+          "closesAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
       }
     }
   }

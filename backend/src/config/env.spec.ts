@@ -14,6 +14,10 @@ const clerk = {
   STRIPE_SECRET_KEY: 'sk_test_x',
   STRIPE_WEBHOOK_SECRET_CONNECT: 'whsec_c',
   STRIPE_WEBHOOK_SECRET_PLATFORM: 'whsec_p',
+  S3_BUCKET: 'b',
+  S3_ACCESS_KEY_ID: 'k',
+  S3_SECRET_ACCESS_KEY: 's',
+  S3_PUBLIC_BASE_URL: 'https://img.example',
 };
 
 describe('parseEnv', () => {
@@ -39,9 +43,9 @@ describe('parseEnv', () => {
     expect(parseEnv(valid)).toMatchObject({ CLERK_JWT_KEY: '', CLERK_AUTHORIZED_PARTIES: [], ADMIN_EMAIL_ALLOWLIST: [] });
   });
 
-  it('requires every Clerk and Stripe variable in production', () => {
+  it('requires every Clerk, Stripe and storage variable in production', () => {
     expect(() => parseEnv({ ...valid, NODE_ENV: 'production' })).toThrow(
-      'Invalid environment configuration: CLERK_SECRET_KEY, CLERK_JWT_KEY, CLERK_AUTHORIZED_PARTIES, CLERK_WEBHOOK_SIGNING_SECRET, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET_CONNECT, STRIPE_WEBHOOK_SECRET_PLATFORM',
+      'Invalid environment configuration: CLERK_SECRET_KEY, CLERK_JWT_KEY, CLERK_AUTHORIZED_PARTIES, CLERK_WEBHOOK_SIGNING_SECRET, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET_CONNECT, STRIPE_WEBHOOK_SECRET_PLATFORM, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_PUBLIC_BASE_URL',
     );
     expect(() => parseEnv({ ...valid, ...clerk, NODE_ENV: 'production' })).not.toThrow();
   });

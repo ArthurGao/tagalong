@@ -49,7 +49,7 @@ frontend/
 │   ├── components/
 │   │   ├── ui/                   # shadcn/ui (generated)
 │   │   ├── public/               # OptionPicker, SignUpSheet, RemainingBar, Countdown, BuyerForm, StickyBuyBar, WeChatBanner, PaymentConfirming
-│   │   ├── merchant/             # ListingEditor steps, LedgerList (check-off rows), RefundDrawer, ShareTextButton
+│   │   ├── merchant/             # listing-editor/ (ListingEditor + one component per step, use-save hook), ListingRows, LedgerList (check-off rows), RefundDrawer, ShareTextButton
 │   │   └── admin/                # DataTable, DetailDrawer, ConfirmWithReason, RiskFlag, MaskedPii, EnvBanner
 │   ├── lib/
 │   │   ├── api/                  # schema.d.ts (generated), client.ts (openapi-fetch), errors.ts (map error codes → i18n keys)
@@ -71,7 +71,8 @@ frontend/
   - Public listing pages are fetched server-side, with `revalidate: 10`.
   - The remaining-count and participant list refresh on the client every 15s, using TanStack Query with `refetchInterval`.
 - **Forms:** use react-hook-form with zod. Validation mirrors the backend DTOs, but the backend is the authority. Show backend error `code`s using the i18n mapping.
-- **Money:** display it only via `formatCents`, never by dividing inline. Never compute totals for submission; the backend computes them. A display-only subtotal is fine.
+- **Money:** display it only via `formatCents`, never by dividing inline. Price inputs are typed in dollars and converted with `dollarsToCents()` (string arithmetic) / `centsToDollarsInput()` in `lib/money.ts`.
+- **Times in inputs:** `datetime-local` values are Auckland wall-clock time; convert with `nzInputToIso()` / `isoToNzInput()` in `lib/time.ts`, whatever the browser's time zone. Never compute totals for submission; the backend computes them. A display-only subtotal is fine.
 - **Checkout:**
   - The `POST /public/listings/:shortCode/orders` request returns a `checkoutUrl`; redirect to it with `window.location.href = checkoutUrl`.
   - Handle `SOLD_OUT` by refreshing the options and showing a toast.
@@ -117,7 +118,8 @@ frontend/
 ## Testing
 
 - Component tests: Vitest + Testing Library in jsdom (`// @vitest-environment jsdom` at the top of the file), with `NextIntlClientProvider` + `messages/en.json` and the API client mocked (`vi.mock('@/lib/api/client')`). Examples: `components/merchant/ProfileForm.test.tsx`, `StripeButtons.test.tsx`. Planned: OptionPicker quantity limits, sold-out states, the masking display.
-- Client components that call the API catch transport errors (`try/catch` → `errors.INTERNAL`) so a dropped connection never leaves a button stuck.
+- Client components write through `useSave()` (`lib/api/use-save.ts`): it maps the error `code` (and network failures → `errors.INTERNAL`) to messages, exposes `code` / `details`, and never leaves a button stuck.
+- Component tests render with `renderWithIntl` and build listings with `listingFixture` from `src/test/render.tsx`.
 - e2e: Playwright, mobile viewport. The flow is: open listing → choose option → fill buyer form → (mocked) checkout redirect → order page.
 
 ## Commands

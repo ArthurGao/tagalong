@@ -26,6 +26,20 @@ export const getMerchantWithLiveStripe = cache(async () => {
   return data ?? null;
 });
 
+export const getMyListings = cache(async () => {
+  const { data } = await api.GET('/api/v1/merchants/me/listings', { headers: await authHeaders(), cache: 'no-store' });
+  return data ?? [];
+});
+
+export const getListing = cache(async (id: string) => {
+  const { data } = await api.GET('/api/v1/merchants/me/listings/{id}', {
+    params: { path: { id } },
+    headers: await authHeaders(),
+    cache: 'no-store',
+  });
+  return data ?? null;
+});
+
 // Page-level gates on the DB role (the proxy only checks for a session / the Clerk role claim).
 export async function requireMerchant(locale: string) {
   const me = await getMe();

@@ -54,6 +54,14 @@ backend/
 - `src/app.setup.ts` owns app creation: `APP_OPTIONS`, `createApp()` (main, OpenAPI export), `configureApp()` (also used by e2e), `buildOpenApiDocument()`.
 - Prisma 7 reads the database URL from `prisma.config.ts`, not from `schema.prisma`; the client is generated into `src/generated/prisma` (M1).
 
+## Listings and uploads
+
+- Pure rules live next to the module: `listing-state-machine.ts` (§5b transitions), `publish-rules.ts` (locked fields, capacity, option deletion, price ranges, publish checks, defaults), `form-fields.ts` (≤10 fields, sensitive-label warnings). The service only loads data and calls them.
+- Status changes use a conditional `updateMany` on the status that was validated, so a concurrent change (e.g. `listing-close.job.ts`) wins cleanly.
+- `listing-close.job.ts` is one conditional UPDATE every minute. Jobs know nothing about tests: `createTestApp` stops every registered cron after init, and tests call the job method (`closeDue()`) directly.
+- `ObjectStorage` (`modules/uploads/object-storage.ts`) presigns a PUT with `Content-Length` signed (R2 has no POST policies) and owns the key layout (`merchantImageKey`, `isMerchantImage`); e2e tests use `test/e2e/support/storage-fake.ts`.
+- `formFields` is a Json column: cross that boundary only through `readFormFields` / `toFormFieldsJson` in `form-fields.ts`.
+
 ## Security
 
 - `OriginGuard` (global `APP_GUARD`, `src/common/security/origin.guard.ts`): unsafe requests that carry cookies, and every `/public/` write, must send an `Origin` from `APP_URL` / `CLERK_AUTHORIZED_PARTIES`, or get 403.

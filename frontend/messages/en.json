@@ -8,13 +8,6 @@
       "join": "Join"
     }
   },
-  "dashboard": {
-    "home": {
-      "title": "My listings",
-      "empty": "No listings yet.",
-      "create": "Publish your first listing"
-    }
-  },
   "admin": {
     "home": {
       "title": "Overview",
@@ -41,6 +34,7 @@
     "FIELD_LOCKED_AFTER_PUBLISH": "This field cannot change after publishing.",
     "CAPACITY_BELOW_SOLD": "Capacity cannot go below what is already sold or reserved.",
     "OPTION_HAS_ORDERS": "This option has orders. Turn it off instead of deleting it.",
+    "PICKUP_POINT_HAS_ORDERS": "Orders use this pickup point. Keep it, or change its address instead.",
     "SELF_CANCEL_WINDOW_PASSED": "The self-cancel deadline has passed. Contact the seller.",
     "REFUND_EXCEEDS_TOTAL": "The refund is more than what can still be refunded.",
     "PRICE_OUT_OF_RANGE": "Prices must be between $1.00 and $20,000.00.",
@@ -93,5 +87,141 @@
     "expired": "That Stripe link expired. Start again.",
     "returnTitle": "Back from Stripe",
     "backToDashboard": "Back to listings"
+  },
+  "listings": {
+    "listTitle": "Listings",
+    "new": "New listing",
+    "empty": "No listings yet.",
+    "createFirst": "Publish your first listing",
+    "sold": "{sold} joined",
+    "soldOf": "{sold} / {capacity} joined",
+    "closes": "Closes {date}",
+    "status": {
+      "DRAFT": "Draft",
+      "PUBLISHED": "Live",
+      "CLOSED": "Closed",
+      "CANCELLED": "Cancelled"
+    },
+    "pricing": {
+      "PAID": "Paid",
+      "FREE": "Free"
+    },
+    "type": {
+      "RETAIL": "Goods",
+      "SESSION": "Class / session",
+      "EVENT": "Event"
+    },
+    "fulfilment": {
+      "PICKUP": "Pickup",
+      "ONSITE": "On site"
+    },
+    "newTitle": "New listing",
+    "newIntro": "Pricing, type and fulfilment cannot change after publishing.",
+    "pricingHint": "Free listings can be published without Stripe.",
+    "create": "Create draft",
+    "creating": "Creating…",
+    "steps": {
+      "content": "Content",
+      "options": "Options",
+      "pickup": "Pickup",
+      "settings": "Policy & settings",
+      "publish": "Publish"
+    },
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "locked": "Locked after publishing",
+    "fields": {
+      "title": "Title",
+      "description": "Description (Markdown)",
+      "closesAt": "Closes at (NZ time)",
+      "images": "Photos",
+      "policyText": "Refund / cancellation policy",
+      "maxQtyPerOrder": "Max per order",
+      "totalCapacity": "Total places across options (optional)",
+      "onePerEmail": "One registration per email",
+      "allowSelfCancel": "Buyers can cancel themselves",
+      "remindBeforeHours": "Reminder hours before start",
+      "indexable": "Let search engines index this page",
+      "showParticipants": "Show the sign-up list"
+    },
+    "options": {
+      "name": "Name",
+      "price": "Price (NZD)",
+      "free": "Free",
+      "capacity": "Places",
+      "unlimited": "Blank = unlimited",
+      "startsAt": "Starts (NZ time)",
+      "endsAt": "Ends",
+      "location": "Location",
+      "active": "On sale",
+      "add": "Add option",
+      "remove": "Remove",
+      "priceInvalid": "Enter a price like 39 or 39.50."
+    },
+    "pickup": {
+      "label": "Name",
+      "address": "Address",
+      "notes": "Notes",
+      "add": "Add pickup point",
+      "remove": "Remove",
+      "onsite": "On-site listings use each option's location; no pickup points needed."
+    },
+    "formFields": {
+      "title": "Sign-up questions",
+      "hint": "Only ask what the event needs. Never collect passport, IRD or bank numbers.",
+      "key": "Key",
+      "label": "Question",
+      "type": "Type",
+      "required": "Required",
+      "scope": "Asked",
+      "scopeOrder": "Once per order",
+      "scopeAttendee": "For each place",
+      "options": "Choices (comma separated)",
+      "add": "Add question",
+      "remove": "Remove",
+      "max": "Up to 10 questions.",
+      "sensitive": "This question looks like it asks for sensitive data: {labels}",
+      "types": {
+        "text": "Short text",
+        "textarea": "Long text",
+        "number": "Number",
+        "select": "Choose one",
+        "multiselect": "Choose several",
+        "checkbox": "Tick box"
+      }
+    },
+    "images": {
+      "add": "Add photo",
+      "uploading": "Uploading…",
+      "remove": "Remove",
+      "notConfigured": "Photo upload is not configured yet.",
+      "tooBig": "Photos must be JPEG, PNG or WebP up to 5 MB.",
+      "failed": "Upload failed. Try again."
+    },
+    "publish": {
+      "ready": "Ready to publish?",
+      "publish": "Publish",
+      "publishing": "Publishing…",
+      "close": "Close now",
+      "reopen": "Reopen",
+      "reopenUntil": "New closing time (optional)",
+      "missing": "Still needed: {items}",
+      "shareLink": "Share link",
+      "live": "Live since {date}",
+      "closed": "Closed",
+      "cancelled": "Cancelled"
+    },
+    "missing": {
+      "title": "title",
+      "policyText": "policy",
+      "options": "at least one option on sale",
+      "options.startsAt": "start times for every option",
+      "closesAt": "a closing time in the future",
+      "pickupPoints": "a pickup point"
+    },
+    "pricingLabel": "Pricing",
+    "typeLabel": "Type",
+    "fulfilmentLabel": "Fulfilment"
   }
 }

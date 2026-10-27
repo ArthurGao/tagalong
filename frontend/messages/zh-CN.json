@@ -8,13 +8,6 @@
       "join": "接龙"
     }
   },
-  "dashboard": {
-    "home": {
-      "title": "我的接龙",
-      "empty": "还没有接龙。",
-      "create": "发布第一条接龙"
-    }
-  },
   "admin": {
     "home": {
       "title": "概览",
@@ -41,6 +34,7 @@
     "FIELD_LOCKED_AFTER_PUBLISH": "发布后不能修改这个字段。",
     "CAPACITY_BELOW_SOLD": "容量不能低于已售出和已预留的数量。",
     "OPTION_HAS_ORDERS": "这个规格已有订单，请改为停用，不能删除。",
+    "PICKUP_POINT_HAS_ORDERS": "已有订单使用这个取货点，不能删除；可以改为修改地址。",
     "SELF_CANCEL_WINDOW_PASSED": "已过自助取消截止时间，请联系商家。",
     "REFUND_EXCEEDS_TOTAL": "退款金额超过了剩余可退金额。",
     "PRICE_OUT_OF_RANGE": "价格需在 $1.00 到 $20,000.00 之间。",
@@ -93,5 +87,141 @@
     "expired": "Stripe 链接已过期，请重新开始。",
     "returnTitle": "从 Stripe 返回",
     "backToDashboard": "返回我的接龙"
+  },
+  "listings": {
+    "listTitle": "我的接龙",
+    "new": "新建接龙",
+    "empty": "还没有接龙。",
+    "createFirst": "发布第一条接龙",
+    "sold": "已接龙 {sold} 人",
+    "soldOf": "已接龙 {sold} / {capacity}",
+    "closes": "{date} 截止",
+    "status": {
+      "DRAFT": "草稿",
+      "PUBLISHED": "进行中",
+      "CLOSED": "已截止",
+      "CANCELLED": "已取消"
+    },
+    "pricing": {
+      "PAID": "付费",
+      "FREE": "免费"
+    },
+    "type": {
+      "RETAIL": "商品",
+      "SESSION": "课程 / 场次",
+      "EVENT": "活动"
+    },
+    "fulfilment": {
+      "PICKUP": "自提",
+      "ONSITE": "现场"
+    },
+    "newTitle": "新建接龙",
+    "newIntro": "定价方式、类型和交付方式发布后不能修改。",
+    "pricingHint": "免费接龙不需要 Stripe 入驻就能发布。",
+    "create": "创建草稿",
+    "creating": "正在创建…",
+    "steps": {
+      "content": "内容",
+      "options": "规格 / 场次",
+      "pickup": "取货点",
+      "settings": "政策与设置",
+      "publish": "发布"
+    },
+    "save": "保存",
+    "saving": "正在保存…",
+    "saved": "已保存",
+    "locked": "发布后不能修改",
+    "fields": {
+      "title": "标题",
+      "description": "详情（支持 Markdown）",
+      "closesAt": "截止时间（新西兰时间）",
+      "images": "图片",
+      "policyText": "退款 / 取消政策",
+      "maxQtyPerOrder": "单笔上限",
+      "totalCapacity": "总名额（可选，所有规格合计）",
+      "onePerEmail": "每个邮箱只能报名一次",
+      "allowSelfCancel": "买家可以自助取消",
+      "remindBeforeHours": "开始前几小时提醒",
+      "indexable": "允许搜索引擎收录",
+      "showParticipants": "公开显示接龙名单"
+    },
+    "options": {
+      "name": "名称",
+      "price": "价格（NZD）",
+      "free": "免费",
+      "capacity": "名额",
+      "unlimited": "留空表示不限",
+      "startsAt": "开始（新西兰时间）",
+      "endsAt": "结束",
+      "location": "地点",
+      "active": "在售",
+      "add": "添加规格",
+      "remove": "删除",
+      "priceInvalid": "请输入价格，例如 39 或 39.50。"
+    },
+    "pickup": {
+      "label": "名称",
+      "address": "地址",
+      "notes": "备注",
+      "add": "添加取货点",
+      "remove": "删除",
+      "onsite": "现场类接龙使用各规格的地点，不需要取货点。"
+    },
+    "formFields": {
+      "title": "报名问题",
+      "hint": "只收集活动必需的信息，不要收集证件号、IRD 号、银行卡号等敏感信息。",
+      "key": "字段键",
+      "label": "问题",
+      "type": "类型",
+      "required": "必填",
+      "scope": "填写方式",
+      "scopeOrder": "每单一次",
+      "scopeAttendee": "每个名额一次",
+      "options": "选项（逗号分隔）",
+      "add": "添加问题",
+      "remove": "删除",
+      "max": "最多 10 个问题。",
+      "sensitive": "这些问题看起来在收集敏感信息：{labels}",
+      "types": {
+        "text": "短文本",
+        "textarea": "长文本",
+        "number": "数字",
+        "select": "单选",
+        "multiselect": "多选",
+        "checkbox": "勾选"
+      }
+    },
+    "images": {
+      "add": "添加图片",
+      "uploading": "正在上传…",
+      "remove": "删除",
+      "notConfigured": "图片上传尚未配置。",
+      "tooBig": "图片需为 JPEG、PNG 或 WebP，且不超过 5 MB。",
+      "failed": "上传失败，请重试。"
+    },
+    "publish": {
+      "ready": "准备发布？",
+      "publish": "发布接龙",
+      "publishing": "正在发布…",
+      "close": "立即截止",
+      "reopen": "重新开放",
+      "reopenUntil": "新的截止时间（可选）",
+      "missing": "还缺：{items}",
+      "shareLink": "分享链接",
+      "live": "{date} 起进行中",
+      "closed": "已截止",
+      "cancelled": "已取消"
+    },
+    "missing": {
+      "title": "标题",
+      "policyText": "退款政策",
+      "options": "至少一个在售规格",
+      "options.startsAt": "每个规格的开始时间",
+      "closesAt": "未来的截止时间",
+      "pickupPoints": "取货点"
+    },
+    "pricingLabel": "定价方式",
+    "typeLabel": "类型",
+    "fulfilmentLabel": "交付方式"
   }
 }

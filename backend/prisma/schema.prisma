@@ -282,6 +282,7 @@ model Order {
   @@index([listingId, status])
   @@index([status, reservationExpiresAt]) // expiry.job
   @@index([buyerEmail])
+  @@index([pickupPointId]) // pickup point edits look up the orders that use it
   @@map("order")
 }
 

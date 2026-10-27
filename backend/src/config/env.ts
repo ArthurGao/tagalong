@@ -29,6 +29,12 @@ export const envSchema = z
     STRIPE_SECRET_KEY: z.string().default(''),
     STRIPE_WEBHOOK_SECRET_CONNECT: z.string().default(''),
     STRIPE_WEBHOOK_SECRET_PLATFORM: z.string().default(''),
+    // Object storage (S3 or Cloudflare R2) for listing images; optional outside production.
+    S3_ENDPOINT: z.string().default(''),
+    S3_BUCKET: z.string().default(''),
+    S3_ACCESS_KEY_ID: z.string().default(''),
+    S3_SECRET_ACCESS_KEY: z.string().default(''),
+    S3_PUBLIC_BASE_URL: z.string().default(''),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== 'production') return;
@@ -40,6 +46,10 @@ export const envSchema = z
       STRIPE_SECRET_KEY: env.STRIPE_SECRET_KEY,
       STRIPE_WEBHOOK_SECRET_CONNECT: env.STRIPE_WEBHOOK_SECRET_CONNECT,
       STRIPE_WEBHOOK_SECRET_PLATFORM: env.STRIPE_WEBHOOK_SECRET_PLATFORM,
+      S3_BUCKET: env.S3_BUCKET,
+      S3_ACCESS_KEY_ID: env.S3_ACCESS_KEY_ID,
+      S3_SECRET_ACCESS_KEY: env.S3_SECRET_ACCESS_KEY,
+      S3_PUBLIC_BASE_URL: env.S3_PUBLIC_BASE_URL,
     };
     for (const [key, value] of Object.entries(required)) {
       if (!value) ctx.addIssue({ code: 'custom', path: [key], message: 'required in production' });

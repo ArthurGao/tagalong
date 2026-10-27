@@ -197,6 +197,8 @@ PUBLISHED / CLOSED ──(商家取消 / admin 下架)──▶ CANCELLED（终�
 ```
 
 - 所有状态变更只能经过 `ListingStateMachine.transition()`。
+- **发布前检查**（D11/D12）：商家未停用；PAID 需 `chargesEnabled`；在售规格价格合规（FREE 全为 0，PAID 为 $1–$20,000）；至少一个在售规格；标题和退款政策非空；`closesAt` 若设置须在未来；PICKUP 至少一个取货点；SESSION / EVENT 每个在售规格都要有开始时间。缺项以 `VALIDATION_FAILED` 的 `details` 列出。
+- **创建时的默认值**：FREE 为 `onePerEmail` / `allowSelfCancel` 开、`maxQtyPerOrder=1`（上限 10）；PAID 为关、`maxQtyPerOrder=10`（上限 50）；SESSION / EVENT 的 `remindBeforeHours=24`；发布时若允许自助取消且未设截止时间，取最早场次开始前 2 小时。
 - **自动关闭**：`listing-close.job.ts` 每分钟扫描 `PUBLISHED` 且 `closesAt <= now` 的接龙，置为 `CLOSED`。公开页同时做前端倒计时，但以后端状态为准。
 - **CLOSED → PUBLISHED**：允许重新开放，商家可以顺便修改 `closesAt`；已有订单和序号不受影响。
 - **CANCELLED** 是终态：取消会触发批量退款（PAID）或批量取消报名（FREE），见第 8.5 节；下架后的恢复（admin `restore`）只允许在没有执行退款或取消的情况下，恢复后状态为 `CLOSED`。
@@ -209,13 +211,13 @@ PUBLISHED / CLOSED ──(商家取消 / admin 下架)──▶ CANCELLED（终�
 | `title`, `description`, `images`, `policyText` | 可改 | 已付订单保留下单时的快照（`OrderItem.unitPriceCents` 等），不受影响 |
 | `closesAt` | 可改 | 可以延长或提前；提前到过去的时间等同于关闭 |
 | `pricing`, `type`, `fulfilment` | **不可改** | 会改变订单模型 |
-| option `priceCents` | 可改 | **只影响新订单**，已有订单按快照价格；改价会记录到 AuditLog |
+| option `priceCents` | 可改 | **只影响新订单**，已有订单按快照价格；改价会记录到 AuditLog（`LISTING_OPTION_PRICE_CHANGE`，含原价和新价） |
 | option `capacity` | 可改 | 不能低于 `soldCount + reservedCount`，否则返回 `CAPACITY_BELOW_SOLD` |
 | option 删除 | **不可删** | 只能 `active=false`；无任何订单的 option 可以真正删除 |
 | 新增 option | 可以 | |
 | `totalCapacity` | 可改 | 同样不能低于已售加预占的总数 |
 | `formFields` | 有订单后只能新增非必填字段 | 否则已有订单的答案会缺字段 |
-| `pickupPoints` | 可增，有订单引用的不能删 | 修改地址时要给已下单的买家发通知邮件 |
+| `pickupPoints` | 可增，有订单引用的不能删（`PICKUP_POINT_HAS_ORDERS`） | 修改地址时为每个使用该取货点的订单写入一条 `PICKUP_POINT_CHANGED` 通知（Outbox，按订单 + 新地址去重） |
 
 ## 6. 订单状态机
 
@@ -393,7 +395,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - `POST /merchants/me/orders/:id/refund` {amountCents, reason}
 
 **上传 (Uploads)**
-- `POST /uploads/presign` {contentType} → {uploadUrl, publicUrl}（S3 / R2 预签名 URL，限 jpeg / png / webp，最大 5MB）
+- `POST /uploads/presign` {contentType, contentLength} → {uploadUrl, publicUrl}（S3 / R2 预签名 **PUT**，限 jpeg / png / webp，最大 5MB）。R2 不支持带 POST policy 的表单上传，所以把 `Content-Length` 一起签进 URL：实际上传大小与声明不符时签名失效，以此在服务端强制 5MB 上限。对象键为 `listings/{merchantId}/{uuid}.{ext}`；接龙的 `images` 只接受本商家前缀下的 URL（最多 9 张），不允许外链
 
 **公开接口 (Public)，无需登录**
 - `GET /public/listings/:shortCode`：返回接龙详情、各 option 的剩余数量、商家公开信息
@@ -675,6 +677,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 | `FIELD_LOCKED_AFTER_PUBLISH` | 409 | 修改了发布后锁定的字段 |
 | `CAPACITY_BELOW_SOLD` | 409 | 容量改到低于已售 |
 | `OPTION_HAS_ORDERS` | 409 | 删除有订单的 option |
+| `PICKUP_POINT_HAS_ORDERS` | 409 | 删除有订单引用的取货点 |
 | `SELF_CANCEL_WINDOW_PASSED` | 409 | 超过自助取消时间 |
 | `REFUND_EXCEEDS_TOTAL` | 409 | 退款超过可退金额 |
 | `PRICE_OUT_OF_RANGE` | 422 | 价格低于 $1 或超过上限 |

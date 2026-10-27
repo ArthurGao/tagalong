@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { NextIntlClientProvider } from 'next-intl';
+import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import messages from '../../../messages/en.json';
+import { messages, renderWithIntl } from '@/test/render';
 import { ProfileForm } from './ProfileForm';
 
 // Boundaries: the typed API client and the Next router.
@@ -11,11 +10,7 @@ vi.mock('@/lib/api/client', () => ({ api: { POST: (...args: unknown[]) => post(.
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }) }));
 
 function fillAndSubmit() {
-  render(
-    <NextIntlClientProvider locale="en" messages={messages}>
-      <ProfileForm defaultEmail="a@example.test" />
-    </NextIntlClientProvider>,
-  );
+  renderWithIntl(<ProfileForm defaultEmail="a@example.test" />);
   const f = messages.onboarding.fields;
   fireEvent.change(screen.getByLabelText(f.slug), { target: { value: 'xiaolin-farm' } });
   fireEvent.change(screen.getByLabelText(f.displayName), { target: { value: 'Xiaolin' } });

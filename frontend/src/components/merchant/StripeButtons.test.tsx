@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { NextIntlClientProvider } from 'next-intl';
+import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import messages from '../../../messages/en.json';
+import { messages, renderWithIntl } from '@/test/render';
 import { StripeOnboardButton } from './StripeButtons';
 
 // Network boundary: the typed API client.
@@ -10,11 +9,7 @@ const post = vi.fn();
 vi.mock('@/lib/api/client', () => ({ api: { POST: (...args: unknown[]) => post(...args) } }));
 
 const renderButton = () =>
-  render(
-    <NextIntlClientProvider locale="en" messages={messages}>
-      <StripeOnboardButton label="start" />
-    </NextIntlClientProvider>,
-  );
+  renderWithIntl(<StripeOnboardButton label="start" />);
 
 describe('StripeOnboardButton', () => {
   afterEach(() => {

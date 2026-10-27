@@ -100,6 +100,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/uploads/presign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["UploadsController_presign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merchants/me/listings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ListingsController_list"];
+        put?: never;
+        post: operations["ListingsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merchants/me/listings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ListingsController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["ListingsController_update"];
+        trace?: never;
+    };
+    "/api/v1/merchants/me/listings/{id}/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["ListingsController_replaceOptions"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merchants/me/listings/{id}/pickup-points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["ListingsController_replacePickupPoints"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merchants/me/listings/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ListingsController_publish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merchants/me/listings/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ListingsController_close"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merchants/me/listings/{id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ListingsController_reopen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -150,7 +278,7 @@ export interface components {
         };
         ErrorBodyDto: {
             /** @enum {string} */
-            code: "VALIDATION_FAILED" | "TURNSTILE_FAILED" | "BAD_REQUEST" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "LISTING_NOT_PUBLISHED" | "LISTING_CLOSED" | "MERCHANT_SUSPENDED" | "MERCHANT_PROFILE_EXISTS" | "SLUG_TAKEN" | "MERCHANT_NOT_CHARGEABLE" | "SOLD_OUT" | "ALREADY_REGISTERED" | "QTY_EXCEEDS_LIMIT" | "INVALID_STATE_TRANSITION" | "FIELD_LOCKED_AFTER_PUBLISH" | "CAPACITY_BELOW_SOLD" | "OPTION_HAS_ORDERS" | "SELF_CANCEL_WINDOW_PASSED" | "REFUND_EXCEEDS_TOTAL" | "PRICE_OUT_OF_RANGE" | "RATE_LIMITED" | "STRIPE_ERROR" | "INTERNAL";
+            code: "VALIDATION_FAILED" | "TURNSTILE_FAILED" | "BAD_REQUEST" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "LISTING_NOT_PUBLISHED" | "LISTING_CLOSED" | "MERCHANT_SUSPENDED" | "MERCHANT_PROFILE_EXISTS" | "SLUG_TAKEN" | "MERCHANT_NOT_CHARGEABLE" | "SOLD_OUT" | "ALREADY_REGISTERED" | "QTY_EXCEEDS_LIMIT" | "INVALID_STATE_TRANSITION" | "FIELD_LOCKED_AFTER_PUBLISH" | "CAPACITY_BELOW_SOLD" | "OPTION_HAS_ORDERS" | "PICKUP_POINT_HAS_ORDERS" | "SELF_CANCEL_WINDOW_PASSED" | "REFUND_EXCEEDS_TOTAL" | "PRICE_OUT_OF_RANGE" | "RATE_LIMITED" | "STRIPE_ERROR" | "INTERNAL";
             message: string;
             details?: Record<string, never>;
         };
@@ -166,6 +294,177 @@ export interface components {
         };
         StripeLinkDto: {
             url: string;
+        };
+        PresignUploadDto: {
+            /** @enum {string} */
+            contentType: "image/jpeg" | "image/png" | "image/webp";
+            /** @description File size in bytes; signed into the upload URL */
+            contentLength: number;
+        };
+        PresignedUploadDto: {
+            uploadUrl: string;
+            publicUrl: string;
+        };
+        /** @enum {string} */
+        ListingStatus: "DRAFT" | "PUBLISHED" | "CLOSED" | "CANCELLED";
+        /** @enum {string} */
+        Pricing: "FREE" | "PAID";
+        /** @enum {string} */
+        ListingType: "RETAIL" | "SESSION" | "EVENT";
+        ListingSummaryDto: {
+            id: string;
+            shortCode: string;
+            title: string;
+            status: components["schemas"]["ListingStatus"];
+            pricing: components["schemas"]["Pricing"];
+            type: components["schemas"]["ListingType"];
+            soldCount: number;
+            totalCapacity: number | null;
+            /** Format: date-time */
+            closesAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @enum {string} */
+        Fulfilment: "PICKUP" | "ONSITE";
+        CreateListingDto: {
+            pricing: components["schemas"]["Pricing"];
+            type: components["schemas"]["ListingType"];
+            fulfilment: components["schemas"]["Fulfilment"];
+            title: string;
+        };
+        FormFieldDto: {
+            /** @example child_age */
+            key: string;
+            label: string;
+            /** @enum {string} */
+            type: "text" | "textarea" | "number" | "select" | "multiselect" | "checkbox";
+            required: boolean;
+            /** @enum {string} */
+            scope: "order" | "attendee";
+            options?: string[];
+        };
+        ListingOptionDto: {
+            id: string;
+            name: string;
+            priceCents: number;
+            capacity: number | null;
+            soldCount: number;
+            reservedCount: number;
+            /** Format: date-time */
+            startsAt: string | null;
+            /** Format: date-time */
+            endsAt: string | null;
+            location: string | null;
+            sortOrder: number;
+            active: boolean;
+        };
+        PickupPointDto: {
+            id: string;
+            label: string;
+            address: string;
+            /** Format: date-time */
+            windowStart: string | null;
+            /** Format: date-time */
+            windowEnd: string | null;
+            notes: string | null;
+        };
+        ListingDto: {
+            id: string;
+            shortCode: string;
+            title: string;
+            status: components["schemas"]["ListingStatus"];
+            pricing: components["schemas"]["Pricing"];
+            type: components["schemas"]["ListingType"];
+            soldCount: number;
+            totalCapacity: number | null;
+            /** Format: date-time */
+            closesAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            fulfilment: components["schemas"]["Fulfilment"];
+            description: string;
+            images: string[];
+            /** Format: date-time */
+            opensAt: string | null;
+            maxQtyPerOrder: number;
+            reservedCount: number;
+            indexable: boolean;
+            showParticipants: boolean;
+            formFields: components["schemas"]["FormFieldDto"][];
+            /** @description Keys of form fields whose label asks for sensitive data (DESIGN §10) */
+            formFieldWarnings: string[];
+            onePerEmail: boolean;
+            allowSelfCancel: boolean;
+            /** Format: date-time */
+            selfCancelUntil: string | null;
+            remindBeforeHours: number | null;
+            policyText: string;
+            /** Format: date-time */
+            publishedAt: string | null;
+            /** Format: date-time */
+            closedAt: string | null;
+            options: components["schemas"]["ListingOptionDto"][];
+            pickupPoints: components["schemas"]["PickupPointDto"][];
+        };
+        UpdateListingDto: {
+            pricing?: components["schemas"]["Pricing"];
+            type?: components["schemas"]["ListingType"];
+            fulfilment?: components["schemas"]["Fulfilment"];
+            title?: string;
+            /** @description Markdown */
+            description?: string;
+            images?: string[];
+            /** Format: date-time */
+            opensAt?: string | null;
+            /** Format: date-time */
+            closesAt?: string | null;
+            maxQtyPerOrder?: number;
+            totalCapacity?: number | null;
+            indexable?: boolean;
+            showParticipants?: boolean;
+            formFields?: components["schemas"]["FormFieldDto"][];
+            onePerEmail?: boolean;
+            allowSelfCancel?: boolean;
+            /** Format: date-time */
+            selfCancelUntil?: string | null;
+            remindBeforeHours?: number | null;
+            policyText?: string;
+        };
+        OptionInputDto: {
+            /** @description Existing option id; omit to create */
+            id?: string;
+            name: string;
+            /** @description Integer NZD cents, GST inclusive */
+            priceCents: number;
+            /** @description null = unlimited */
+            capacity: number | null;
+            /** Format: date-time */
+            startsAt?: string | null;
+            /** Format: date-time */
+            endsAt?: string | null;
+            location?: string | null;
+            active: boolean;
+        };
+        ReplaceOptionsDto: {
+            options: components["schemas"]["OptionInputDto"][];
+        };
+        PickupPointInputDto: {
+            id?: string;
+            label: string;
+            address: string;
+            /** Format: date-time */
+            windowStart?: string | null;
+            /** Format: date-time */
+            windowEnd?: string | null;
+            notes?: string | null;
+        };
+        ReplacePickupPointsDto: {
+            pickupPoints: components["schemas"]["PickupPointInputDto"][];
+        };
+        ReopenListingDto: {
+            /** Format: date-time */
+            closesAt?: string;
         };
     };
     responses: never;
@@ -376,6 +675,324 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MerchantDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    UploadsController_presign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresignUploadDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresignedUploadDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    ListingsController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingSummaryDto"][];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    ListingsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateListingDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    ListingsController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    ListingsController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateListingDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    ListingsController_replaceOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplaceOptionsDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    ListingsController_replacePickupPoints: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplacePickupPointsDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    ListingsController_publish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    ListingsController_close: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    ListingsController_reopen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReopenListingDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingDto"];
                 };
             };
             /** @description Error (code from DESIGN §17) */
