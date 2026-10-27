@@ -1,10 +1,407 @@
-// Models arrive in M1 (DESIGN §5). Conventions: backend/CLAUDE.md "Prisma conventions".
+// Data model: DESIGN §5. Conventions: backend/CLAUDE.md "Prisma conventions".
+// Constraints Prisma cannot express (partial unique indexes, CHECKs, the append-only audit trigger)
+// are hand-written at the end of the migration SQL.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum Role {
+  MERCHANT
+  ADMIN
+}
+
+enum AuditActorRole {
+  MERCHANT
+  ADMIN
+  SYSTEM // CLI and jobs
+}
+
+enum MerchantStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum ListingType {
+  RETAIL
+  SESSION
+  EVENT
+}
+
+enum Fulfilment {
+  PICKUP
+  ONSITE
+}
+
+enum ListingStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  CANCELLED
+}
+
+enum Pricing {
+  FREE
+  PAID
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  CONFIRMED
+  FULFILLED
+  EXPIRED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  NO_SHOW
+}
+
+enum RefundStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+enum CancellationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  COMPLETED_WITH_FAILURES
+}
+
+enum RefundTaskStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model User {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  email       String    @unique
+  role        Role      @default(MERCHANT)
+  clerkUserId String    @unique @map("clerk_user_id")
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  merchant      Merchant?
+  merchantNotes MerchantNote[]
+  cancellations ListingCancellation[]
+  auditLogs     AuditLog[]
+
+  @@map("user")
+}
+
+model Merchant {
+  id               String         @id @default(uuid(7)) @db.Uuid
+  ownerUserId      String         @unique @map("owner_user_id") @db.Uuid
+  slug             String         @unique
+  displayName      String         @map("display_name")
+  description      String?
+  logoUrl          String?        @map("logo_url")
+  contactEmail     String         @map("contact_email")
+  contactPhone     String         @map("contact_phone")
+  gstNumber        String?        @map("gst_number")
+  stripeAccountId  String?        @unique @map("stripe_account_id")
+  chargesEnabled   Boolean        @default(false) @map("charges_enabled")
+  payoutsEnabled   Boolean        @default(false) @map("payouts_enabled")
+  detailsSubmitted Boolean        @default(false) @map("details_submitted")
+  status           MerchantStatus @default(ACTIVE)
+  suspendedReason  String?        @map("suspended_reason")
+  suspendedAt      DateTime?      @map("suspended_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  owner    User           @relation(fields: [ownerUserId], references: [id])
+  listings Listing[]
+  orders   Order[]
+  notes    MerchantNote[]
+
+  @@map("merchant")
+}
+
+model MerchantNote {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  merchantId   String   @map("merchant_id") @db.Uuid
+  authorUserId String   @map("author_user_id") @db.Uuid
+  note         String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+  author   User     @relation(fields: [authorUserId], references: [id])
+
+  @@index([merchantId, createdAt])
+  @@map("merchant_note")
+}
+
+model Listing {
+  id                String        @id @default(uuid(7)) @db.Uuid
+  merchantId        String        @map("merchant_id") @db.Uuid
+  shortCode         String        @unique @map("short_code") @db.Char(8)
+  title             String
+  description       String
+  images            String[]
+  type              ListingType
+  fulfilment        Fulfilment
+  status            ListingStatus @default(DRAFT)
+  pricing           Pricing
+  opensAt           DateTime?     @map("opens_at")
+  closesAt          DateTime?     @map("closes_at")
+  maxQtyPerOrder    Int           @map("max_qty_per_order")
+  totalCapacity     Int?          @map("total_capacity")
+  soldCount         Int           @default(0) @map("sold_count")
+  reservedCount     Int           @default(0) @map("reserved_count")
+  paidSeq           Int           @default(0) @map("paid_seq")
+  indexable         Boolean       @default(false)
+  showParticipants  Boolean       @default(true) @map("show_participants")
+  formFields        Json          @default("[]") @map("form_fields")
+  onePerEmail       Boolean       @map("one_per_email")
+  allowSelfCancel   Boolean       @map("allow_self_cancel")
+  selfCancelUntil   DateTime?     @map("self_cancel_until")
+  remindBeforeHours Int?          @map("remind_before_hours")
+  policyText        String        @map("policy_text")
+  publishedAt       DateTime?     @map("published_at")
+  closedAt          DateTime?     @map("closed_at")
+  cancelledAt       DateTime?     @map("cancelled_at")
+  takenDownReason   String?       @map("taken_down_reason")
+  takenDownAt       DateTime?     @map("taken_down_at")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  merchant     Merchant             @relation(fields: [merchantId], references: [id])
+  options      ListingOption[]
+  pickupPoints PickupPoint[]
+  orders       Order[]
+  cancellation ListingCancellation?
+
+  @@index([merchantId])
+  @@index([status, closesAt]) // listing-close.job
+  @@map("listing")
+}
+
+model ListingOption {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  listingId     String    @map("listing_id") @db.Uuid
+  name          String
+  priceCents    Int       @map("price_cents")
+  capacity      Int?
+  soldCount     Int       @default(0) @map("sold_count")
+  reservedCount Int       @default(0) @map("reserved_count")
+  startsAt      DateTime? @map("starts_at")
+  endsAt        DateTime? @map("ends_at")
+  location      String?
+  sortOrder     Int       @default(0) @map("sort_order")
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  listing    Listing     @relation(fields: [listingId], references: [id])
+  orderItems OrderItem[]
+
+  @@index([listingId, sortOrder])
+  @@map("listing_option")
+}
+
+model PickupPoint {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  listingId   String    @map("listing_id") @db.Uuid
+  label       String
+  address     String
+  windowStart DateTime? @map("window_start")
+  windowEnd   DateTime? @map("window_end")
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  listing Listing @relation(fields: [listingId], references: [id])
+  orders  Order[]
+
+  @@index([listingId])
+  @@map("pickup_point")
+}
+
+model Order {
+  id                      String      @id @default(uuid(7)) @db.Uuid
+  publicCode              String      @unique @map("public_code")
+  accessToken             String      @map("access_token")
+  listingId               String      @map("listing_id") @db.Uuid
+  merchantId              String      @map("merchant_id") @db.Uuid
+  pickupPointId           String?     @map("pickup_point_id") @db.Uuid
+  buyerName               String      @map("buyer_name")
+  buyerEmail              String      @map("buyer_email")
+  buyerPhone              String      @map("buyer_phone")
+  buyerNote               String?     @map("buyer_note")
+  displayAnonymous        Boolean     @default(false) @map("display_anonymous")
+  formAnswers             Json        @default("{}") @map("form_answers")
+  isFree                  Boolean     @map("is_free")
+  onePerEmail             Boolean     @default(false) @map("one_per_email") // snapshot of listing.onePerEmail
+  idempotencyKey          String?     @unique @map("idempotency_key")
+  status                  OrderStatus
+  subtotalCents           Int         @map("subtotal_cents")
+  platformFeeCents        Int         @map("platform_fee_cents")
+  totalCents              Int         @map("total_cents")
+  refundedCents           Int         @default(0) @map("refunded_cents")
+  sequenceNo              Int?        @map("sequence_no")
+  stripeCheckoutSessionId String?     @unique @map("stripe_checkout_session_id")
+  stripePaymentIntentId   String?     @unique @map("stripe_payment_intent_id")
+  reservationExpiresAt    DateTime?   @map("reservation_expires_at") // paid orders only
+  paidAt                  DateTime?   @map("paid_at")
+  fulfilledAt             DateTime?   @map("fulfilled_at")
+  cancelledAt             DateTime?   @map("cancelled_at")
+  reminderSentAt          DateTime?   @map("reminder_sent_at")
+  createdAt               DateTime    @default(now()) @map("created_at")
+  updatedAt               DateTime    @updatedAt @map("updated_at")
+
+  listing     Listing       @relation(fields: [listingId], references: [id])
+  merchant    Merchant      @relation(fields: [merchantId], references: [id])
+  pickupPoint PickupPoint?  @relation(fields: [pickupPointId], references: [id])
+  items       OrderItem[]
+  refunds     Refund[]
+  refundTasks RefundTask[]
+
+  @@unique([listingId, sequenceNo])
+  @@index([listingId, status])
+  @@index([status, reservationExpiresAt]) // expiry.job
+  @@index([buyerEmail])
+  @@map("order")
+}
+
+model OrderItem {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  orderId         String   @map("order_id") @db.Uuid
+  optionId        String   @map("option_id") @db.Uuid
+  quantity        Int
+  unitPriceCents  Int      @map("unit_price_cents")
+  attendeeName    String?  @map("attendee_name")
+  attendeeAnswers Json     @default("[]") @map("attendee_answers")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  order  Order         @relation(fields: [orderId], references: [id])
+  option ListingOption @relation(fields: [optionId], references: [id])
+
+  @@index([orderId])
+  @@index([optionId])
+  @@map("order_item")
+}
+
+model Refund {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  orderId        String       @map("order_id") @db.Uuid
+  amountCents    Int          @map("amount_cents")
+  reason         String?
+  stripeRefundId String       @unique @map("stripe_refund_id")
+  status         RefundStatus
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+  @@map("refund")
+}
+
+model ListingCancellation {
+  id                String             @id @default(uuid(7)) @db.Uuid
+  listingId         String             @unique @map("listing_id") @db.Uuid
+  initiatedByUserId String             @map("initiated_by_user_id") @db.Uuid
+  reason            String
+  refundAll         Boolean            @map("refund_all")
+  status            CancellationStatus @default(PENDING)
+  totalOrders       Int                @default(0) @map("total_orders")
+  succeeded         Int                @default(0)
+  failed            Int                @default(0)
+  startedAt         DateTime?          @map("started_at")
+  finishedAt        DateTime?          @map("finished_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  listing     Listing      @relation(fields: [listingId], references: [id])
+  initiatedBy User         @relation(fields: [initiatedByUserId], references: [id])
+  tasks       RefundTask[]
+
+  @@map("listing_cancellation")
+}
+
+model RefundTask {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  cancellationId String           @map("cancellation_id") @db.Uuid
+  orderId        String           @map("order_id") @db.Uuid
+  amountCents    Int              @map("amount_cents")
+  status         RefundTaskStatus @default(PENDING)
+  attempts       Int              @default(0)
+  nextAttemptAt  DateTime         @default(now()) @map("next_attempt_at") // exponential backoff
+  lastError      String?          @map("last_error")
+  stripeRefundId String?          @map("stripe_refund_id")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  cancellation ListingCancellation @relation(fields: [cancellationId], references: [id])
+  order        Order               @relation(fields: [orderId], references: [id])
+
+  @@unique([cancellationId, orderId])
+  @@index([status, nextAttemptAt]) // refund.job
+  @@map("refund_task")
+}
+
+model NotificationOutbox {
+  id            String             @id @default(uuid(7)) @db.Uuid
+  type          String // ORDER_CONFIRMED, ORDER_REFUNDED, EVENT_REMINDER, ADMIN_SIGN_IN, ...
+  recipient     String
+  locale        String
+  payload       Json
+  status        NotificationStatus @default(PENDING)
+  attempts      Int                @default(0)
+  nextAttemptAt DateTime           @default(now()) @map("next_attempt_at")
+  lastError     String?            @map("last_error")
+  sentAt        DateTime?          @map("sent_at")
+  dedupeKey     String             @unique @map("dedupe_key")
+  createdAt     DateTime           @default(now()) @map("created_at")
+
+  @@index([status, nextAttemptAt]) // outbox.job
+  @@map("notification_outbox")
+}
+
+model StripeEvent {
+  id          String    @id // Stripe evt_...
+  type        String
+  account     String?
+  receivedAt  DateTime  @default(now()) @map("received_at")
+  processedAt DateTime? @map("processed_at")
+
+  @@map("stripe_event")
+}
+
+// Append-only (a trigger rejects UPDATE and DELETE); kept 7 years.
+model AuditLog {
+  id          String         @id @default(uuid(7)) @db.Uuid
+  actorUserId String?        @map("actor_user_id") @db.Uuid // null for SYSTEM (CLI, jobs)
+  actorRole   AuditActorRole @map("actor_role")
+  action      String // MERCHANT_SUSPEND, LISTING_TAKEDOWN, PII_REVEAL, REFUND_CREATE, ADMIN_SIGN_IN, ...
+  targetType  String         @map("target_type")
+  targetId    String         @map("target_id")
+  reason      String?
+  metadata    Json           @default("{}")
+  ip          String?
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([targetType, targetId])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_log")
 }

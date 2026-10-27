@@ -3,7 +3,10 @@ import { LoggerModule } from 'nestjs-pino';
 import { httpLoggerOptions } from './common/logging/http-logger.options.js';
 import { ConfigModule, ENV } from './config/config.module.js';
 import type { Env } from './config/env.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { MerchantsModule } from './modules/merchants/merchants.module.js';
+import { PrismaModule } from './prisma/prisma.module.js';
 
 @Module({
   imports: [
@@ -12,7 +15,10 @@ import { HealthModule } from './modules/health/health.module.js';
       inject: [ENV],
       useFactory: (env: Env) => ({ pinoHttp: httpLoggerOptions(env.NODE_ENV) }),
     }),
+    PrismaModule,
+    AuthModule,
     HealthModule,
+    MerchantsModule,
   ],
 })
 export class AppModule {}

@@ -20,5 +20,61 @@
       "title": "Overview",
       "placeholder": "Admin console. Merchants, listings, orders and the audit log arrive in M8."
     }
+  },
+  "errors": {
+    "VALIDATION_FAILED": "Some fields need fixing. Check the highlighted fields and try again.",
+    "TURNSTILE_FAILED": "The human check did not pass. Reload the page and try again.",
+    "BAD_REQUEST": "The request was rejected. Reload the page and try again.",
+    "UNAUTHENTICATED": "Your session has ended. Sign in again.",
+    "FORBIDDEN": "This account cannot do that.",
+    "NOT_FOUND": "Not found. Check the link.",
+    "LISTING_NOT_PUBLISHED": "This listing is not open yet.",
+    "LISTING_CLOSED": "This listing is closed.",
+    "MERCHANT_SUSPENDED": "This seller is paused. Orders are not being accepted.",
+    "MERCHANT_PROFILE_EXISTS": "This account already has a seller profile.",
+    "SLUG_TAKEN": "That link name is taken. Choose another.",
+    "MERCHANT_NOT_CHARGEABLE": "Finish Stripe setup before publishing a paid listing.",
+    "SOLD_OUT": "Not enough left. The remaining amounts have been refreshed.",
+    "ALREADY_REGISTERED": "This email is already registered. The confirmation email has been resent.",
+    "QTY_EXCEEDS_LIMIT": "That is more than one order allows. Lower the quantity.",
+    "INVALID_STATE_TRANSITION": "This changed in the meantime. Reload to see the latest state.",
+    "FIELD_LOCKED_AFTER_PUBLISH": "This field cannot change after publishing.",
+    "CAPACITY_BELOW_SOLD": "Capacity cannot go below what is already sold or reserved.",
+    "OPTION_HAS_ORDERS": "This option has orders. Turn it off instead of deleting it.",
+    "SELF_CANCEL_WINDOW_PASSED": "The self-cancel deadline has passed. Contact the seller.",
+    "REFUND_EXCEEDS_TOTAL": "The refund is more than what can still be refunded.",
+    "PRICE_OUT_OF_RANGE": "Prices must be between $1.00 and $20,000.00.",
+    "RATE_LIMITED": "Too many attempts. Wait a minute and try again.",
+    "STRIPE_ERROR": "Stripe did not respond. Try again in a moment.",
+    "INTERNAL": "Something went wrong on our side. Try again in a moment."
+  },
+  "auth": {
+    "signInTitle": "Seller sign in",
+    "signUpTitle": "Create a seller account",
+    "intro": "Publish a group buy in three minutes. Buyers pay online, no transfer screenshots to check.",
+    "notConfigured": "Sign-in is not configured yet. Set the Clerk keys in frontend/.env.local.",
+    "adminSignInTitle": "Admin sign in"
+  },
+  "onboarding": {
+    "title": "Set up your seller profile",
+    "intro": "Buyers see this on your listings. You can change everything except the link name later.",
+    "fields": {
+      "slug": "Link name",
+      "slugHint": "tagalong.nz/m/{slug} — lowercase letters, digits and hyphens, cannot change later",
+      "displayName": "Shop name",
+      "contactEmail": "Contact email",
+      "contactPhone": "Contact phone",
+      "gstNumber": "GST number (optional)",
+      "description": "About (optional)"
+    },
+    "validation": {
+      "slug": "Use 3-30 lowercase letters, digits or hyphens; no hyphen at the start or end.",
+      "required": "Required.",
+      "email": "Enter a valid email.",
+      "phone": "Enter a valid phone number.",
+      "gst": "Enter an NZ GST number, e.g. 123-456-789."
+    },
+    "submit": "Create profile",
+    "submitting": "Creating…"
   }
 }

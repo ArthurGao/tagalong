@@ -12,13 +12,20 @@
     "test:e2e": "vitest run --project e2e",
     "openapi:export": "nest build && node dist/openapi-export.js",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "postinstall": "prisma generate",
+    "prisma:deploy": "prisma migrate deploy",
+    "admin:grant": "nest build && node dist/cli/admin-role.js grant",
+    "admin:revoke": "nest build && node dist/cli/admin-role.js revoke"
   },
   "dependencies": {
+    "@clerk/backend": "3.26.3",
     "@nestjs/common": "12.2.0",
     "@nestjs/core": "12.2.0",
     "@nestjs/platform-express": "12.2.0",
     "@nestjs/swagger": "12.0.4",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
     "class-transformer": "0.5.1",
     "class-validator": "0.15.1",
     "cookie-parser": "1.4.7",
@@ -27,6 +34,7 @@
     "pino-http": "11.0.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
+    "svix": "2.9.1",
     "zod": "4.6.7"
   },
   "devDependencies": {
@@ -35,6 +43,7 @@
     "@nestjs/schematics": "12.0.10",
     "@nestjs/testing": "12.2.0",
     "@swc/core": "1.16.20",
+    "@testcontainers/postgresql": "12.2.1",
     "@types/cookie-parser": "1.4.10",
     "@types/express": "5.0.6",
     "@types/node": "22.20.5",

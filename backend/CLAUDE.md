@@ -17,7 +17,6 @@ backend/
 │   ├── prisma/                 # PrismaService, transaction helper
 │   ├── common/
 │   │   ├── errors/             # AppError(code, httpStatus), global exception filter → { code, message, details }
-│   │   ├── guards/             # JwtAuthGuard, MerchantGuard (owns resource), AdminGuard
 │   │   ├── money.ts            # cents helpers, fee calc (bps)
 │   │   ├── ids.ts              # shortCode, publicCode, accessToken generators (crypto)
 │   │   ├── mask.ts             # name masking (DESIGN §10)
@@ -25,7 +24,11 @@ backend/
 │   └── modules/
 │       ├── health/
 │       ├── auth/
-│       │   ├── clerk.guard.ts      # ClerkAuthGuard (verifyToken, networkless) → req.user
+│       │   ├── clerk.ts            # ClerkVerifier / ClerkAdminApi abstractions (DI tokens) + SDK implementations
+│       │   ├── clerk-auth.guard.ts # ClerkAuthGuard (verifyToken, networkless) → req.user
+│       │   ├── auth.decorator.ts   # @Auth(...roles) = ClerkAuthGuard + RolesGuard; @CurrentUser()
+│       │   ├── admin-role.service.ts        # backs the admin:grant / admin:revoke CLI (src/cli/admin-role.ts)
+│       │   ├── admin-sign-in.service.ts     # session.created → ADMIN_SIGN_IN audit + outbox alert per admin
 │       │   ├── roles.guard.ts      # @Roles('ADMIN') — reads role from DB, not from JWT
 │       │   ├── clerk-webhook.controller.ts  # svix-verified user.* and session.created
 │       │   └── user-sync.service.ts         # upsert by clerkUserId + mirror publicMetadata.role
@@ -39,7 +42,7 @@ backend/
 │       ├── uploads/            # S3/R2 presign
 │       └── admin/              # suspend merchant, take down listing
 └── test/
-    ├── e2e/                    # supertest (+ Testcontainers Postgres from M1), *.e2e-spec.ts
+    ├── e2e/                    # supertest + Testcontainers Postgres (support/global-setup.ts runs migrate deploy), *.e2e-spec.ts; files run serially and truncate between tests
     └── fixtures/
 ```
 
@@ -96,9 +99,11 @@ Merchants and admins share **one Clerk application** and are distinguished by ro
 - **Webhook:** `POST /webhooks/clerk` verifies the Svix signature (`CLERK_WEBHOOK_SIGNING_SECRET`) against the raw body. It handles:
   - `user.created`, `user.updated` and `user.deleted`, as idempotent upserts keyed by `clerkUserId`;
   - `session.created`: if the user is an ADMIN, write an `ADMIN_SIGN_IN` audit entry and email all admins.
-- **Role changes:** go only through the CLI (`src/cli/admin-grant.ts`, `src/cli/admin-revoke.ts`). The order is: check `ADMIN_EMAIL_ALLOWLIST` → update the DB → update Clerk `publicMetadata.role` → write AuditLog. There is no HTTP endpoint that changes roles.
+- **Role changes:** go only through the CLI (`src/cli/admin-role.ts`, via `pnpm admin:grant` / `admin:revoke`). The order is: check `ADMIN_EMAIL_ALLOWLIST` → update the DB → update Clerk `publicMetadata.role` → write AuditLog. There is no HTTP endpoint that changes roles.
 - **Metadata:** never read or write `unsafeMetadata` for anything security-related.
-- **Testing:** hide the Clerk SDK behind `ClerkVerifier` and `ClerkAdminApi` interfaces so tests can mock them. Never call Clerk in tests.
+- **Testing:** hide the Clerk SDK behind `ClerkVerifier` and `ClerkAdminApi` interfaces so tests can mock them. Never call Clerk in tests. e2e tests use `test/e2e/support/app.ts` (`createTestApp`), which swaps both for fakes; a fake session token is `valid:<clerkUserId>`.
+- **Env:** Clerk variables are required only when `NODE_ENV=production`; without `CLERK_JWT_KEY` every authenticated request gets 401, so local dev boots before keys exist.
+- **svix 2.x:** `Webhook.verify()` only checks the signature and returns `undefined`; parse the raw body yourself after it passes.
 - **Required tests:**
   - a merchant token gets 403 on every `/admin/*` route;
   - an admin token gets 403 on merchant-only write routes;
@@ -145,7 +150,10 @@ Merchants and admins share **one Clerk application** and are distinguished by ro
 
 ```bash
 pnpm dev                 # nest start --watch on :3810
-pnpm prisma:migrate      # prisma migrate dev
+pnpm prisma:migrate      # prisma migrate dev (local only)
+pnpm prisma:deploy       # prisma migrate deploy (CI, staging, production, e2e)
+pnpm admin:grant <email> # src/cli/admin-role.ts: DB role → Clerk publicMetadata → AuditLog; email must be in ADMIN_EMAIL_ALLOWLIST
+pnpm admin:revoke <email>
 pnpm prisma:seed
 pnpm test                # unit
 pnpm test:e2e
@@ -159,7 +167,7 @@ DATABASE_URL=postgresql://tagalong:tagalong@localhost:5442/tagalong
 APP_URL=http://localhost:3800
 CLERK_SECRET_KEY=
 CLERK_JWT_KEY=                # PEM public key from Clerk dashboard (networkless verification)
-CLERK_AUTHORIZED_PARTIES=http://localhost:3800
+CLERK_AUTHORIZED_PARTIES=http://localhost:3800,http://admin.localhost:3800
 CLERK_WEBHOOK_SIGNING_SECRET=
 ADMIN_EMAIL_ALLOWLIST=           # comma-separated
 STRIPE_SECRET_KEY=

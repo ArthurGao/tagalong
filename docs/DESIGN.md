@@ -79,6 +79,7 @@ Listing 1──0..1 ListingCancellation 1──* RefundTask
 NotificationOutbox (异步邮件)
 StripeEvent (webhook 幂等表)
 AuditLog (admin 与敏感操作留痕)
+Merchant 1──* MerchantNote (admin 内部备注)
 ```
 
 ### 5.1 实体字段（Prisma 实现参考）
@@ -139,6 +140,7 @@ AuditLog (admin 与敏感操作留痕)
 - 买家信息：`buyerName`, `buyerEmail`, `buyerPhone`, `buyerNote?`, `displayAnonymous` (bool)
 - `formAnswers` (json)：`scope=order` 的报名字段答案，属于 PII，任何公开接口都不能返回
 - `isFree` (bool)：下单时根据接龙的 `pricing` 写入，作为快照
+- `onePerEmail` (bool)：下单时复制接龙的 `onePerEmail`，作为快照；部分唯一索引需要它（索引条件不能引用 listing 表）
 - `idempotencyKey?` (unique)：客户端生成的 UUID，防止重复提交
 - `status`：`PENDING_PAYMENT | PAID | CONFIRMED | FULFILLED | EXPIRED | CANCELLED | REFUNDED | PARTIALLY_REFUNDED | NO_SHOW`，状态流转见第 6 节
 - 金额：`subtotalCents`, `platformFeeCents`, `totalCents`, `refundedCents`
@@ -179,6 +181,9 @@ AuditLog (admin 与敏感操作留痕)
 - 只允许追加，不能修改或删除
 
 **Merchant 补充字段**：`suspendedReason?`, `suspendedAt?`
+
+**MerchantNote**（admin 内部备注，`POST /admin/merchants/:id/notes`，仅管理员可见，只追加）
+- `id`, `merchantId`, `authorUserId`, `note`, `createdAt`
 **Listing 补充字段**：`takenDownReason?`, `takenDownAt?`（被下架的接龙状态为 `CANCELLED`，公开页显示「已下架」）
 
 ## 5b. 接龙状态机与发布后的修改规则
@@ -268,7 +273,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
    - 预占成功：订单转为 `PAID`
    - 预占失败：自动全额退款，并给买家发邮件说明
 6. **免费报名**：同样使用第 1 步的条件 UPDATE，只是改为直接对 `sold_count` 加 q（不经过 reserved），然后在同一事务中创建 `CONFIRMED` 订单并分配序号。
-   - 如果 `onePerEmail=true`，用部分唯一索引来保证：`UNIQUE (listing_id, lower(buyer_email)) WHERE status IN ('CONFIRMED','FULFILLED')`。
+   - 如果 `onePerEmail=true`，用部分唯一索引来保证：`UNIQUE (listing_id, lower(buyer_email)) WHERE one_per_email AND status IN ('CONFIRMED','FULFILLED')`。`one_per_email` 是订单上的快照字段；不带这个条件的话，`onePerEmail=false` 的接龙也会被拦住。
    - 冲突时返回 `409 ALREADY_REGISTERED`，并重新给该邮箱发送一次原报名的确认邮件（但**不在接口响应里透露**该邮箱已报名的任何信息）。
 7. 必须有一个并发测试：capacity=5，同时发起 50 个下单请求，最终售出数量必须恰好等于 5。
 
@@ -279,7 +284,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
    - 如果商家还没有 Stripe 账户，就调用 `accounts.create` 创建一个，参数为 country `NZ`，以及 controller 配置 `stripe_dashboard.type=full`, `fees.payer=account`, `losses.payments=stripe`, `requirement_collection=stripe`
    - 然后调用 `accountLinks.create` 生成入驻链接，并返回该 URL
 2. 前端跳转到 Stripe 完成入驻，完成后回到 `/dashboard/onboarding/return`。
-3. 收到 `account.updated` webhook 后，同步 `chargesEnabled`、`payoutsEnabled`、`detailsSubmitted` 三个字段；当 `chargesEnabled` 为 true 时，商家状态变为 `ACTIVE`。
+3. 收到 `account.updated` webhook 后，同步 `chargesEnabled`、`payoutsEnabled`、`detailsSubmitted` 三个字段；商家 `status` 不受影响（创建即 `ACTIVE`，只表示是否被平台停用）；能否收款只看 `chargesEnabled`。
 4. 发布 PAID 接龙要求商家 `status=ACTIVE` 且 `chargesEnabled=true`；发布 FREE 接龙只要求 `status=ACTIVE`。
 
 ### 8.2 收款
@@ -337,7 +342,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - **后端验证**：
   - 每个需要商家身份的请求，都由 `ClerkAuthGuard` 验证 Clerk 的会话 JWT
   - 用 `@clerk/backend` 的 `verifyToken`，配置 `CLERK_JWT_KEY` 公钥做本地验证，不需要每次请求 Clerk 的服务器
-  - 同时校验 `authorizedParties`（即 `azp` 字段，限定为主站域名）
+  - 同时校验 `authorizedParties`（即 `azp` 字段，限定为主站域名和 admin 域名，配置项 `CLERK_AUTHORIZED_PARTIES` 用逗号分隔）
 - **JWT 来源**：
   - 前端经由 Next.js rewrites 与后端同源，所以 Clerk 的 `__session` cookie 会自动带到 `/api`，后端优先读取这个 cookie
   - 同时也支持 `Authorization: Bearer <token>`，为将来的原生 App 预留
@@ -602,7 +607,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 |---|---|---|
 | M0 | 项目脚手架：pnpm workspace、backend（NestJS + Prisma）、frontend（Next.js + Tailwind + shadcn/ui，并按 UI-STYLE.md 搭好三个 surface 的变量和字体骨架）、docker-compose（postgres、mailpit）、ESLint/Prettier、CI | `pnpm dev` 能把两个应用都跑起来，`/api/v1/health` 返回 ok |
 | M1 | Prisma schema 与 migration（第 5 节）；接入 Clerk；**验证 Clerk 会话在 admin 子域名上的共享（第 13 节风险点），不通过就先改用主域名下的 `/admin` 路径**（前端组件和 middleware、后端 `ClerkAuthGuard` + `RolesGuard`、用户同步 webhook 和即时创建、`publicMetadata.role` 同步、`admin:grant` / `admin:revoke` CLI）；商家资料 | e2e 测试使用 mock 的 Clerk token 验证器：首次请求自动创建 User → 创建商家资料；webhook 签名错误时拒绝；重复的 webhook 只产生一次效果 |
-| M2 | Stripe Connect 入驻与 `account.updated` webhook | test mode 下完整走通入驻流程，商家状态变为 ACTIVE |
+| M2 | Stripe Connect 入驻与 `account.updated` webhook | test mode 下完整走通入驻流程，`chargesEnabled` 变为 true |
 | M3 | 接龙 CRUD、options、取货点、图片上传；接龙状态机（第 5b 节）、自动关闭任务、发布后修改规则、重新开放、`totalCapacity`、`indexable` | 商家可以完整发布一个接龙；修改规则的单元测试全部通过；到 `closesAt` 后 1 分钟内自动关闭 |
 | M4 | 公开接龙页、OG 图片、参与者列表（脱敏） | 链接分享到 WhatsApp 能显示预览卡片 |
 | M5 | 下单流程、库存预占（含 `totalCapacity`）、`Idempotency-Key`、Checkout、webhooks、过期扫描、边界情况自动退款、NotificationOutbox + outbox job、订单页「正在确认付款」轮询 | 并发测试通过；同一 key 重复提交只产生一个订单；邮件服务宕机时付款确认不丢失；完整走通 test mode 付款 |
@@ -636,6 +641,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 5. 免费接龙不产生平台收入。是否需要限制，例如免费接龙每月的报名人数上限，或者推出商家订阅制？
 6. Clerk Pro 的升级时间点：建议在接入真实资金之前升级，对 admin 开启 MFA。
 7. 用户条款、商家协议和隐私政策需要律师起草。平台定位是 marketplace，不是卖家；商家协议要包含合规声明、禁售品类、退款责任归属、平台下架权。
+8. **admin 子域名共享 Clerk 会话尚未实测**（M1 先用 mock 完成；拿到 Clerk Development 应用的 key 后验证，不通过则改用主域名下的 `/admin` 路径，见第 13 节）。
 
 **已拍板的产品规则（写进 FAQ）**
 - 买家修改数量：只能取消后重新下单。付费订单由商家做部分退款。
@@ -657,6 +663,8 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 | `LISTING_NOT_PUBLISHED` | 409 | 接龙不在 PUBLISHED 状态 |
 | `LISTING_CLOSED` | 409 | 已截止或已取消 |
 | `MERCHANT_SUSPENDED` | 409 | 商家已停用 |
+| `MERCHANT_PROFILE_EXISTS` | 409 | 该账号已经创建过商家资料 |
+| `SLUG_TAKEN` | 409 | 商家 slug 已被占用 |
 | `MERCHANT_NOT_CHARGEABLE` | 409 | 发布付费接龙但未完成 Stripe 入驻 |
 | `SOLD_OUT` | 409 | 库存或名额不足 |
 | `ALREADY_REGISTERED` | 409 | onePerEmail 冲突 |

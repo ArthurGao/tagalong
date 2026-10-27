@@ -5,9 +5,17 @@ const valid = {
   DATABASE_URL: 'postgresql://tagalong:tagalong@localhost:5442/tagalong',
 };
 
+const clerk = {
+  CLERK_SECRET_KEY: 'sk_test_x',
+  CLERK_JWT_KEY: '-----BEGIN PUBLIC KEY-----x',
+  CLERK_AUTHORIZED_PARTIES: 'http://localhost:3800, http://admin.localhost:3800',
+  CLERK_WEBHOOK_SIGNING_SECRET: 'whsec_x',
+  ADMIN_EMAIL_ALLOWLIST: 'Ops@TagAlong.nz, admin2@tagalong.nz',
+};
+
 describe('parseEnv', () => {
   it('applies defaults for PORT and NODE_ENV', () => {
-    expect(parseEnv(valid)).toEqual({ ...valid, PORT: 3810, NODE_ENV: 'development' });
+    expect(parseEnv(valid)).toMatchObject({ ...valid, PORT: 3810, NODE_ENV: 'development' });
   });
 
   it('coerces PORT from a string', () => {
@@ -16,5 +24,22 @@ describe('parseEnv', () => {
 
   it('fails fast and names every missing variable', () => {
     expect(() => parseEnv({})).toThrow('Invalid environment configuration: APP_URL, DATABASE_URL');
+  });
+
+  it('splits list variables and lower-cases the admin allowlist', () => {
+    const env = parseEnv({ ...valid, ...clerk });
+    expect(env.CLERK_AUTHORIZED_PARTIES).toEqual(['http://localhost:3800', 'http://admin.localhost:3800']);
+    expect(env.ADMIN_EMAIL_ALLOWLIST).toEqual(['ops@tagalong.nz', 'admin2@tagalong.nz']);
+  });
+
+  it('lets development run without Clerk keys', () => {
+    expect(parseEnv(valid)).toMatchObject({ CLERK_JWT_KEY: '', CLERK_AUTHORIZED_PARTIES: [], ADMIN_EMAIL_ALLOWLIST: [] });
+  });
+
+  it('requires every Clerk variable in production', () => {
+    expect(() => parseEnv({ ...valid, NODE_ENV: 'production' })).toThrow(
+      'Invalid environment configuration: CLERK_SECRET_KEY, CLERK_JWT_KEY, CLERK_AUTHORIZED_PARTIES, CLERK_WEBHOOK_SIGNING_SECRET',
+    );
+    expect(() => parseEnv({ ...valid, ...clerk, NODE_ENV: 'production' })).not.toThrow();
   });
 });

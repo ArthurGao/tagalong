@@ -1,6 +1,32 @@
 {
   "openapi": "3.0.0",
   "paths": {
+    "/api/v1/me": {
+      "get": {
+        "operationId": "MeController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "me"
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "HealthController_check",
@@ -21,6 +47,112 @@
           "health"
         ]
       }
+    },
+    "/api/v1/merchants": {
+      "post": {
+        "operationId": "MerchantsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMerchantDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "MERCHANT_PROFILE_EXISTS or SLUG_TAKEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "merchants"
+        ]
+      }
+    },
+    "/api/v1/merchants/me": {
+      "get": {
+        "operationId": "MerchantsController_getOwn",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "merchants"
+        ]
+      },
+      "patch": {
+        "operationId": "MerchantsController_updateOwn",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMerchantDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "merchants"
+        ]
+      }
     }
   },
   "info": {
@@ -33,6 +165,40 @@
   "servers": [],
   "components": {
     "schemas": {
+      "Role": {
+        "type": "string",
+        "enum": [
+          "MERCHANT",
+          "ADMIN"
+        ]
+      },
+      "MeDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Role"
+              }
+            ]
+          },
+          "hasMerchantProfile": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "hasMerchantProfile"
+        ]
+      },
       "HealthDto": {
         "type": "object",
         "properties": {
@@ -46,6 +212,185 @@
         "required": [
           "status"
         ]
+      },
+      "CreateMerchantDto": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "example": "xiaolin-farm"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "logoUrl": {
+            "type": "string"
+          },
+          "contactEmail": {
+            "type": "string"
+          },
+          "contactPhone": {
+            "type": "string",
+            "example": "+64 21 123 4567"
+          },
+          "gstNumber": {
+            "type": "string",
+            "example": "123-456-789"
+          }
+        },
+        "required": [
+          "slug",
+          "displayName",
+          "contactEmail",
+          "contactPhone"
+        ]
+      },
+      "MerchantStatus": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "SUSPENDED"
+        ]
+      },
+      "MerchantDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "contactEmail": {
+            "type": "string"
+          },
+          "contactPhone": {
+            "type": "string"
+          },
+          "gstNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MerchantStatus"
+              }
+            ]
+          },
+          "chargesEnabled": {
+            "type": "boolean"
+          },
+          "payoutsEnabled": {
+            "type": "boolean"
+          },
+          "detailsSubmitted": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "displayName",
+          "description",
+          "logoUrl",
+          "contactEmail",
+          "contactPhone",
+          "gstNumber",
+          "status",
+          "chargesEnabled",
+          "payoutsEnabled",
+          "detailsSubmitted",
+          "createdAt"
+        ]
+      },
+      "ErrorBodyDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "VALIDATION_FAILED",
+              "TURNSTILE_FAILED",
+              "BAD_REQUEST",
+              "UNAUTHENTICATED",
+              "FORBIDDEN",
+              "NOT_FOUND",
+              "LISTING_NOT_PUBLISHED",
+              "LISTING_CLOSED",
+              "MERCHANT_SUSPENDED",
+              "MERCHANT_PROFILE_EXISTS",
+              "SLUG_TAKEN",
+              "MERCHANT_NOT_CHARGEABLE",
+              "SOLD_OUT",
+              "ALREADY_REGISTERED",
+              "QTY_EXCEEDS_LIMIT",
+              "INVALID_STATE_TRANSITION",
+              "FIELD_LOCKED_AFTER_PUBLISH",
+              "CAPACITY_BELOW_SOLD",
+              "OPTION_HAS_ORDERS",
+              "SELF_CANCEL_WINDOW_PASSED",
+              "REFUND_EXCEEDS_TOTAL",
+              "PRICE_OUT_OF_RANGE",
+              "RATE_LIMITED",
+              "STRIPE_ERROR",
+              "INTERNAL"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "UpdateMerchantDto": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "logoUrl": {
+            "type": "string"
+          },
+          "contactEmail": {
+            "type": "string"
+          },
+          "contactPhone": {
+            "type": "string",
+            "example": "+64 21 123 4567"
+          },
+          "gstNumber": {
+            "type": "string",
+            "example": "123-456-789"
+          }
+        }
       }
     }
   }

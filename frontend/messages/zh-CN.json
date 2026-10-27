@@ -20,5 +20,61 @@
       "title": "概览",
       "placeholder": "管理后台。商家、接龙、订单和审计日志将在 M8 实现。"
     }
+  },
+  "errors": {
+    "VALIDATION_FAILED": "有字段需要修改，请检查标出的字段后重试。",
+    "TURNSTILE_FAILED": "人机验证未通过，请刷新页面后重试。",
+    "BAD_REQUEST": "请求被拒绝，请刷新页面后重试。",
+    "UNAUTHENTICATED": "登录已过期，请重新登录。",
+    "FORBIDDEN": "当前账号没有这个权限。",
+    "NOT_FOUND": "找不到内容，请检查链接。",
+    "LISTING_NOT_PUBLISHED": "这条接龙还没有开放。",
+    "LISTING_CLOSED": "这条接龙已截止。",
+    "MERCHANT_SUSPENDED": "该商家已暂停销售，暂不接受下单。",
+    "MERCHANT_PROFILE_EXISTS": "这个账号已经有商家资料了。",
+    "SLUG_TAKEN": "这个链接名已被占用，请换一个。",
+    "MERCHANT_NOT_CHARGEABLE": "发布付费接龙前，请先完成 Stripe 入驻。",
+    "SOLD_OUT": "剩余数量不足，已刷新最新余量。",
+    "ALREADY_REGISTERED": "该邮箱已报名，确认邮件已重新发送。",
+    "QTY_EXCEEDS_LIMIT": "超过单笔数量上限，请减少数量。",
+    "INVALID_STATE_TRANSITION": "状态已经变化，请刷新查看最新情况。",
+    "FIELD_LOCKED_AFTER_PUBLISH": "发布后不能修改这个字段。",
+    "CAPACITY_BELOW_SOLD": "容量不能低于已售出和已预留的数量。",
+    "OPTION_HAS_ORDERS": "这个规格已有订单，请改为停用，不能删除。",
+    "SELF_CANCEL_WINDOW_PASSED": "已过自助取消截止时间，请联系商家。",
+    "REFUND_EXCEEDS_TOTAL": "退款金额超过了剩余可退金额。",
+    "PRICE_OUT_OF_RANGE": "价格需在 $1.00 到 $20,000.00 之间。",
+    "RATE_LIMITED": "尝试次数过多，请稍等一分钟再试。",
+    "STRIPE_ERROR": "Stripe 暂时没有响应，请稍后再试。",
+    "INTERNAL": "系统出了点问题，请稍后再试。"
+  },
+  "auth": {
+    "signInTitle": "商家登录",
+    "signUpTitle": "注册商家账号",
+    "intro": "3 分钟发布一条接龙，买家在线付款，不用再核对转账截图。",
+    "notConfigured": "登录尚未配置。请在 frontend/.env.local 中设置 Clerk 的 key。",
+    "adminSignInTitle": "管理员登录"
+  },
+  "onboarding": {
+    "title": "填写商家资料",
+    "intro": "买家会在你的接龙页看到这些信息。除链接名外，之后都可以修改。",
+    "fields": {
+      "slug": "链接名",
+      "slugHint": "tagalong.nz/m/{slug}，只能用小写字母、数字和连字符，创建后不能修改",
+      "displayName": "店铺名称",
+      "contactEmail": "联系邮箱",
+      "contactPhone": "联系电话",
+      "gstNumber": "GST 号（选填）",
+      "description": "店铺介绍（选填）"
+    },
+    "validation": {
+      "slug": "请使用 3–30 位小写字母、数字或连字符，开头和结尾不能是连字符。",
+      "required": "必填。",
+      "email": "请输入有效的邮箱。",
+      "phone": "请输入有效的电话号码。",
+      "gst": "请输入新西兰 GST 号，例如 123-456-789。"
+    },
+    "submit": "创建资料",
+    "submitting": "正在创建…"
   }
 }

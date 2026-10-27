@@ -1,13 +1,20 @@
-import { Atkinson_Hyperlegible } from 'next/font/google';
 import type { ReactNode } from 'react';
+import { atkinson } from '@/components/merchant/fonts';
+import { SurfaceClerkProvider } from '@/lib/clerk';
 
-const atkinson = Atkinson_Hyperlegible({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-atkinson' });
-
-// Auth gate (role MERCHANT) arrives in M1.
-export default function DashboardLayout({ children }: { children: ReactNode }) {
+export default async function DashboardLayout({
+  children,
+  params,
+}: {
+  children: ReactNode;
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
   return (
-    <div data-surface="merchant" className={atkinson.variable}>
-      {children}
-    </div>
+    <SurfaceClerkProvider locale={locale}>
+      <div data-surface="merchant" className={atkinson.variable}>
+        {children}
+      </div>
+    </SurfaceClerkProvider>
   );
 }

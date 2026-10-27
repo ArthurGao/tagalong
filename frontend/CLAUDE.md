@@ -29,7 +29,7 @@ frontend/
 │   │       ├── login/[[...rest]]/page.tsx    # merchant login: Clerk <SignIn/> in merchant surface (ClerkProvider here + dashboard only)
 │   │       ├── sign-up/[[...rest]]/page.tsx  # Clerk <SignUp/>
 │   │       ├── dashboard/                    # data-surface="merchant"
-│   │       │   ├── layout.tsx                # auth gate (server-side /auth/me, role MERCHANT) + surface + fonts
+│   │       │   ├── layout.tsx                # auth gate (server-side GET /api/v1/me; no merchant profile → onboarding/profile) + surface + fonts
 │   │       │   ├── page.tsx
 │   │       │   ├── onboarding/{page,return/page}.tsx
 │   │       │   ├── listings/{page,new/page}.tsx
@@ -135,7 +135,6 @@ pnpm test:e2e
 ```
 BACKEND_URL=http://localhost:3810
 NEXT_PUBLIC_APP_URL=http://localhost:3800
-MAIN_HOST=localhost:3800
 ADMIN_HOST=admin.localhost:3800
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
 CLERK_SECRET_KEY=

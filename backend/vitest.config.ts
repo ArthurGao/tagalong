@@ -14,9 +14,17 @@ export default defineConfig({
           ...shared.test,
           name: 'e2e',
           include: ['test/**/*.e2e-spec.ts'],
+          // A Testcontainers Postgres per run; DATABASE_URL comes from globalSetup via inject().
+          globalSetup: ['test/e2e/support/global-setup.ts'],
+          setupFiles: ['test/e2e/support/setup-env.ts'],
+          hookTimeout: 120_000,
+          // Files share one database and truncate it between tests, so they must not overlap.
+          fileParallelism: false,
           env: {
             APP_URL: 'http://localhost:3800',
-            DATABASE_URL: 'postgresql://tagalong:tagalong@localhost:5442/tagalong',
+            // Test-only secret: base64 of "tagalong-e2e-webhook-secret".
+            CLERK_WEBHOOK_SIGNING_SECRET: 'whsec_dGFnYWxvbmctZTJlLXdlYmhvb2stc2VjcmV0',
+            ADMIN_EMAIL_ALLOWLIST: 'ops@tagalong.test',
           },
         },
       },

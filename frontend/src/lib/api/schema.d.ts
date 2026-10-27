@@ -4,6 +4,22 @@
  */
 
 export interface paths {
+    "/api/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MeController_me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -20,13 +36,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/merchants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["MerchantsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merchants/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MerchantsController_getOwn"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["MerchantsController_updateOwn"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        Role: "MERCHANT" | "ADMIN";
+        MeDto: {
+            id: string;
+            email: string;
+            role: components["schemas"]["Role"];
+            hasMerchantProfile: boolean;
+        };
         HealthDto: {
             /** @enum {string} */
             status: "ok";
+        };
+        CreateMerchantDto: {
+            /** @example xiaolin-farm */
+            slug: string;
+            displayName: string;
+            description?: string;
+            logoUrl?: string;
+            contactEmail: string;
+            /** @example +64 21 123 4567 */
+            contactPhone: string;
+            /** @example 123-456-789 */
+            gstNumber?: string;
+        };
+        /** @enum {string} */
+        MerchantStatus: "ACTIVE" | "SUSPENDED";
+        MerchantDto: {
+            id: string;
+            slug: string;
+            displayName: string;
+            description: string | null;
+            logoUrl: string | null;
+            contactEmail: string;
+            contactPhone: string;
+            gstNumber: string | null;
+            status: components["schemas"]["MerchantStatus"];
+            chargesEnabled: boolean;
+            payoutsEnabled: boolean;
+            detailsSubmitted: boolean;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ErrorBodyDto: {
+            /** @enum {string} */
+            code: "VALIDATION_FAILED" | "TURNSTILE_FAILED" | "BAD_REQUEST" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "LISTING_NOT_PUBLISHED" | "LISTING_CLOSED" | "MERCHANT_SUSPENDED" | "MERCHANT_PROFILE_EXISTS" | "SLUG_TAKEN" | "MERCHANT_NOT_CHARGEABLE" | "SOLD_OUT" | "ALREADY_REGISTERED" | "QTY_EXCEEDS_LIMIT" | "INVALID_STATE_TRANSITION" | "FIELD_LOCKED_AFTER_PUBLISH" | "CAPACITY_BELOW_SOLD" | "OPTION_HAS_ORDERS" | "SELF_CANCEL_WINDOW_PASSED" | "REFUND_EXCEEDS_TOTAL" | "PRICE_OUT_OF_RANGE" | "RATE_LIMITED" | "STRIPE_ERROR" | "INTERNAL";
+            message: string;
+            details?: Record<string, never>;
+        };
+        UpdateMerchantDto: {
+            displayName?: string;
+            description?: string;
+            logoUrl?: string;
+            contactEmail?: string;
+            /** @example +64 21 123 4567 */
+            contactPhone?: string;
+            /** @example 123-456-789 */
+            gstNumber?: string;
         };
     };
     responses: never;
@@ -37,6 +139,25 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    MeController_me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeDto"];
+                };
+            };
+        };
+    };
     HealthController_check: {
         parameters: {
             query?: never;
@@ -52,6 +173,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthDto"];
+                };
+            };
+        };
+    };
+    MerchantsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMerchantDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantDto"];
+                };
+            };
+            /** @description MERCHANT_PROFILE_EXISTS or SLUG_TAKEN */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    MerchantsController_getOwn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantDto"];
+                };
+            };
+        };
+    };
+    MerchantsController_updateOwn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMerchantDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantDto"];
                 };
             };
         };

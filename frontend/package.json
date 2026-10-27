@@ -12,6 +12,9 @@
     "gen:types": "openapi-typescript openapi.json -o src/lib/api/schema.d.ts"
   },
   "dependencies": {
+    "@clerk/localizations": "4.24.2",
+    "@clerk/nextjs": "7.9.21",
+    "@hookform/resolvers": "6.0.1",
     "@radix-ui/react-slot": "1.5.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
@@ -20,7 +23,9 @@
     "openapi-fetch": "0.17.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "tailwind-merge": "3.7.0"
+    "react-hook-form": "7.91.0",
+    "tailwind-merge": "3.7.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",
