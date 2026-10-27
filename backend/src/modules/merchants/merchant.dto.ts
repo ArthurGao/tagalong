@@ -56,6 +56,8 @@ export class MerchantDto {
   @ApiProperty() contactPhone!: string;
   @ApiProperty({ type: String, nullable: true }) gstNumber!: string | null;
   @ApiProperty({ enum: MerchantStatus, enumName: 'MerchantStatus' }) status!: MerchantStatus;
+  @ApiProperty({ description: 'A Stripe connected account exists (onboarding may still be incomplete)' })
+  stripeConnected!: boolean;
   @ApiProperty() chargesEnabled!: boolean;
   @ApiProperty() payoutsEnabled!: boolean;
   @ApiProperty() detailsSubmitted!: boolean;

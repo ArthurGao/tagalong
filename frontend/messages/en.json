@@ -76,5 +76,22 @@
     },
     "submit": "Create profile",
     "submitting": "Creating…"
+  },
+  "stripe": {
+    "todoTitle": "Connect Stripe to take payments",
+    "todoBody": "Free listings can be published now. Paid listings need Stripe onboarding first.",
+    "pendingTitle": "Stripe onboarding not finished",
+    "pendingBody": "Stripe still needs a few details before you can take payments.",
+    "start": "Connect Stripe",
+    "continue": "Continue on Stripe",
+    "starting": "Opening Stripe…",
+    "connectedTitle": "Stripe connected",
+    "connectedBody": "You can publish paid listings. Payments go straight to your Stripe account.",
+    "openDashboard": "Open Stripe Dashboard",
+    "onboardingTitle": "Connect Stripe",
+    "onboardingIntro": "Payments go straight to your own Stripe account. Stripe checks your identity and bank details, and you keep the full Stripe Dashboard for payouts and refunds.",
+    "expired": "That Stripe link expired. Start again.",
+    "returnTitle": "Back from Stripe",
+    "backToDashboard": "Back to listings"
   }
 }

@@ -42,6 +42,7 @@ describe('merchant profile', () => {
     expect(created.body).toMatchObject({
       ...profile,
       status: 'ACTIVE',
+      stripeConnected: false,
       chargesEnabled: false,
       description: null,
       gstNumber: null,

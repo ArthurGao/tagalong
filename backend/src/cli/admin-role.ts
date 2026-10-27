@@ -13,8 +13,12 @@ if ((action !== 'grant' && action !== 'revoke') || !email) {
 
 const app = await NestFactory.createApplicationContext(AppModule, { logger: ['warn', 'error'] });
 try {
-  await app.get(AdminRoleService)[action](email);
+  const { clerkSynced } = await app.get(AdminRoleService)[action](email);
   console.log(`${action === 'grant' ? 'Granted' : 'Revoked'} ADMIN for ${email}`);
+  if (!clerkSynced) {
+    console.error('Clerk publicMetadata was not updated (audited). Re-run the same command to retry the sync.');
+    process.exitCode = 1;
+  }
 } catch (e) {
   console.error(e instanceof Error ? e.message : e);
   process.exitCode = 1;

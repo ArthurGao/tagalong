@@ -15,6 +15,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -38,6 +48,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HealthDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
                 }
               }
             }
@@ -82,6 +102,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -105,6 +135,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MerchantDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
                 }
               }
             }
@@ -142,6 +182,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -151,6 +201,78 @@
         ],
         "tags": [
           "merchants"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/stripe/onboard": {
+      "post": {
+        "operationId": "MerchantStripeController_onboard",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StripeLinkDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "stripe"
+        ]
+      }
+    },
+    "/api/v1/merchants/me/stripe/status": {
+      "get": {
+        "operationId": "MerchantStripeController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "stripe"
         ]
       }
     }
@@ -292,6 +414,10 @@
               }
             ]
           },
+          "stripeConnected": {
+            "type": "boolean",
+            "description": "A Stripe connected account exists (onboarding may still be incomplete)"
+          },
           "chargesEnabled": {
             "type": "boolean"
           },
@@ -316,6 +442,7 @@
           "contactPhone",
           "gstNumber",
           "status",
+          "stripeConnected",
           "chargesEnabled",
           "payoutsEnabled",
           "detailsSubmitted",
@@ -391,6 +518,17 @@
             "example": "123-456-789"
           }
         }
+      },
+      "StripeLinkDto": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ]
       }
     }
   }

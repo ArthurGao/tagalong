@@ -17,6 +17,7 @@ export function toMerchantDto(m: Merchant): MerchantDto {
     contactPhone: m.contactPhone,
     gstNumber: m.gstNumber,
     status: m.status,
+    stripeConnected: m.stripeAccountId !== null,
     chargesEnabled: m.chargesEnabled,
     payoutsEnabled: m.payoutsEnabled,
     detailsSubmitted: m.detailsSubmitted,

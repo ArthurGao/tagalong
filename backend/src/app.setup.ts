@@ -1,12 +1,13 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { DocumentBuilder, type OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
+import { DocumentBuilder, getSchemaPath, type OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
+import { API_PREFIX } from './common/api-prefix.js';
 import { AllExceptionsFilter } from './common/errors/all-exceptions.filter.js';
+import { ErrorBodyDto } from './common/errors/error-body.dto.js';
 
-export const API_PREFIX = 'api/v1';
 
 // rawBody: Stripe and Clerk webhooks verify signatures against the raw request body.
 export const APP_OPTIONS = { rawBody: true, bufferLogs: true } as const;
@@ -28,5 +29,19 @@ export function configureApp<T extends INestApplication>(app: T): T {
 
 export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
   const config = new DocumentBuilder().setTitle('TagAlong API').setVersion('1').build();
-  return SwaggerModule.createDocument(app, config);
+  const document = SwaggerModule.createDocument(app, config, { extraModels: [ErrorBodyDto] });
+  // Every error goes through AllExceptionsFilter, so every operation can fail with ErrorBodyDto;
+  // declaring it once here types `error` for the generated frontend client.
+  const errorResponse = {
+    description: 'Error (code from DESIGN §17)',
+    content: { 'application/json': { schema: { $ref: getSchemaPath(ErrorBodyDto) } } },
+  };
+  for (const path of Object.values(document.paths)) {
+    for (const operation of Object.values(path)) {
+      if (operation && typeof operation === 'object' && 'responses' in operation) {
+        operation.responses.default ??= errorResponse;
+      }
+    }
+  }
+  return document;
 }

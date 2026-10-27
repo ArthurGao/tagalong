@@ -29,7 +29,8 @@ pnpm --filter backend prisma:migrate  # apply migrations
 pnpm dev                              # runs backend (:3810) and frontend (:3800) in parallel
 pnpm lint && pnpm typecheck && pnpm test
 pnpm gen:api                          # backend writes openapi.json → frontend regenerates src/lib/api/schema.d.ts
-stripe listen --forward-to localhost:3810/api/v1/webhooks/stripe/connect --forward-connect-to localhost:3810/api/v1/webhooks/stripe/connect
+stripe listen --forward-to localhost:3810/api/v1/webhooks/stripe/platform --forward-connect-to localhost:3810/api/v1/webhooks/stripe/connect
+# the CLI prints one whsec_… for both: put it in STRIPE_WEBHOOK_SECRET_PLATFORM and STRIPE_WEBHOOK_SECRET_CONNECT
 ```
 
 Keep these scripts working. If you add or change one, update this section.

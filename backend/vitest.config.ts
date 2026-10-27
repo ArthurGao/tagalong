@@ -25,6 +25,8 @@ export default defineConfig({
             // Test-only secret: base64 of "tagalong-e2e-webhook-secret".
             CLERK_WEBHOOK_SIGNING_SECRET: 'whsec_dGFnYWxvbmctZTJlLXdlYmhvb2stc2VjcmV0',
             ADMIN_EMAIL_ALLOWLIST: 'ops@tagalong.test',
+            STRIPE_WEBHOOK_SECRET_CONNECT: 'whsec_test_connect',
+            STRIPE_WEBHOOK_SECRET_PLATFORM: 'whsec_test_platform',
           },
         },
       },

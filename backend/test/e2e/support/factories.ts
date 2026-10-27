@@ -3,15 +3,25 @@ import type { PrismaClient } from '../../../src/generated/prisma/client.js';
 
 const short = () => randomUUID().replace(/-/g, '').slice(0, 8);
 
-export async function createUser(prisma: PrismaClient, data: { role?: 'MERCHANT' | 'ADMIN'; email?: string } = {}) {
+export async function createUser(
+  prisma: PrismaClient,
+  data: { role?: 'MERCHANT' | 'ADMIN'; email?: string; clerkUserId?: string } = {},
+) {
   const id = short();
   return prisma.user.create({
-    data: { email: data.email ?? `u-${id}@example.test`, clerkUserId: `user_${id}`, role: data.role ?? 'MERCHANT' },
+    data: {
+      email: data.email ?? `u-${id}@example.test`,
+      clerkUserId: data.clerkUserId ?? `user_${id}`,
+      role: data.role ?? 'MERCHANT',
+    },
   });
 }
 
-export async function createMerchant(prisma: PrismaClient) {
-  const owner = await createUser(prisma);
+export async function createMerchant(
+  prisma: PrismaClient,
+  data: { clerkUserId?: string; status?: 'ACTIVE' | 'SUSPENDED' } = {},
+) {
+  const owner = await createUser(prisma, { clerkUserId: data.clerkUserId });
   return prisma.merchant.create({
     data: {
       ownerUserId: owner.id,
@@ -19,6 +29,7 @@ export async function createMerchant(prisma: PrismaClient) {
       displayName: 'Test merchant',
       contactEmail: owner.email,
       contactPhone: '021000000',
+      status: data.status ?? 'ACTIVE',
     },
   });
 }

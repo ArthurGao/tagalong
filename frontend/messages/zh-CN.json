@@ -76,5 +76,22 @@
     },
     "submit": "创建资料",
     "submitting": "正在创建…"
+  },
+  "stripe": {
+    "todoTitle": "连接 Stripe 才能收款",
+    "todoBody": "免费接龙现在就可以发布；付费接龙需要先完成 Stripe 入驻。",
+    "pendingTitle": "Stripe 入驻还没完成",
+    "pendingBody": "Stripe 还需要补充一些资料，完成后才能收款。",
+    "start": "连接 Stripe",
+    "continue": "继续在 Stripe 填写",
+    "starting": "正在打开 Stripe…",
+    "connectedTitle": "Stripe 已连接",
+    "connectedBody": "现在可以发布付费接龙，款项直接进入你的 Stripe 账户。",
+    "openDashboard": "打开 Stripe 后台",
+    "onboardingTitle": "连接 Stripe",
+    "onboardingIntro": "款项直接进入你自己的 Stripe 账户。Stripe 负责核验身份和银行账户，你可以在完整的 Stripe 后台查看打款、处理退款。",
+    "expired": "Stripe 链接已过期，请重新开始。",
+    "returnTitle": "从 Stripe 返回",
+    "backToDashboard": "返回我的接龙"
   }
 }

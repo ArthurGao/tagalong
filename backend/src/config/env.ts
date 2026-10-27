@@ -25,6 +25,10 @@ export const envSchema = z
     CLERK_AUTHORIZED_PARTIES: list(),
     CLERK_WEBHOOK_SIGNING_SECRET: z.string().default(''),
     ADMIN_EMAIL_ALLOWLIST: list(true),
+    // Stripe (DESIGN §8): same rule, optional outside production; test keys only outside production.
+    STRIPE_SECRET_KEY: z.string().default(''),
+    STRIPE_WEBHOOK_SECRET_CONNECT: z.string().default(''),
+    STRIPE_WEBHOOK_SECRET_PLATFORM: z.string().default(''),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== 'production') return;
@@ -33,6 +37,9 @@ export const envSchema = z
       CLERK_JWT_KEY: env.CLERK_JWT_KEY,
       CLERK_AUTHORIZED_PARTIES: env.CLERK_AUTHORIZED_PARTIES.join(','),
       CLERK_WEBHOOK_SIGNING_SECRET: env.CLERK_WEBHOOK_SIGNING_SECRET,
+      STRIPE_SECRET_KEY: env.STRIPE_SECRET_KEY,
+      STRIPE_WEBHOOK_SECRET_CONNECT: env.STRIPE_WEBHOOK_SECRET_CONNECT,
+      STRIPE_WEBHOOK_SECRET_PLATFORM: env.STRIPE_WEBHOOK_SECRET_PLATFORM,
     };
     for (const [key, value] of Object.entries(required)) {
       if (!value) ctx.addIssue({ code: 'custom', path: [key], message: 'required in production' });

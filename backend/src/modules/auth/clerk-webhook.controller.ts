@@ -10,6 +10,7 @@ import { UserSyncService } from './user-sync.service.js';
 
 interface ClerkUserData {
   id: string;
+  updated_at: number; // ms since epoch
   primary_email_address_id: string | null;
   email_addresses: { id: string; email_address: string }[];
 }
@@ -41,9 +42,9 @@ export class ClerkWebhookController {
     switch (event.type) {
       case 'user.created':
       case 'user.updated': {
-        const { id, email_addresses, primary_email_address_id } = event.data;
+        const { id, email_addresses, primary_email_address_id, updated_at } = event.data;
         const email = email_addresses.find((e) => e.id === primary_email_address_id)?.email_address;
-        if (email) await this.users.upsertFromClerk(id, email);
+        if (email) await this.users.upsertFromClerk(id, email, new Date(updated_at));
         break;
       }
       case 'user.deleted':

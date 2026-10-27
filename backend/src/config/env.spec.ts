@@ -11,6 +11,9 @@ const clerk = {
   CLERK_AUTHORIZED_PARTIES: 'http://localhost:3800, http://admin.localhost:3800',
   CLERK_WEBHOOK_SIGNING_SECRET: 'whsec_x',
   ADMIN_EMAIL_ALLOWLIST: 'Ops@TagAlong.nz, admin2@tagalong.nz',
+  STRIPE_SECRET_KEY: 'sk_test_x',
+  STRIPE_WEBHOOK_SECRET_CONNECT: 'whsec_c',
+  STRIPE_WEBHOOK_SECRET_PLATFORM: 'whsec_p',
 };
 
 describe('parseEnv', () => {
@@ -36,9 +39,9 @@ describe('parseEnv', () => {
     expect(parseEnv(valid)).toMatchObject({ CLERK_JWT_KEY: '', CLERK_AUTHORIZED_PARTIES: [], ADMIN_EMAIL_ALLOWLIST: [] });
   });
 
-  it('requires every Clerk variable in production', () => {
+  it('requires every Clerk and Stripe variable in production', () => {
     expect(() => parseEnv({ ...valid, NODE_ENV: 'production' })).toThrow(
-      'Invalid environment configuration: CLERK_SECRET_KEY, CLERK_JWT_KEY, CLERK_AUTHORIZED_PARTIES, CLERK_WEBHOOK_SIGNING_SECRET',
+      'Invalid environment configuration: CLERK_SECRET_KEY, CLERK_JWT_KEY, CLERK_AUTHORIZED_PARTIES, CLERK_WEBHOOK_SIGNING_SECRET, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET_CONNECT, STRIPE_WEBHOOK_SECRET_PLATFORM',
     );
     expect(() => parseEnv({ ...valid, ...clerk, NODE_ENV: 'production' })).not.toThrow();
   });

@@ -54,6 +54,10 @@ backend/
 - `src/app.setup.ts` owns app creation: `APP_OPTIONS`, `createApp()` (main, OpenAPI export), `configureApp()` (also used by e2e), `buildOpenApiDocument()`.
 - Prisma 7 reads the database URL from `prisma.config.ts`, not from `schema.prisma`; the client is generated into `src/generated/prisma` (M1).
 
+## Security
+
+- `OriginGuard` (global `APP_GUARD`, `src/common/security/origin.guard.ts`): unsafe requests that carry cookies, and every `/public/` write, must send an `Origin` from `APP_URL` / `CLERK_AUTHORIZED_PARTIES`, or get 403.
+
 ## Prisma conventions
 
 - Models are `PascalCase`, tables and columns are `snake_case` via `@@map` / `@map`. Enums are `SCREAMING_SNAKE`.
@@ -74,11 +78,15 @@ backend/
 
 ## Stripe specifics
 
+- `StripeClient` (`src/modules/stripe/stripe-client.ts`) is the only place that touches the SDK; e2e tests override it with `test/e2e/support/stripe-fake.ts`, whose `signStripeEvent()` signs webhook bodies with the SDK's own HMAC helper.
+- Every SDK call goes through `callStripe()`, which turns Stripe errors into `502 STRIPE_ERROR` with `details.stripeCode`.
+- `syncAccount` holds a transaction-scoped advisory lock per account across the Stripe read and the write, so concurrent webhook/status syncs apply in order.
+- Connected accounts use the Standard controller set and the idempotency key `connect-account:{merchantId}`; `account.updated` and `GET …/stripe/status` re-read the live account (`syncAccount`) instead of trusting the payload, so out-of-order events are harmless.
 - Call `checkout.sessions.create`, `refunds.create` and `checkout.sessions.expire` with `{ stripeAccount }` (direct charges).
 - The webhook controller reads `req.rawBody` and verifies it with the correct secret (`STRIPE_WEBHOOK_SECRET_CONNECT` or `STRIPE_WEBHOOK_SECRET_PLATFORM`).
 - The dispatcher works in four steps:
   1. Insert the event into `StripeEvent` with `ON CONFLICT DO NOTHING`.
-  2. If it already exists → return 200.
+  2. If its `processedAt` is already set → return 200. (A row without `processedAt` is a previous attempt that threw; process it again.)
   3. Route the event by `type`.
   4. Set `processedAt`.
 - If a handler throws, return 500 so that Stripe retries.
@@ -99,7 +107,8 @@ Merchants and admins share **one Clerk application** and are distinguished by ro
 - **Webhook:** `POST /webhooks/clerk` verifies the Svix signature (`CLERK_WEBHOOK_SIGNING_SECRET`) against the raw body. It handles:
   - `user.created`, `user.updated` and `user.deleted`, as idempotent upserts keyed by `clerkUserId`;
   - `session.created`: if the user is an ADMIN, write an `ADMIN_SIGN_IN` audit entry and email all admins.
-- **Role changes:** go only through the CLI (`src/cli/admin-role.ts`, via `pnpm admin:grant` / `admin:revoke`). The order is: check `ADMIN_EMAIL_ALLOWLIST` → update the DB → update Clerk `publicMetadata.role` → write AuditLog. There is no HTTP endpoint that changes roles.
+- **User sync is order-tolerant:** `user.deleted` before the user exists leaves a deleted tombstone row; `user.*` events older than `User.clerkUpdatedAt` are ignored; email is unique among live users only (partial index), so a deleted account's email can sign up again.
+- **Role changes:** go only through the CLI (`src/cli/admin-role.ts`, via `pnpm admin:grant` / `admin:revoke`). The DB role and its AuditLog row commit in one transaction; the Clerk mirror runs after it and a failure is audited as `ADMIN_ROLE_CLERK_SYNC_FAILED` (re-run to retry). The order is: check `ADMIN_EMAIL_ALLOWLIST` → update the DB → update Clerk `publicMetadata.role` → write AuditLog. There is no HTTP endpoint that changes roles.
 - **Metadata:** never read or write `unsafeMetadata` for anything security-related.
 - **Testing:** hide the Clerk SDK behind `ClerkVerifier` and `ClerkAdminApi` interfaces so tests can mock them. Never call Clerk in tests. e2e tests use `test/e2e/support/app.ts` (`createTestApp`), which swaps both for fakes; a fake session token is `valid:<clerkUserId>`.
 - **Env:** Clerk variables are required only when `NODE_ENV=production`; without `CLERK_JWT_KEY` every authenticated request gets 401, so local dev boots before keys exist.

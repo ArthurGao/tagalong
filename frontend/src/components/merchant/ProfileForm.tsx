@@ -32,9 +32,16 @@ export function ProfileForm({ defaultEmail }: { defaultEmail: string }) {
 
   const onSubmit = handleSubmit(async ({ gstNumber, description, ...required }) => {
     setFormError(null);
-    const { error } = await api.POST('/api/v1/merchants', {
-      body: { ...required, ...(gstNumber ? { gstNumber } : {}), ...(description ? { description } : {}) },
-    });
+    let result;
+    try {
+      result = await api.POST('/api/v1/merchants', {
+        body: { ...required, ...(gstNumber ? { gstNumber } : {}), ...(description ? { description } : {}) },
+      });
+    } catch {
+      setFormError(tErrors('INTERNAL')); // network failure: no response body to map
+      return;
+    }
+    const { error } = result;
     if (!error) {
       router.replace(`/${locale}/dashboard`);
       router.refresh();

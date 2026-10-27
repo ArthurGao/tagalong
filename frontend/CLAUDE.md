@@ -116,7 +116,8 @@ frontend/
 
 ## Testing
 
-- Component tests: Vitest + Testing Library, covering OptionPicker quantity limits, sold-out states and the masking display.
+- Component tests: Vitest + Testing Library in jsdom (`// @vitest-environment jsdom` at the top of the file), with `NextIntlClientProvider` + `messages/en.json` and the API client mocked (`vi.mock('@/lib/api/client')`). Examples: `components/merchant/ProfileForm.test.tsx`, `StripeButtons.test.tsx`. Planned: OptionPicker quantity limits, sold-out states, the masking display.
+- Client components that call the API catch transport errors (`try/catch` → `errors.INTERNAL`) so a dropped connection never leaves a button stuck.
 - e2e: Playwright, mobile viewport. The flow is: open listing → choose option → fill buyer form → (mocked) checkout redirect → order page.
 
 ## Commands

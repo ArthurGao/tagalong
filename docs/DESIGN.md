@@ -66,7 +66,7 @@
 | D17 | **接龙取消的批量退款走异步任务**，逐笔记录结果 | 几十笔退款同步执行会超时，Stripe 也可能部分失败，必须可重试、可查看进度。 |
 | D13 | **商家和 admin 都使用同一个 Clerk 应用（免费的 Hobby 档）**，通过角色区分。Clerk 负责注册、登录、会话和 JWT 签发，后端只负责验证 JWT 并做角色授权。**买家不注册**（继续以访客身份下单） | 只维护一套登录体系，商家和管理员的登录体验一致。免费档每个应用含 50,000 MRU，只有商家和管理员占用配额。**代价**是免费档没有 MFA，而 admin 权限很高（可以停用商家、退款），所以在接入真实资金之前，**必须升级到 Pro 并对 admin 强制开启 MFA**（见第 10 节和第 16 节）。admin 使用 `admin.tagalong.nz` 子域名，与主站同一个根域名，可以直接共享 Clerk 会话，不需要付费的 satellite domain 功能。 |
 
-> ⚠️ Stripe Connect 账户的 `controller` 参数和 NZ 的可用性，请在实现时以 Stripe 官方文档为准进行核对。
+> ✅ 已核对（M2，Stripe 文档 `connect/migrate-to-controller-properties`）：D2 的 controller 组合（`stripe_dashboard=full`、`fees.payer=account`、`losses.payments=stripe`、`requirement_collection=stripe`）就是原 Standard 账户。这类账户**不能**生成 login link（只有 Express 可以），商家直接登录 dashboard.stripe.com。
 
 ## 5. 领域模型
 
@@ -85,7 +85,8 @@ Merchant 1──* MerchantNote (admin 内部备注)
 ### 5.1 实体字段（Prisma 实现参考）
 
 **User**
-- `id`, `email` (unique), `createdAt`
+- `id`, `email`（仅在未删除用户中唯一：部分唯一索引 `WHERE deleted_at IS NULL`；已删除账户保留历史邮箱，同一邮箱可以重新注册）, `createdAt`
+- `clerkUpdatedAt?`：最后一次应用的 Clerk `user.*` 事件的 `updated_at`，更早的事件一律忽略（webhook 可能乱序）
 - `role`：取值 `MERCHANT` 或 `ADMIN`
 - `clerkUserId` (unique)：所有用户都有
 - `deletedAt?`
@@ -281,9 +282,9 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 
 ### 8.1 商家入驻
 1. `POST /merchants/me/stripe/onboard` 执行以下操作：
-   - 如果商家还没有 Stripe 账户，就调用 `accounts.create` 创建一个，参数为 country `NZ`，以及 controller 配置 `stripe_dashboard.type=full`, `fees.payer=account`, `losses.payments=stripe`, `requirement_collection=stripe`
+   - 如果商家还没有 Stripe 账户，就调用 `accounts.create` 创建一个，参数为 country `NZ`，以及 controller 配置 `stripe_dashboard.type=full`, `fees.payer=account`, `losses.payments=stripe`, `requirement_collection=stripe`；使用 Stripe idempotency key `connect-account:{merchantId}`，重试不会建出第二个账户
    - 然后调用 `accountLinks.create` 生成入驻链接，并返回该 URL
-2. 前端跳转到 Stripe 完成入驻，完成后回到 `/dashboard/onboarding/return`。
+2. 前端跳转到 Stripe 完成入驻，完成后回到 `/dashboard/onboarding/return`（链接失效时 Stripe 跳到 `/dashboard/onboarding?expired=1`，重新生成）。返回页调用 `GET /merchants/me/stripe/status`，它会**实时读取 Stripe 账户并同步**，不必等 webhook。
 3. 收到 `account.updated` webhook 后，同步 `chargesEnabled`、`payoutsEnabled`、`detailsSubmitted` 三个字段；商家 `status` 不受影响（创建即 `ACTIVE`，只表示是否被平台停用）；能否收款只看 `chargesEnabled`。
 4. 发布 PAID 接龙要求商家 `status=ACTIVE` 且 `chargesEnabled=true`；发布 FREE 接龙只要求 `status=ACTIVE`。
 
@@ -308,7 +309,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - NestJS 需要开启 `rawBody: true`，用于签名验证。
 - 处理流程：
   1. 验证签名
-  2. `INSERT ... ON CONFLICT DO NOTHING` 写入 StripeEvent 表；如果已存在，说明是重复事件，直接返回 200
+  2. `INSERT ... ON CONFLICT DO NOTHING` 写入 StripeEvent 表；**只有 `processedAt` 已有值时**才视为重复事件、直接返回 200。（如果按「行已存在就跳过」，第一次处理抛错返回 500 的事件在 Stripe 重试时会被跳过而丢失；所以处理失败时 `processedAt` 保持为空，重试会再次处理，处理逻辑必须幂等。）
   3. 处理业务逻辑
   4. 写入 `processedAt`
 - 处理的事件：
@@ -317,7 +318,8 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - `charge.refunded`：同步退款状态（用于商家在 Stripe Dashboard 里直接退款的情况）
   - `charge.dispute.created`：记录日志并邮件通知商家
   - `account.updated`：同步商家的 Stripe 状态
-- 业务处理必须幂等，并能容忍事件乱序到达。
+- 业务处理必须幂等，并能容忍事件乱序到达。`account.updated` 与 `GET …/stripe/status` 共用的同步逻辑按账户加 Postgres advisory 锁（跨实例），持锁读取 Stripe 并写库，避免慢请求用旧结果覆盖新结果。
+- Stripe SDK 抛出的错误统一转为 `502 STRIPE_ERROR`（`details.stripeCode`），不把 Stripe 的原始消息返回给前端。
 
 ### 8.4 退款
 - 调用 `refunds.create({ payment_intent, amount }, { stripeAccount })`，默认设置 `refund_application_fee: true`（平台费退还比例可配置）。
@@ -349,13 +351,13 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - **用户同步**（双保险，两条路径都必须幂等）：
   1. Clerk webhook：`POST /webhooks/clerk`，用 Svix 签名校验，处理 `user.created`、`user.updated`、`user.deleted`，按 `clerkUserId` upsert User
   2. 即时创建：Guard 验证 JWT 后，如果数据库里还没有这个 `clerkUserId`，就当场创建 User（role=MERCHANT），避免 webhook 延迟导致第一次请求失败
-  - 当 `user.deleted` 时，软删除 User，并停用其商家（订单数据保留）
+  - 当 `user.deleted` 时，软删除 User，并停用其商家（订单数据保留）。若删除事件早于创建事件到达，写入一条已删除的「墓碑」User（只有 `clerkUserId`），迟到的 `user.created` 不会让它复活
 - `GET /me`：返回当前商家用户、角色，以及是否已有商家资料
 
 **角色区分（Clerk 内部）**
 - 新用户首次登录时，后端将其创建为 `MERCHANT`（通过 webhook 或即时创建），并通过 Clerk Backend API 把 `publicMetadata.role` 设为 `merchant`
 - **管理员不能自助注册**。提升权限只能通过后端 CLI：`pnpm --filter backend admin:grant <email>` 和 `admin:revoke <email>`
-  - CLI 先更新数据库中的 role，再同步 Clerk 的 `publicMetadata.role`，并写入 AuditLog
+  - CLI 在**同一个事务**里更新数据库中的 role 并写入 AuditLog，提交后再同步 Clerk 的 `publicMetadata.role`；同步失败时额外记录 `ADMIN_ROLE_CLERK_SYNC_FAILED` 审计、命令以非零码退出，重跑同一命令只会重试同步
   - 只有在环境变量 `ADMIN_EMAIL_ALLOWLIST` 中的邮箱才能被提升为管理员
 - **在 Clerk Dashboard 中自定义 session token**，加入 `"metadata": "{{user.public_metadata}}"`，这样前端 middleware 可以直接从 JWT 读到角色，不需要额外请求
 - **两层授权**：
@@ -368,8 +370,8 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - `GET /merchants/me`
 - `PATCH /merchants/me`
 - `POST /merchants/me/stripe/onboard` → {url}
-- `GET /merchants/me/stripe/status`
-- `POST /merchants/me/stripe/dashboard-link`
+- `GET /merchants/me/stripe/status`：实时读取 Stripe 账户并同步后，返回商家资料（与 `GET /merchants/me` 同一结构，含 `stripeConnected`、`chargesEnabled` 等）
+- ~~`POST /merchants/me/stripe/dashboard-link`~~（M2 删除）：full-dashboard 账户没有 login link（见第 4 节注），链接永远是 `https://dashboard.stripe.com/`，由前端直接给出，不需要接口
 
 **接龙 (Listings)，商家**
 - `GET /merchants/me/listings`
@@ -403,7 +405,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - 服务端会按接龙的 `formFields` 校验答案：必填项、类型、选项是否合法
 - `GET /public/orders/:publicCode?t=token`：返回订单状态；`PENDING_PAYMENT` 且带有 `stripeCheckoutSessionId` 时，前端据此显示「正在确认付款」
 - `POST /public/orders/recover` {email, turnstileToken}：**找回订单**。把该邮箱最近 90 天内所有有效订单（PAID / CONFIRMED / FULFILLED）的链接汇总成一封邮件发送；无论邮箱是否存在，接口都返回相同的成功响应；限流为同一邮箱每小时 3 次
-- 所有公开写接口都校验 `Origin` 请求头必须是主站域名（CSRF 补充防线）
+- **Origin 校验（CSRF 补充防线，全局 `OriginGuard`）**：所有公开写接口，以及所有带 cookie 的写请求（POST/PUT/PATCH/DELETE），`Origin` 请求头都必须是我们自己的域名（`APP_URL` 和 `CLERK_AUTHORIZED_PARTIES`），否则返回 403。Clerk 的 `__session` 是 SameSite=Lax，但 admin 子域名与主站同站，所以仍需这道检查；不带 cookie 的调用（webhook、Bearer 客户端）不受影响
 - `POST /public/orders/:publicCode/cancel?t=token`
   - 付费订单：仅限 `PENDING_PAYMENT` 状态
   - 免费订单：`CONFIRMED` 状态，且 `allowSelfCancel` 为 true、当前时间早于 `selfCancelUntil`
@@ -516,7 +518,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - `/dashboard/onboarding`、`/dashboard/onboarding/return`
 - `/dashboard/listings`、`/new`、`/[id]/edit`：编辑器分步骤进行：类型 → 内容 → 规格/场次 → 取货/地点 → 政策 → 预览发布
 - `/dashboard/listings/[id]/orders`：订单列表，支持搜索、按状态筛选、一键核销、退款弹窗、导出 CSV、复制分享文案
-- `/dashboard/settings`：商家资料、Stripe Dashboard 链接
+- `/dashboard/settings`：商家资料、Stripe Dashboard 链接（固定为 `https://dashboard.stripe.com/`）
 
 **Admin 后台（admin 风格，通过 `admin.tagalong.nz` 访问；桌面优先）**
 - `/admin/login`：管理员登录页，使用 Clerk 的 `<SignIn />` 组件，套用 admin 的暗色风格（`appearance` 参数）。

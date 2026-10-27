@@ -68,6 +68,38 @@ export interface paths {
         patch: operations["MerchantsController_updateOwn"];
         trace?: never;
     };
+    "/api/v1/merchants/me/stripe/onboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["MerchantStripeController_onboard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/merchants/me/stripe/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["MerchantStripeController_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -108,6 +140,8 @@ export interface components {
             contactPhone: string;
             gstNumber: string | null;
             status: components["schemas"]["MerchantStatus"];
+            /** @description A Stripe connected account exists (onboarding may still be incomplete) */
+            stripeConnected: boolean;
             chargesEnabled: boolean;
             payoutsEnabled: boolean;
             detailsSubmitted: boolean;
@@ -129,6 +163,9 @@ export interface components {
             contactPhone?: string;
             /** @example 123-456-789 */
             gstNumber?: string;
+        };
+        StripeLinkDto: {
+            url: string;
         };
     };
     responses: never;
@@ -156,6 +193,15 @@ export interface operations {
                     "application/json": components["schemas"]["MeDto"];
                 };
             };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
         };
     };
     HealthController_check: {
@@ -173,6 +219,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
                 };
             };
         };
@@ -207,6 +262,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBodyDto"];
                 };
             };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
         };
     };
     MerchantsController_getOwn: {
@@ -224,6 +288,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MerchantDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
                 };
             };
         };
@@ -247,6 +320,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MerchantDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    MerchantStripeController_onboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StripeLinkDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    MerchantStripeController_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
                 };
             };
         };

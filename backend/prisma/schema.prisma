@@ -90,11 +90,15 @@ enum NotificationStatus {
 }
 
 model User {
-  id          String    @id @default(uuid(7)) @db.Uuid
-  email       String    @unique
-  role        Role      @default(MERCHANT)
-  clerkUserId String    @unique @map("clerk_user_id")
-  deletedAt   DateTime? @map("deleted_at")
+  id             String    @id @default(uuid(7)) @db.Uuid
+  // Unique among live users only (partial index "user_email_live_key" in SQL): a deleted account keeps
+  // its history and the address can sign up again.
+  email          String
+  role           Role      @default(MERCHANT)
+  clerkUserId    String    @unique @map("clerk_user_id")
+  // Clerk's updated_at of the last applied user.* event; older events are ignored.
+  clerkUpdatedAt DateTime? @map("clerk_updated_at")
+  deletedAt      DateTime? @map("deleted_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
@@ -103,6 +107,7 @@ model User {
   cancellations ListingCancellation[]
   auditLogs     AuditLog[]
 
+  @@index([email])
   @@map("user")
 }
 

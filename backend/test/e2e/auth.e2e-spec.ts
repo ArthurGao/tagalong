@@ -42,11 +42,12 @@ function signed(id: string, payload: object) {
   };
 }
 
-function userEvent(type: 'user.created' | 'user.updated', clerkUserId: string, email: string) {
+function userEvent(type: 'user.created' | 'user.updated', clerkUserId: string, email: string, updatedAt = Date.now()) {
   return {
     type,
     data: {
       id: clerkUserId,
+      updated_at: updatedAt,
       primary_email_address_id: 'idn_1',
       email_addresses: [
         { id: 'idn_0', email_address: 'old@example.test' },
@@ -115,6 +116,24 @@ describe('auth', () => {
         .set('authorization', 'Bearer forged');
       expect(res.status).toBe(200);
       expect(res.body.email).toBe('cookie@example.test');
+    });
+
+    it('a new account can sign up with the email of a deleted one', async () => {
+      await prisma.user.create({
+        data: { email: 'reuse@example.test', clerkUserId: 'user_old', deletedAt: new Date() },
+      });
+      t.clerk.users.set('user_new2', 'reuse@example.test');
+      const res = await http().get('/api/v1/me').set('authorization', 'Bearer valid:user_new2');
+      expect(res.status).toBe(200);
+      expect(res.body.email).toBe('reuse@example.test');
+      expect(await prisma.user.count({ where: { email: 'reuse@example.test' } })).toBe(2);
+    });
+
+    it('two live accounts can never share an email', async () => {
+      await prisma.user.create({ data: { email: 'taken@example.test', clerkUserId: 'user_x' } });
+      await expect(
+        prisma.user.create({ data: { email: 'taken@example.test', clerkUserId: 'user_y' } }),
+      ).rejects.toMatchObject({ code: 'P2002' });
     });
 
     it('rejects a soft-deleted user', async () => {
@@ -192,6 +211,22 @@ describe('auth', () => {
         status: 'SUSPENDED',
         suspendedReason: 'Account deleted',
       });
+    });
+
+    it('a deletion that arrives before the creation is not undone by the late user.created', async () => {
+      expect((await post(signed('msg_d1', { type: 'user.deleted', data: { id: 'user_late', deleted: true } }))).status).toBe(200);
+      await post(signed('msg_d2', userEvent('user.created', 'user_late', 'late@example.test')));
+      const user = await prisma.user.findUniqueOrThrow({ where: { clerkUserId: 'user_late' } });
+      expect(user.deletedAt).not.toBeNull();
+      expect(t.clerk.roleCalls).toEqual([]);
+      expect((await http().get('/api/v1/me').set('authorization', 'Bearer valid:user_late')).status).toBe(401);
+    });
+
+    it('an older user event never overwrites a newer email', async () => {
+      await post(signed('msg_o1', userEvent('user.updated', 'user_o', 'new@example.test', 2_000)));
+      await post(signed('msg_o2', userEvent('user.created', 'user_o', 'old@example.test', 1_000)));
+      await post(signed('msg_o3', userEvent('user.updated', 'user_o', 'older@example.test', 1_500)));
+      expect((await prisma.user.findUniqueOrThrow({ where: { clerkUserId: 'user_o' } })).email).toBe('new@example.test');
     });
 
     it('session.created by an admin writes one audit entry and one alert per admin, even when replayed', async () => {
