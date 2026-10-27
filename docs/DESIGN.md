@@ -467,7 +467,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - **独立域名**：admin 使用独立域名 `admin.tagalong.nz`，与主站指向同一个 Next.js 应用，由 middleware 按 host 分流：
   - admin 域名：路径 `/x` 内部 rewrite 到 `/{locale}/admin/x`；非 admin 的路径一律返回 404
   - 主域名：访问 `/admin/*` 一律返回 404
-  - 本地开发时用 `admin.localhost:3000`
+  - 本地开发时用 `admin.localhost:3800`
   - Phase 2 如需 IP 白名单或 SSO，在这一层（middleware 或 Vercel Firewall）实现
 - **商家停用**：商家被置为 SUSPENDED 后，其名下所有接龙不能再下单，公开页显示「暂停销售」。
 - **Privacy Act 2020**：
@@ -578,20 +578,21 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 
 | | local | staging | production |
 |---|---|---|---|
-| 主站域名 | localhost:3000 | staging.tagalong.nz | tagalong.nz |
-| admin 域名 | admin.localhost:3000 | admin-staging.tagalong.nz | admin.tagalong.nz |
-| 后端 | localhost:4000 | api-staging.tagalong.nz | api.tagalong.nz |
+| 主站域名 | localhost:3800 | staging.tagalong.nz | tagalong.nz |
+| admin 域名 | admin.localhost:3800 | admin-staging.tagalong.nz | admin.tagalong.nz |
+| 后端 | localhost:3810 | api-staging.tagalong.nz | api.tagalong.nz |
 | Clerk | Development 实例 | Development 实例（第二个） | Production 实例 |
 | Stripe | test mode + Stripe CLI 转发 | test mode + 固定 webhook | live mode |
 | 数据库 | docker compose | 托管 Postgres（独立实例） | 托管 Postgres（PITR 开启） |
 | 邮件 | Mailpit | Resend 测试域名 | Resend 正式域名 |
 | Turnstile | 测试 site key（总是通过） | 正式 | 正式 |
 
+  - 本地端口刻意避开默认值（同一台开发机上 3000 / 4000 / 5432 / 8025 已被其他项目占用）：前端 3800（Playwright e2e 用 3801）、后端 3810、Postgres 5442、Mailpit UI 8026 / SMTP 1026。
   - Clerk 的 Development 实例不支持自定义域名，staging 的 admin 子域名共享会话需要实际验证；如果不行，staging 可以先把 admin 路径放在主域名下。
 - **备份与恢复**：生产数据库开启 PITR（至少 7 天），每周做一次恢复演练；S3 / R2 开启版本控制；Clerk 用户数据每月导出一次存档。
 - 可观测性：结构化日志（pino），每个请求带 requestId；Sentry 接入前后端。
 - 测试：
-  - 后端：服务层用 Jest 单元测试；e2e 测试用 Testcontainers Postgres；Stripe 调用通过注入的 `StripeClient` 进行 mock；必须包含第 7 节的超卖并发测试
+  - 后端：服务层用 Vitest 单元测试（NestJS 12 只发布 ESM 包，Jest 无法加载，Nest 官方 ESM 模板默认即 Vitest + SWC）；e2e 测试用 Testcontainers Postgres；Stripe 调用通过注入的 `StripeClient` 进行 mock；必须包含第 7 节的超卖并发测试
   - 前端：组件测试；用 Playwright 覆盖「打开接龙页 → 下单 → 返回成功页」的主流程（Stripe 部分 mock）
 - CI：GitHub Actions 依次运行 lint、typecheck、test、build。
 
@@ -649,6 +650,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 |---|---|---|
 | `VALIDATION_FAILED` | 400 | 请求体校验失败，`details` 为字段错误 |
 | `TURNSTILE_FAILED` | 400 | 人机验证未通过 |
+| `BAD_REQUEST` | 4xx（保留框架原状态码） | 框架层拒绝、且上面没有专门错误码的客户端错误，如 413 请求体过大、415 不支持的 Content-Type、405 方法不允许 |
 | `UNAUTHENTICATED` | 401 | 无有效会话 |
 | `FORBIDDEN` | 403 | 角色不符或不是资源所有者 |
 | `NOT_FOUND` | 404 | 资源不存在，或 token 不匹配（订单页统一返回 404，不区分） |

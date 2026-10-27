@@ -5,10 +5,10 @@ services:
       POSTGRES_USER: tagalong
       POSTGRES_PASSWORD: tagalong
       POSTGRES_DB: tagalong
-    ports: ["5432:5432"]
+    ports: ["5442:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
   mailpit:
     image: axllent/mailpit
-    ports: ["8025:8025", "1025:1025"]
+    ports: ["8026:8025", "1026:1025"]
 volumes:
   pgdata:
