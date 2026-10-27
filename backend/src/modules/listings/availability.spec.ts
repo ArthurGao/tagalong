@@ -20,6 +20,8 @@ describe('listingAvailability', () => {
   it('cancelled vs taken down by an admin', () => {
     expect(at({ status: 'CANCELLED' })).toBe('CANCELLED');
     expect(at({ status: 'CANCELLED', takenDownAt: now })).toBe('TAKEN_DOWN');
+    // admin restore puts a taken-down listing back to CLOSED; the old takedown timestamp must not hide it
+    expect(at({ status: 'CLOSED', takenDownAt: now })).toBe('CLOSED');
   });
 
   it('a suspended merchant pauses every listing (DESIGN §10)', () => {

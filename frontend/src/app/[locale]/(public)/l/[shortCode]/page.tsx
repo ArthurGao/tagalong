@@ -21,12 +21,13 @@ type Params = Promise<{ locale: string; shortCode: string }>;
 // generateMetadata and the page share one backend read per request.
 const getListing = cache((shortCode: string) => fetchPublicListing(shortCode, revalidate));
 
-const NOTICE_STATES = ['TAKEN_DOWN', 'SUSPENDED', 'CANCELLED'] as const;
+const NOTICE_STATES = ['SUSPENDED', 'CANCELLED'] as const; // TAKEN_DOWN renders its own notice-only page
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { shortCode } = await params;
   const listing = await getListing(shortCode);
   if (!listing) return {};
+  if (listing.availability === 'TAKEN_DOWN') return { robots: { index: false, follow: false } };
   const description = listing.description.slice(0, 160);
   return {
     title: listing.title,
@@ -47,6 +48,17 @@ export default async function ListingPage({ params }: { params: Params }) {
     getTranslations('public.listing'),
   ]);
   if (!listing) notFound();
+  if (listing.availability === 'TAKEN_DOWN') {
+    // The backend sends none of a taken-down listing's content; show only the notice.
+    return (
+      <main className="mx-auto flex max-w-[480px] flex-col gap-2 px-4 py-10">
+        <p role="status" className="font-display text-xl font-semibold">
+          {t('stateNotice.TAKEN_DOWN')}
+        </p>
+        <p className="text-muted-foreground">{t('by', { merchant: listing.merchant.displayName })}</p>
+      </main>
+    );
+  }
   const notice = NOTICE_STATES.find((s) => s === listing.availability);
 
   return (

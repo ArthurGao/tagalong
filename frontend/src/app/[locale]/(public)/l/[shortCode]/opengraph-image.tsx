@@ -19,7 +19,7 @@ export default async function Image({ params }: { params: Promise<{ locale: stri
     fetchPublicListing(shortCode, revalidate),
     getTranslations({ locale, namespace: 'public.listing' }),
   ]);
-  if (!listing) return card({ title: BRAND });
+  if (!listing || listing.availability === 'TAKEN_DOWN') return card({ title: BRAND });
 
   const price = listing.pricing === 'FREE' ? t('free') : formatPriceRange(listing.options.map((o) => o.priceCents));
   let places: string;

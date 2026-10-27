@@ -4,7 +4,7 @@ import { maskName } from '../../common/mask.js';
 import type { OrderStatus } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { readFormFields } from '../listings/form-fields.js';
-import { listingAvailability, remainingPlaces } from '../listings/availability.js';
+import { isTakenDown, listingAvailability, remainingPlaces } from '../listings/availability.js';
 import type { ParticipantPageDto, PublicListingDto } from './public-listing.dto.js';
 
 // Orders that hold a place on the sign-up sheet. Cancelled, refunded, expired and no-show rows drop out;
@@ -38,7 +38,7 @@ export class PublicListingsService {
       location: o.location,
     }));
     const totalRemaining = remainingPlaces(l.totalCapacity, l.soldCount, l.reservedCount);
-    return {
+    const dto: PublicListingDto = {
       shortCode: l.shortCode,
       title: l.title,
       description: l.description,
@@ -76,15 +76,16 @@ export class PublicListingsService {
         verified: l.merchant.chargesEnabled,
       },
     };
+    return dto.availability === 'TAKEN_DOWN' ? redactTakenDown(dto) : dto;
   }
 
   /** Newest first by sequence number; `cursor` is the last seq of the previous page. */
   async participants(shortCode: string, cursor?: number, limit = PAGE_SIZE): Promise<ParticipantPageDto> {
     const listing = await this.prisma.listing.findFirst({
       where: publicWhere(shortCode),
-      select: { id: true, showParticipants: true },
+      select: { id: true, showParticipants: true, status: true, takenDownAt: true },
     });
-    if (!listing || !listing.showParticipants) throw new AppError('NOT_FOUND', 'Listing not found');
+    if (!listing || !listing.showParticipants || isTakenDown(listing)) throw new AppError('NOT_FOUND', 'Listing not found');
     const rows = await this.prisma.order.findMany({
       where: {
         listingId: listing.id,
@@ -118,4 +119,36 @@ export class PublicListingsService {
       nextCursor: rows.length > limit ? page[page.length - 1].sequenceNo : null,
     };
   }
+}
+
+/**
+ * Admins cannot edit merchant content, only take it down (DESIGN §9 admin), so a taken-down listing serves none of
+ * it: the page shows only the "taken down" notice and the seller's name. Built field by field (no spread), so a
+ * field added to PublicListingDto fails to compile here until someone decides whether it is content.
+ */
+function redactTakenDown(dto: PublicListingDto): PublicListingDto {
+  return {
+    shortCode: dto.shortCode,
+    availability: dto.availability,
+    status: dto.status,
+    type: dto.type,
+    pricing: dto.pricing,
+    fulfilment: dto.fulfilment,
+    opensAt: null,
+    closesAt: null,
+    maxQtyPerOrder: dto.maxQtyPerOrder,
+    joinedCount: 0,
+    totalCapacity: null,
+    totalRemaining: null,
+    merchant: { ...dto.merchant, logoUrl: null },
+    title: '',
+    description: '',
+    images: [],
+    policyText: '',
+    indexable: false,
+    showParticipants: false,
+    formFields: [],
+    options: [],
+    pickupPoints: [],
+  };
 }

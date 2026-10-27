@@ -151,6 +151,27 @@ describe('public listing API (DESIGN §9, §10, M4)', () => {
     expect((await get()).availability).toBe('TAKEN_DOWN');
   });
 
+  it('serves none of a taken-down listing\'s content, and no sign-up sheet (admins cannot edit, only take down)', async () => {
+    const { listing } = await publishedListing();
+    await order(listing, 'Arthur Gao', 'PAID');
+    await prisma.listing.update({ where: { id: listing.id }, data: { status: 'CANCELLED', takenDownAt: new Date() } });
+    const res = await http().get(`/api/v1/public/listings/${listing.shortCode}`).expect(200);
+    expect(res.body).toMatchObject({
+      shortCode: listing.shortCode,
+      availability: 'TAKEN_DOWN',
+      title: '',
+      description: '',
+      policyText: '',
+      images: [],
+      options: [],
+      pickupPoints: [],
+      formFields: [],
+      showParticipants: false,
+    });
+    expect(JSON.stringify(res.body)).not.toContain(listing.title);
+    expect((await http().get(`/api/v1/public/listings/${listing.shortCode}/participants`)).status).toBe(404);
+  });
+
   it('lists participants newest first, masked, without cancelled orders, with cursor paging', async () => {
     const { listing } = await publishedListing();
     await order(listing, 'Arthur Gao', 'PAID', { items: [[0, 1], [1, 2]] });
