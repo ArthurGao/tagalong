@@ -278,8 +278,8 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
    - 将订单置为 `EXPIRED`，并释放预占的库存
 5. **边界情况**：如果订单已经是 `EXPIRED`，却又收到了 `checkout.session.completed`（买家在过期前一刻付款），就尝试重新预占库存：
    - 预占成功：订单转为 `PAID`
-   - 预占失败：自动全额退款，并给买家发邮件说明
-   - 「退款」这个决定在订单行锁内先写成一行 `PENDING` 的 Refund，再调 Stripe；之后重发或并发的同一事件只会继续完成这笔退款，不会因为名额又空出来而改成 PAID
+   - 预占失败，或整条接龙已被取消（重新卖出的条件 UPDATE 拒绝已取消的接龙，与名额不足一样处理）：自动全额退款，并给买家发邮件说明，订单保持 `EXPIRED`
+   - 「退款」这个决定在订单行锁内先写成一行 `PENDING` 的 Refund 和同 id 的 RefundTask，由第 8.4 节的退款队列完成；之后重发或并发的同一事件不会再做决定，也不会因为名额又空出来而改成 PAID
 6. **免费报名**：同样使用第 1 步的条件 UPDATE，只是改为直接对 `sold_count` 加 q（不经过 reserved），然后在同一事务中创建 `CONFIRMED` 订单并分配序号。
    - 如果 `onePerEmail=true`，用部分唯一索引来保证：`UNIQUE (listing_id, lower(buyer_email)) WHERE one_per_email AND status IN ('CONFIRMED','FULFILLED')`。`one_per_email` 是订单上的快照字段；不带这个条件的话，`onePerEmail=false` 的接龙也会被拦住。
    - 冲突时返回 `409 ALREADY_REGISTERED`，并重新给该邮箱发送一次原报名的确认邮件（但**不在接口响应里透露**该邮箱已报名的任何信息）。重发每小时最多一次（`dedupeKey` 带小时），避免被人反复触发。
@@ -332,19 +332,27 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 
 ### 8.4 退款
 - 调用 `refunds.create({ payment_intent, amount }, { stripeAccount })`，默认设置 `refund_application_fee: true`（平台费退还比例可配置）。
-- 退款金额累加不能超过 `totalCents`：可退金额 = `totalCents − refundedCents −` 尚在途中（`PENDING`）的退款。每笔平台发起的退款都先在订单锁内写一条 `PENDING` Refund，再调 Stripe（幂等键为该行 id），成功后才增加 `refundedCents`；所以并发的两笔退款不会超额。
-- `charge.refunded`：只把「Stripe 上的已退总额 − 我们已记录的 − 在途的」部分记为在 Stripe Dashboard 里直接做的退款，自家的退款不会被算两次。
+- 退款金额累加不能超过 `totalCents`：可退金额 = `totalCents − refundedCents −` 尚在途中（`PENDING`）的退款。
+- **每笔平台发起的退款都走同一条队列**（商家退款、迟到付款的自动退款、整条接龙取消）：
+  - 在订单锁内写一条 `PENDING` Refund 和同 id 的 `RefundTask`（取消产生的任务带 `cancellationId`），所以并发的两笔退款不会超额。
+  - 调 Stripe 时幂等键为 `refund:{id}`，并把 id 写进 `metadata.refundId`，任何一笔 Stripe 退款都能对回它的那一行。
+  - 只有 Stripe 返回 `succeeded` 才增加 `refundedCents`、改订单状态、发 `ORDER_REFUNDED`。`pending` / `requires_action`（如商家余额不足）记下 Stripe 退款 id，之后由 job 每 15 分钟查询一次；`failed` / `canceled` 标记 `FAILED`，这部分金额重新可退。
+  - 商家退款和迟到付款退款当场先试一次。没有结果（Stripe 出错、请求中途崩溃）就留在队列里，由 `refund.job.ts` 接着做：租约到期后接管；24 小时内靠同一个幂等键，任务超过 23 小时则先按 metadata 查 Stripe 上是否已有这笔退款，绝不重复退。
+  - 商家看到的是「退款处理中」而不是报错；5 次仍失败则标记 `FAILED`，订单列表显示「上次退款失败」，并邮件通知商家（`REFUND_FAILED`）。
+- `charge.refunded`：列出这笔付款在 Stripe 上的全部退款，按 Stripe 退款 id 逐笔对账。带 `metadata.refundId` 的是我们的，没记成功就补记成功；没有的就是商家在 Stripe Dashboard 里直接做的退款，按其 id 只记一次。不再用「已退总额 − 已记录 − 在途」相减，因为那样在途退款和 Dashboard 退款同时发生时会漏记。
 - 导出 CSV（`GET /merchants/me/listings/:id/orders.csv`）：UTF-8 带 BOM，以 `= + - @` 开头的单元格前加 `'`，防止表格公式注入。
 
 ### 8.5 整条接龙取消与批量退款
 1. 商家（或 admin）发起取消：创建 `ListingCancellation`，接龙立即置为 `CANCELLED`，公开页显示「已取消」，所有 `PENDING_PAYMENT` 订单过期。
+   - 锁顺序与所有订单路径相同：先锁该接龙的订单，再锁接龙。拿到接龙锁后再查一次：如果有订单是在扫描之后、拿到锁之前提交的（下单事务当时持有接龙锁），整个事务重来，最多 5 轮，仍有新订单则返回 `409 ORDER_IN_PROGRESS`。这样不会有订单逃过取消。
 2. 在同一事务里为每笔 `PAID` / `PARTIALLY_REFUNDED` 订单创建一条 `RefundTask`（金额为剩余可退金额，并同时写一条同 id 的 `PENDING` Refund，表示这笔钱已在退款途中）；已 `FULFILLED`（货已交付）的订单不自动退款，商家可逐笔退；免费接龙则直接把 `CONFIRMED` 订单置为 `CANCELLED`，不需要任务。
-3. `refund.job.ts` 每 30 秒取一批 `PENDING` 任务（`FOR UPDATE SKIP LOCKED`，每批 20 笔），逐笔调用 Stripe：
+3. `refund.job.ts` 每 30 秒取一批 `PENDING` 任务（`FOR UPDATE SKIP LOCKED`，每批 20 笔，带本轮的租约令牌），逐笔按第 8.4 节处理：
    - 成功：订单转为 `REFUNDED`，写入 `ORDER_REFUNDED` 通知
    - 失败：`attempts += 1`，指数退避，最多 5 次；超过后标记 `FAILED`
-   - 用 `RefundTask.id` 作为 Stripe 的 idempotency key，避免重复退款
-4. 全部处理完后更新 `ListingCancellation.status`；有失败时通知商家，并在 admin 后台显示失败列表，支持手动重试。
-5. 商家后台的取消弹窗必须显示：订单数、退款总额、「Stripe 手续费不退还」的提示，并要求输入接龙标题确认。
+   - Stripe 返回 pending：不计次数，稍后再查
+   - 所有写入都要求任务仍是 `PENDING` 且租约令牌未变，所以租约过期后的旧 worker 写不进任何东西（Stripe 报告的成功除外：以 Stripe 为准）
+4. 每轮都检查所有已无 `PENDING` 任务的 `RUNNING` 取消，更新 `ListingCancellation.status`；即使处理最后一笔的那一轮中途崩溃，下一轮也会收尾。有失败时通知商家，并在 admin 后台显示失败列表，支持手动重试：Stripe 明确拒绝的退款重试时新建一笔（新 id，旧的 `FAILED` 记录保留）；只是一直出错、没有得到答复的，用原来的 id 重试。Stripe 后来报告某笔已放弃的退款其实成功了，照样记成功，取消的失败数归零时状态回到 `COMPLETED`。
+5. 商家后台的取消弹窗必须显示：订单数、退款总额、「Stripe 手续费不退还」的提示，并要求输入接龙标题确认。预览没有成功加载时不能确认；每次打开都重新加载预览。
 6. `GET /merchants/me/listings/:id/cancellation` 返回进度，前端轮询展示。
 
 ## 9. API（REST，前缀 `/api/v1`）
@@ -581,7 +589,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - 免费报名：报名成功确认（附取消链接和 .ics 文件）、商家取消报名的通知
   - 活动提醒：SESSION / EVENT 类订单在开始前 `remindBeforeHours` 小时发送（付费和免费都发），由 `reminder.job.ts` 每 15 分钟扫描一次，`Order.reminderSentAt` 用来保证幂等
   - 买家：找回订单的链接汇总邮件；取货点变更通知；接龙被取消的通知
-  - 商家：入驻完成、出现争议、批量退款完成（含失败数）、每日订单汇总（Phase 2）
+  - 商家：入驻完成、出现争议、批量退款完成（含失败数）、单笔退款最终失败（`REFUND_FAILED`）、每日订单汇总（Phase 2）
   - 确认邮件和收据中带上商家的 GST 号（如有）。税务发票由商家自行负责，平台不开具
 
 ## 13. 非功能需求
@@ -674,7 +682,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 | `FORBIDDEN` | 403 | 角色不符或不是资源所有者 |
 | `NOT_FOUND` | 404 | 资源不存在，或 token 不匹配（订单页统一返回 404，不区分） |
 | `LISTING_NOT_PUBLISHED` | 409 | 接龙不在 PUBLISHED 状态，或还没到 `opensAt` |
-| `ORDER_IN_PROGRESS` | 409 | 同一 `Idempotency-Key` 的第一次下单还在进行中，稍后重试 |
+| `ORDER_IN_PROGRESS` | 409 | 同一 `Idempotency-Key` 的第一次下单还在进行中，或取消接龙时仍不断有新订单提交；稍后重试 |
 | `LISTING_CLOSED` | 409 | 已截止或已取消 |
 | `MERCHANT_SUSPENDED` | 409 | 商家已停用 |
 | `MERCHANT_PROFILE_EXISTS` | 409 | 该账号已经创建过商家资料 |

@@ -1,6 +1,6 @@
 import Stripe from 'stripe';
 import { AppError } from '../../../src/common/errors/app-error.js';
-import type { CheckoutRequest, StripeAccountState, StripeClient } from '../../../src/modules/stripe/stripe-client.js';
+import type { CheckoutRequest, StripeAccountState, StripeClient, StripeRefund } from '../../../src/modules/stripe/stripe-client.js';
 
 // Webhook signing/verification is pure HMAC in the SDK; no network and no real key involved.
 const sdk = new Stripe('sk_test_fake_for_webhook_signing');
@@ -24,19 +24,39 @@ export class FakeStripeClient implements StripeClient {
   failNextRetrieve = false;
   readonly sessions: CheckoutRequest[] = [];
   readonly expired: { accountId: string; sessionId: string }[] = [];
-  readonly refunds: { accountId: string; paymentIntentId: string; amountCents: number; idempotencyKey: string }[] = [];
+  /** Every refund Stripe holds, ours and the Dashboard's, by id. */
+  readonly stripeRefunds = new Map<string, StripeRefund & { accountId: string; paymentIntentId: string }>();
+  /** Stripe forgets idempotency keys after 24 h: a repeated key then creates a new refund. */
+  keysExpired = false;
+  /** The status a new refund starts in ('pending' as with an insufficient balance). */
+  newRefundStatus = 'succeeded';
   failCheckout = false;
   failExpire = false;
+  /** Stripe's refund API is down: create, retrieve and list all fail. */
   failRefund = false;
-  /** Refunds whose idempotency key is listed keep failing until it is removed. */
+  /** Refunds whose Refund row id is listed keep failing until it is removed. */
   readonly failRefundKeys = new Set<string>();
   /** Like Stripe while the first request with the same idempotency key is still running. */
   checkoutInUse = false;
 
+  /** Refunds created through refundPayment, in order (a replayed idempotency key adds none, as at Stripe). */
+  get refunds(): { accountId: string; paymentIntentId: string; amountCents: number; idempotencyKey: string }[] {
+    return [...this.stripeRefunds.values()]
+      .filter((r) => r.refundId)
+      .map((r) => ({ accountId: r.accountId, paymentIntentId: r.paymentIntentId, amountCents: r.amountCents, idempotencyKey: `refund:${r.refundId}` }));
+  }
+
+  /** What a charge.refunded event reports: the total Stripe has refunded on the payment. */
+  amountRefunded(paymentIntentId: string): number {
+    return [...this.stripeRefunds.values()].filter((r) => r.paymentIntentId === paymentIntentId && r.status === 'succeeded').reduce((n, r) => n + r.amountCents, 0);
+  }
+
   reset(): void {
     this.sessions.length = 0;
     this.expired.length = 0;
-    this.refunds.length = 0;
+    this.stripeRefunds.clear();
+    this.newRefundStatus = 'succeeded';
+    this.keysExpired = false;
     this.failCheckout = false;
     this.failExpire = false;
     this.failRefund = false;
@@ -104,10 +124,41 @@ export class FakeStripeClient implements StripeClient {
     this.expired.push({ accountId, sessionId });
   }
 
-  async refundPayment(accountId: string, paymentIntentId: string, amountCents: number, idempotencyKey: string) {
-    if (this.failRefund || this.failRefundKeys.has(idempotencyKey)) throw stripeError('api_error');
-    this.refunds.push({ accountId, paymentIntentId, amountCents, idempotencyKey });
-    return { id: `re_${idempotencyKey.replace(/[^a-z0-9]/gi, '').slice(-16)}`, status: 'succeeded' };
+  async refundPayment(accountId: string, paymentIntentId: string, amountCents: number, refundId: string): Promise<StripeRefund> {
+    if (this.failRefund || this.failRefundKeys.has(refundId)) throw stripeError('api_error');
+    const replay = this.keysExpired ? undefined : [...this.stripeRefunds.values()].find((r) => r.refundId === refundId);
+    if (replay) return this.view(replay); // same idempotency key
+    const id = `re_${refundId.replace(/[^a-z0-9]/gi, '').slice(-12)}_${this.stripeRefunds.size}`;
+    this.stripeRefunds.set(id, { id, status: this.newRefundStatus, amountCents, refundId, accountId, paymentIntentId });
+    return this.view(this.stripeRefunds.get(id)!);
+  }
+
+  async retrieveRefund(accountId: string, stripeRefundId: string): Promise<StripeRefund> {
+    if (this.failRefund) throw stripeError('api_error');
+    const r = this.stripeRefunds.get(stripeRefundId);
+    if (!r || r.accountId !== accountId) throw stripeError('resource_missing');
+    return this.view(r);
+  }
+
+  async listRefunds(accountId: string, paymentIntentId: string): Promise<StripeRefund[]> {
+    if (this.failRefund) throw stripeError('api_error');
+    return [...this.stripeRefunds.values()].filter((r) => r.accountId === accountId && r.paymentIntentId === paymentIntentId).map((r) => this.view(r));
+  }
+
+  /** A refund the merchant made in the Stripe Dashboard (no metadata). */
+  dashboardRefund(accountId: string, paymentIntentId: string, amountCents: number): string {
+    const id = `re_dash_${this.stripeRefunds.size}`;
+    this.stripeRefunds.set(id, { id, status: 'succeeded', amountCents, refundId: null, accountId, paymentIntentId });
+    return id;
+  }
+
+  /** Stripe settling a pending refund later. */
+  settleRefund(stripeRefundId: string, status: 'succeeded' | 'failed'): void {
+    this.stripeRefunds.get(stripeRefundId)!.status = status;
+  }
+
+  private view(r: StripeRefund): StripeRefund {
+    return { id: r.id, status: r.status, amountCents: r.amountCents, refundId: r.refundId };
   }
 
   constructEvent(rawBody: Buffer | string, signature: string, secret: string): Stripe.Event {

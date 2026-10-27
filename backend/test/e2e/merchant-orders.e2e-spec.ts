@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 import { CancellationService } from '../../src/modules/orders/cancellation.service.js';
+import { RefundProcessor } from '../../src/modules/orders/refund-processor.js';
 import { RefundJob } from '../../src/modules/orders/refund.job.js';
+import { queueRefund } from '../../src/modules/orders/refunds.js';
+import { registerFree } from '../../src/modules/orders/reservation.js';
+import { StripeClient } from '../../src/modules/stripe/stripe-client.js';
 import { createTestApp, type TestApp } from './support/app.js';
 import { resetDb, testPrisma } from './support/db.js';
 import { createMerchant } from './support/factories.js';
@@ -77,6 +81,13 @@ describe('merchant order management: refunds, CSV, listing cancellation (DESIGN 
   const refund = (orderId: string, amountCents: number, who = 'user_m') =>
     http().post(`/api/v1/merchants/me/orders/${orderId}/refund`).set(as(who)).send({ amountCents, reason: 'Short delivery' });
   const orderRow = (id: string) => prisma.order.findUniqueOrThrow({ where: { id } });
+  const listOrder = async (l: { id: string }, id: string) =>
+    (await http().get(`/api/v1/merchants/me/listings/${l.id}/orders`).set(as('user_m'))).body.orders.find((o: { id: string }) => o.id === id);
+  /** The refund job as its schedule would run it, `minutes` from now (past leases and backoffs). */
+  const runJob = (minutes: number) => t.app.get(RefundJob).run(new Date(Date.now() + minutes * 60_000));
+  /** A refund decided (row + claimed task) by a request that died before calling Stripe. */
+  const decidedOnly = (orderId: string, amountCents: number) =>
+    prisma.$transaction((tx) => queueRefund(tx, { orderId, amountCents, reason: 'Short delivery' }));
 
   function deliver(event: object) {
     const { body, signature } = signStripeEvent(event, 'whsec_test_connect');
@@ -137,17 +148,81 @@ describe('merchant order management: refunds, CSV, listing cancellation (DESIGN 
       expect(t.stripe.refunds).toHaveLength(1);
     });
 
-    it('a Stripe failure refunds nothing and frees the amount again', async () => {
+    it('a Stripe error leaves the refund in flight, and refund.job finishes it', async () => {
       const l = await paidListing();
       const o = await paidOrder(l, 1);
       t.stripe.failRefund = true;
-      expect((await refund(o.id, 1000)).body.code).toBe('STRIPE_ERROR');
-      expect(await orderRow(o.id)).toMatchObject({ status: 'PAID', refundedCents: 0 });
-      expect(await prisma.refund.findFirstOrThrow({ where: { orderId: o.id } })).toMatchObject({ status: 'FAILED' });
+      const res = await refund(o.id, 1000);
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ status: 'PAID', refundedCents: 0, pendingRefundCents: 1000, refundableCents: 2900, lastRefundFailed: false });
+      expect(await prisma.refundTask.findFirstOrThrow({ where: { orderId: o.id } })).toMatchObject({ status: 'PENDING', attempts: 1 });
       t.stripe.failRefund = false;
-      expect((await refund(o.id, 3900)).body.status).toBe('REFUNDED');
+      await runJob(2);
+      expect(await listOrder(l, o.id)).toMatchObject({ status: 'PARTIALLY_REFUNDED', refundedCents: 1000, pendingRefundCents: 0, refundableCents: 2900 });
+      expect(t.stripe.refunds).toHaveLength(1);
     });
 
+    it('a refund that keeps failing ends FAILED: the amount is free again and the merchant is emailed', async () => {
+      const l = await paidListing();
+      const o = await paidOrder(l, 1);
+      t.stripe.failRefund = true;
+      await refund(o.id, 1000);
+      for (let minutes = 2; minutes <= 60; minutes += 10) await runJob(minutes);
+      expect(await prisma.refundTask.findFirstOrThrow({ where: { orderId: o.id } })).toMatchObject({ status: 'FAILED', attempts: 5 });
+      expect(await listOrder(l, o.id)).toMatchObject({ status: 'PAID', refundedCents: 0, pendingRefundCents: 0, refundableCents: 3900, lastRefundFailed: true });
+      expect(await prisma.notificationOutbox.findFirstOrThrow({ where: { type: 'REFUND_FAILED' } })).toMatchObject({
+        recipient: 'shop@example.test',
+        payload: expect.objectContaining({ publicCode: o.publicCode, amountCents: 1000 }),
+      });
+      t.stripe.failRefund = false;
+      expect((await refund(o.id, 3900)).body).toMatchObject({ status: 'REFUNDED', lastRefundFailed: false });
+    });
+
+    it('a refund Stripe holds as pending counts only once it succeeds; one that then fails frees the amount', async () => {
+      const l = await paidListing();
+      const o = await paidOrder(l, 1);
+      t.stripe.newRefundStatus = 'pending';
+      expect((await refund(o.id, 1000)).body).toMatchObject({ status: 'PAID', refundedCents: 0, pendingRefundCents: 1000 });
+      expect(await prisma.notificationOutbox.count({ where: { type: 'ORDER_REFUNDED' } })).toBe(0);
+      const first = await prisma.refundTask.findFirstOrThrow({ where: { orderId: o.id } });
+      expect(first).toMatchObject({ status: 'PENDING', attempts: 0, stripeRefundId: expect.any(String) });
+      t.stripe.settleRefund(first.stripeRefundId!, 'succeeded');
+      await runJob(16);
+      expect(await orderRow(o.id)).toMatchObject({ status: 'PARTIALLY_REFUNDED', refundedCents: 1000 });
+
+      await refund(o.id, 500);
+      const second = await prisma.refundTask.findFirstOrThrow({ where: { orderId: o.id, status: 'PENDING' } });
+      t.stripe.settleRefund(second.stripeRefundId!, 'failed');
+      await runJob(16);
+      expect(await prisma.refund.findUniqueOrThrow({ where: { id: second.id } })).toMatchObject({ status: 'FAILED' });
+      expect(await listOrder(l, o.id)).toMatchObject({ refundedCents: 1000, pendingRefundCents: 0, refundableCents: 2900, lastRefundFailed: true });
+      expect(t.stripe.refunds).toHaveLength(2);
+    });
+
+    it('a refund decided by a request that died is resumed by refund.job, with the same key, once', async () => {
+      const l = await paidListing();
+      const o = await paidOrder(l, 1);
+      const task = await decidedOnly(o.id, 1000);
+      expect((await refund(o.id, 3000)).body.code).toBe('REFUND_EXCEEDS_TOTAL'); // still in flight
+      await runJob(1); // the lease still holds it
+      expect(t.stripe.refunds).toHaveLength(0);
+      await runJob(6);
+      expect(t.stripe.refunds).toEqual([expect.objectContaining({ amountCents: 1000, idempotencyKey: `refund:${task.id}` })]);
+      expect(await orderRow(o.id)).toMatchObject({ status: 'PARTIALLY_REFUNDED', refundedCents: 1000 });
+    });
+
+    it('a worker whose lease ran out cannot overwrite what another worker recorded', async () => {
+      const l = await paidListing();
+      const o = await paidOrder(l, 1);
+      const stale = await decidedOnly(o.id, 1000);
+      await runJob(6); // another worker takes it over and succeeds
+      t.stripe.failRefund = true;
+      // The first worker wakes up on its last attempt and fails.
+      expect(await t.app.get(RefundProcessor).process({ ...stale, attempts: 4 })).toBe('retrying');
+      expect(await prisma.refundTask.findUniqueOrThrow({ where: { id: stale.id } })).toMatchObject({ status: 'SUCCEEDED' });
+      expect(await prisma.refund.findUniqueOrThrow({ where: { id: stale.id } })).toMatchObject({ status: 'SUCCEEDED' });
+      expect(await prisma.notificationOutbox.count({ where: { type: 'REFUND_FAILED' } })).toBe(0);
+    });
     it("only the merchant's own paid orders can be refunded", async () => {
       const l = await paidListing();
       const o = await paidOrder(l, 1);
@@ -158,19 +233,55 @@ describe('merchant order management: refunds, CSV, listing cancellation (DESIGN 
   });
 
   describe('Stripe events', () => {
-    it('charge.refunded adds only refunds made outside TagAlong, once', async () => {
+    const chargeRefunded = (o: { stripePaymentIntentId: string | null }, account = ACCOUNT) =>
+      deliver(
+        chargeEvent(
+          'charge.refunded',
+          { id: 'ch_1', object: 'charge', payment_intent: o.stripePaymentIntentId, amount_refunded: t.stripe.amountRefunded(o.stripePaymentIntentId!) },
+          account,
+        ),
+      );
+
+    it('charge.refunded adds only refunds made outside TagAlong, each once by its id', async () => {
       const l = await paidListing();
       const o = await paidOrder(l, 1);
       await refund(o.id, 1000); // ours
-      const charge = (refunded: number) => ({ id: 'ch_1', object: 'charge', payment_intent: o.stripePaymentIntentId, amount_refunded: refunded });
-      expect((await deliver(chargeEvent('charge.refunded', charge(1000)))).status).toBe(200); // our own refund echoed
+      expect((await chargeRefunded(o)).status).toBe(200); // our own refund echoed
       expect((await orderRow(o.id)).refundedCents).toBe(1000);
-      await deliver(chargeEvent('charge.refunded', charge(2500))); // +1500 in the Dashboard
-      await deliver(chargeEvent('charge.refunded', charge(2500))); // replayed
+      const dashboard = t.stripe.dashboardRefund(ACCOUNT, o.stripePaymentIntentId!, 1500);
+      await chargeRefunded(o);
+      await chargeRefunded(o); // replayed
       expect(await orderRow(o.id)).toMatchObject({ refundedCents: 2500, status: 'PARTIALLY_REFUNDED' });
-      await deliver(chargeEvent('charge.refunded', charge(2500), 'acct_someone_else'));
-      await deliver(chargeEvent('charge.refunded', charge(3900), 'acct_someone_else'));
+      expect(await prisma.refund.findUniqueOrThrow({ where: { stripeRefundId: dashboard } })).toMatchObject({ amountCents: 1500, status: 'SUCCEEDED' });
+      t.stripe.dashboardRefund(ACCOUNT, o.stripePaymentIntentId!, 1400);
+      await chargeRefunded(o, 'acct_someone_else');
       expect((await orderRow(o.id)).refundedCents).toBe(2500);
+    });
+
+    it('a Dashboard refund while one of ours is still in flight is not lost', async () => {
+      const l = await paidListing();
+      const o = await paidOrder(l, 1);
+      await decidedOnly(o.id, 1500); // ours: decided, not yet at Stripe
+      t.stripe.dashboardRefund(ACCOUNT, o.stripePaymentIntentId!, 2000);
+      await chargeRefunded(o);
+      expect((await orderRow(o.id)).refundedCents).toBe(2000);
+      await runJob(6);
+      expect(await orderRow(o.id)).toMatchObject({ refundedCents: 3500, status: 'PARTIALLY_REFUNDED' });
+    });
+
+    it('charge.refunded confirms our refund that Stripe held as pending', async () => {
+      const l = await paidListing();
+      const o = await paidOrder(l, 1);
+      t.stripe.newRefundStatus = 'pending';
+      await refund(o.id, 3900);
+      const task = await prisma.refundTask.findFirstOrThrow({ where: { orderId: o.id } });
+      t.stripe.settleRefund(task.stripeRefundId!, 'succeeded');
+      await chargeRefunded(o);
+      expect(await orderRow(o.id)).toMatchObject({ refundedCents: 3900, status: 'REFUNDED' });
+      expect(await prisma.refundTask.findUniqueOrThrow({ where: { id: task.id } })).toMatchObject({ status: 'SUCCEEDED' });
+      await runJob(16); // nothing left to do, nothing counted twice
+      expect((await orderRow(o.id)).refundedCents).toBe(3900);
+      expect(await prisma.notificationOutbox.count({ where: { type: 'ORDER_REFUNDED' } })).toBe(1);
     });
 
     it('a dispute is logged and the merchant emailed', async () => {
@@ -263,6 +374,131 @@ describe('merchant order management: refunds, CSV, listing cancellation (DESIGN 
       expect(await prisma.order.count({ where: { listingId: l.id, status: 'REFUNDED' } })).toBe(50);
       expect(await prisma.notificationOutbox.count({ where: { type: 'ORDER_REFUNDED' } })).toBe(50);
     }, 60_000);
+
+    it('an order created while the cancellation waits for the listing is cancelled too', async () => {
+      const merchant = await prisma.merchant.findFirstOrThrow({ where: { owner: { clerkUserId: 'user_m' } } });
+      const l = await prisma.listing.create({
+        data: {
+          merchantId: merchant.id, shortCode: randomUUID().slice(0, 8), title: 'Talk', description: '', type: 'EVENT', fulfilment: 'ONSITE',
+          pricing: 'FREE', status: 'PUBLISHED', publishedAt: new Date(), closesAt: new Date(Date.now() + 86_400_000), maxQtyPerOrder: 1,
+          onePerEmail: true, allowSelfCancel: true, policyText: 'x', options: { create: [{ name: 'Seat', priceCents: 0, capacity: 5 }] },
+        },
+        include: { options: true },
+      });
+      // A registration holds the listing (as registerFree does) while the cancellation scans the orders.
+      let holding!: () => void;
+      const held = new Promise<void>((resolve) => (holding = resolve));
+      const registration = prisma.$transaction(async (tx) => {
+        const seq = await registerFree(tx, l.id, [{ optionId: l.options[0].id, quantity: 1 }]);
+        holding();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await tx.order.create({
+          data: {
+            publicCode: 'TA-RACE01', accessToken: randomUUID(), listingId: l.id, merchantId: merchant.id, buyerName: 'Amy', buyerEmail: 'amy@example.test',
+            buyerPhone: '021', isFree: true, onePerEmail: true, status: 'CONFIRMED', sequenceNo: seq, subtotalCents: 0, platformFeeCents: 0, totalCents: 0,
+            items: { create: [{ optionId: l.options[0].id, quantity: 1, unitPriceCents: 0 }] },
+          },
+        });
+      });
+      await held;
+      const [res] = await Promise.all([cancel(l), registration]);
+      expect(res.body).toMatchObject({ status: 'COMPLETED' });
+      expect((await prisma.order.findUniqueOrThrow({ where: { publicCode: 'TA-RACE01' } })).status).toBe('CANCELLED');
+      expect(await prisma.listingOption.findUniqueOrThrow({ where: { id: l.options[0].id } })).toMatchObject({ soldCount: 0 });
+      expect(await prisma.notificationOutbox.count({ where: { type: 'REGISTRATION_CANCELLED', recipient: 'amy@example.test' } })).toBe(1);
+    });
+
+    it('a payment that lands after the listing was cancelled is refunded, never sold', async () => {
+      const l = await paidListing();
+      const o = await paidOrder(l, 1, { status: 'PENDING_PAYMENT' });
+      await cancel(l);
+      expect((await orderRow(o.id)).status).toBe('EXPIRED');
+      const session = {
+        id: o.stripeCheckoutSessionId, object: 'checkout.session', payment_status: 'paid', status: 'complete', amount_total: 3900,
+        currency: 'nzd', payment_intent: 'pi_late_after_cancel', metadata: { orderId: o.id },
+      };
+      expect((await deliver(chargeEvent('checkout.session.completed', session))).status).toBe(200);
+      expect(await orderRow(o.id)).toMatchObject({ status: 'EXPIRED', refundedCents: 3900, sequenceNo: null });
+      expect(t.stripe.refunds).toEqual([expect.objectContaining({ paymentIntentId: 'pi_late_after_cancel', amountCents: 3900 })]);
+      expect(await prisma.notificationOutbox.count({ where: { type: 'ORDER_CONFIRMED' } })).toBe(0);
+      expect(await prisma.notificationOutbox.count({ where: { type: 'ORDER_AUTO_REFUNDED', recipient: 'b1@example.test' } })).toBe(1);
+      expect(await prisma.listingOption.findUniqueOrThrow({ where: { id: l.options[0].id } })).toMatchObject({ soldCount: 0, reservedCount: 0 });
+    });
+
+    it('a cancellation whose last refund was settled by a run that then died is still finished', async () => {
+      const l = await paidListing();
+      await paidOrder(l, 1);
+      await cancel(l);
+      const task = await prisma.refundTask.findFirstOrThrow();
+      // That run settled the task, then died before finishing the cancellation.
+      await prisma.$transaction(async (tx) => {
+        await tx.refundTask.update({ where: { id: task.id }, data: { status: 'SUCCEEDED' } });
+        await tx.refund.update({ where: { id: task.id }, data: { status: 'SUCCEEDED' } });
+        await tx.listingCancellation.update({ where: { id: task.cancellationId! }, data: { succeeded: 1 } });
+      });
+      expect((await prisma.listingCancellation.findFirstOrThrow()).status).toBe('RUNNING');
+      expect(await runJob(1)).toEqual({ succeeded: 0, waiting: 0, retrying: 0, failed: 0 }); // nothing to claim
+      expect(await prisma.listingCancellation.findFirstOrThrow()).toMatchObject({ status: 'COMPLETED', succeeded: 1 });
+      expect(await prisma.notificationOutbox.count({ where: { type: 'CANCELLATION_FINISHED' } })).toBe(1);
+    });
+
+    it('a retry gives a refund Stripe refused a new id, and resends one that only met errors under its own', async () => {
+      const l = await paidListing();
+      const refused = await paidOrder(l, 1);
+      const unanswered = await paidOrder(l, 2);
+      await cancel(l);
+      const tasks = await prisma.refundTask.findMany();
+      const refusedTask = tasks.find((x) => x.orderId === refused.id)!;
+      const unansweredTask = tasks.find((x) => x.orderId === unanswered.id)!;
+      t.stripe.failRefundKeys.add(unansweredTask.id);
+      t.stripe.newRefundStatus = 'failed';
+      await drain();
+      expect(await prisma.listingCancellation.findFirstOrThrow()).toMatchObject({ status: 'COMPLETED_WITH_FAILURES', failed: 2 });
+
+      t.stripe.failRefundKeys.clear();
+      t.stripe.newRefundStatus = 'succeeded';
+      const cancellation = await prisma.listingCancellation.findFirstOrThrow();
+      expect(await t.app.get(CancellationService).retryFailed(cancellation.id)).toBe(2);
+      await drain();
+      expect(await prisma.listingCancellation.findFirstOrThrow()).toMatchObject({ status: 'COMPLETED', succeeded: 2, failed: 0 });
+      expect(await prisma.order.count({ where: { status: 'REFUNDED' } })).toBe(2);
+      // The refused refund stays on record; its retry is a new refund. The other kept its id (and key).
+      expect(await prisma.refund.findUniqueOrThrow({ where: { id: refusedTask.id } })).toMatchObject({ status: 'FAILED' });
+      expect(await prisma.refund.findFirstOrThrow({ where: { orderId: refused.id, status: 'SUCCEEDED' } })).not.toMatchObject({ id: refusedTask.id });
+      expect(await prisma.refund.findUniqueOrThrow({ where: { id: unansweredTask.id } })).toMatchObject({ status: 'SUCCEEDED' });
+    });
+
+    it('a refund Stripe made although we gave up on it completes the cancellation when it is reported', async () => {
+      const l = await paidListing();
+      const o = await paidOrder(l, 1);
+      await cancel(l);
+      const task = await prisma.refundTask.findFirstOrThrow();
+      t.stripe.failRefund = true;
+      await drain();
+      expect(await prisma.listingCancellation.findFirstOrThrow()).toMatchObject({ status: 'COMPLETED_WITH_FAILURES', failed: 1 });
+      t.stripe.failRefund = false;
+      // One of those attempts did reach Stripe after all.
+      t.stripe.keysExpired = true;
+      await t.app.get(StripeClient).refundPayment(ACCOUNT, o.stripePaymentIntentId!, 3900, task.id);
+      await deliver(
+        chargeEvent('charge.refunded', { id: 'ch_1', object: 'charge', payment_intent: o.stripePaymentIntentId, amount_refunded: 3900 }),
+      );
+      expect(await orderRow(o.id)).toMatchObject({ status: 'REFUNDED', refundedCents: 3900 });
+      expect(await prisma.listingCancellation.findFirstOrThrow()).toMatchObject({ status: 'COMPLETED', succeeded: 1, failed: 0 });
+    });
+
+    it('a task older than Stripe keeps its idempotency key looks for its refund before making one', async () => {
+      const l = await paidListing();
+      const o = await paidOrder(l, 1);
+      const task = await decidedOnly(o.id, 1000);
+      // The request that decided it did reach Stripe a day ago, then died; the key has expired since.
+      await t.app.get(StripeClient).refundPayment(ACCOUNT, o.stripePaymentIntentId!, 1000, task.id);
+      t.stripe.keysExpired = true;
+      await prisma.refundTask.update({ where: { id: task.id }, data: { createdAt: new Date(Date.now() - 25 * 3_600_000) } });
+      await runJob(6);
+      expect(t.stripe.refunds).toHaveLength(1);
+      expect(await orderRow(o.id)).toMatchObject({ status: 'PARTIALLY_REFUNDED', refundedCents: 1000 });
+    });
 
     it('a free listing is cancelled at once: registrations cancelled and told why', async () => {
       const merchant = await prisma.merchant.findFirstOrThrow({ where: { owner: { clerkUserId: 'user_m' } } });

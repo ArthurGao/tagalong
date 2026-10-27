@@ -89,7 +89,8 @@ frontend/
   - Merchant registration list: `dashboard/(app)/listings/[id]/orders` with `components/merchant/OrderList.tsx`.
     - Actions follow the backend's `canFulfil` / `canCancel` / `canNoShow` / `refundableCents`.
     - The refund dialog takes dollars (`dollarsToCents`), and there is a plain CSV link.
-  - `components/merchant/CancelListing.tsx` (in PublishStep) shows the preview, needs a reason and the exact title, and then polls the batch refund's progress.
+    - A refund Stripe has not confirmed yet shows as in progress (`pendingRefundCents`), and one that failed for good as `lastRefundFailed`; the refund request itself does not fail when Stripe is slow.
+  - `components/merchant/CancelListing.tsx` (in PublishStep) reloads the preview on every open and cannot confirm without it, needs a reason and the exact title, and then polls the batch refund's progress.
   - Free listings get `{ kind: 'confirmed', publicCode, accessToken }`. Navigate to `/o/{publicCode}?t={accessToken}`, which shows "报名成功" (registered). Branch on `kind`, never on price.
   - Handle `ALREADY_REGISTERED` by showing "该邮箱已报名，确认邮件已重新发送" (this email is already registered; the confirmation email has been resent).
   - Every public order form includes the Cloudflare Turnstile widget, and its token is sent with the request.

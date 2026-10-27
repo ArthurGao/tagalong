@@ -3,6 +3,7 @@ import request from 'supertest';
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 import { OutboxJob } from '../../src/modules/notifications/outbox.job.js';
 import { ExpiryJob } from '../../src/modules/orders/expiry.job.js';
+import { RefundJob } from '../../src/modules/orders/refund.job.js';
 import { reserve } from '../../src/modules/orders/reservation.js';
 import { createTestApp, type TestApp } from './support/app.js';
 import { resetDb, testPrisma } from './support/db.js';
@@ -514,13 +515,13 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
       expect((await deliver(event)).status).toBe(200);
       expect((await deliver({ ...event, id: `evt_${randomUUID()}` })).status).toBe(200);
 
+      // The decision is a Refund row; its id is Stripe's idempotency key (refund:{id}) and metadata.
+      const [row] = await prisma.refund.findMany({ where: { orderId: late.id } });
+      expect(row).toMatchObject({ amountCents: 3900, status: 'SUCCEEDED' });
       expect(t.stripe.refunds).toEqual([
-        { accountId: l.merchant.stripeAccountId, paymentIntentId: `pi_${late.id.slice(-8)}`, amountCents: 3900, idempotencyKey: `late-refund:${late.id}` },
+        { accountId: l.merchant.stripeAccountId, paymentIntentId: `pi_${late.id.slice(-8)}`, amountCents: 3900, idempotencyKey: `refund:${row.id}` },
       ]);
       expect(await prisma.order.findUniqueOrThrow({ where: { id: late.id } })).toMatchObject({ status: 'EXPIRED', refundedCents: 3900, sequenceNo: null });
-      expect(await prisma.refund.findMany({ where: { orderId: late.id } })).toEqual([
-        expect.objectContaining({ amountCents: 3900, status: 'SUCCEEDED' }),
-      ]);
       expect(await prisma.notificationOutbox.count({ where: { type: 'ORDER_AUTO_REFUNDED', recipient: 'amy@example.test' } })).toBe(1);
       expect(await counts(l)).toEqual({ options: [{ sold: 1, reserved: 0 }], listing: { sold: 1, reserved: 0, seq: 1 } });
     });
@@ -553,14 +554,15 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
 
       const event = await sessionEvent('checkout.session.completed', late);
       t.stripe.failRefund = true;
-      expect((await deliver(event)).status).toBe(502); // Stripe will retry the event
+      expect((await deliver(event)).status).toBe(200); // the refund is queued; refund.job retries it
       // Decided, not done: the refund is on record as pending, and no money is shown as refunded yet.
       expect(await prisma.refund.findMany({ where: { orderId: late.id } })).toEqual([expect.objectContaining({ status: 'PENDING', stripeRefundId: null })]);
       expect((await prisma.order.findUniqueOrThrow({ where: { id: late.id } })).refundedCents).toBe(0);
-      // Places free up meanwhile (say, the merchant raised capacity).
+      // Places free up meanwhile (say, the merchant raised capacity), and Stripe redelivers the payment.
       await prisma.listingOption.update({ where: { id: l.options[0].id }, data: { capacity: 5 } });
       t.stripe.failRefund = false;
       expect((await deliver({ ...event, id: `evt_${randomUUID()}` })).status).toBe(200);
+      await t.app.get(RefundJob).run(new Date(Date.now() + 10 * 60_000));
 
       expect(await prisma.order.findUniqueOrThrow({ where: { id: late.id } })).toMatchObject({ status: 'EXPIRED', refundedCents: 3900 });
       expect(t.stripe.refunds).toHaveLength(1);

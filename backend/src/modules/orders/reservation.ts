@@ -87,7 +87,8 @@ export function release(tx: Prisma.TransactionClient, listingId: string, items: 
 
 /**
  * Moves places to sold and returns the order's sign-up number (DESIGN §6, "→ PAID").
- * `held`: the places were reserved for this order. Otherwise they are taken afresh under the capacity conditions.
+ * `held`: the places were reserved for this order. Otherwise they are taken afresh under the same conditions as a new
+ * order's (an active option, capacity left, a listing not cancelled); a refusal is SOLD_OUT.
  */
 async function moveToSold(tx: Prisma.TransactionClient, listingId: string, items: ItemQty[], held: boolean): Promise<number> {
   const sum = total(items);
@@ -96,15 +97,15 @@ async function moveToSold(tx: Prisma.TransactionClient, listingId: string, items
     SET sold_count = sold_count + ${sum}, reserved_count = reserved_count - ${held ? sum : 0},
         paid_seq = paid_seq + 1, updated_at = now()
     WHERE id = ${listingId}::uuid
-      AND (${held}::boolean OR total_capacity IS NULL OR sold_count + reserved_count + ${sum} <= total_capacity)
+      AND (${held}::boolean OR (status <> 'CANCELLED' AND (total_capacity IS NULL OR sold_count + reserved_count + ${sum} <= total_capacity)))
     RETURNING paid_seq`;
   if (!row) throw soldOut();
   for (const i of sorted(items)) {
     const rows = await tx.$queryRaw<unknown[]>`
       UPDATE listing_option
       SET sold_count = sold_count + ${i.quantity}, reserved_count = reserved_count - ${held ? i.quantity : 0}, updated_at = now()
-      WHERE id = ${i.optionId}::uuid
-        AND (${held}::boolean OR capacity IS NULL OR sold_count + reserved_count + ${i.quantity} <= capacity)
+      WHERE id = ${i.optionId}::uuid AND listing_id = ${listingId}::uuid
+        AND (${held}::boolean OR (active AND (capacity IS NULL OR sold_count + reserved_count + ${i.quantity} <= capacity)))
       RETURNING id`;
     if (!rows.length) throw soldOut();
   }

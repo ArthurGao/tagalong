@@ -45,6 +45,22 @@ export function stripeErrorCode(e: unknown): string | undefined {
   return e instanceof AppError && e.code === 'STRIPE_ERROR' ? (e.details as { stripeCode?: string } | undefined)?.stripeCode : undefined;
 }
 
+/** A Stripe refund as the platform needs it. `status`: pending | requires_action | succeeded | failed | canceled. */
+export interface StripeRefund {
+  id: string;
+  status: string;
+  amountCents: number;
+  /** Our Refund row's id from metadata; null for a refund made outside TagAlong. */
+  refundId: string | null;
+}
+
+const toStripeRefund = (r: Stripe.Refund): StripeRefund => ({
+  id: r.id,
+  status: r.status ?? 'pending',
+  amountCents: r.amount,
+  refundId: r.metadata?.refundId ?? null,
+});
+
 // Business code never touches the SDK class (backend/CLAUDE.md); tests swap this token for a fake.
 export abstract class StripeClient {
   abstract createConnectedAccount(merchantId: string, email: string): Promise<string>;
@@ -56,13 +72,15 @@ export abstract class StripeClient {
   abstract retrieveCheckoutUrl(accountId: string, sessionId: string): Promise<string | null>;
   /** Ends an open session; a session that is already complete or expired is not an error. */
   abstract expireCheckoutSession(accountId: string, sessionId: string): Promise<void>;
-  /** Full or partial refund on the merchant's account; `idempotencyKey` makes retries safe. */
-  abstract refundPayment(
-    accountId: string,
-    paymentIntentId: string,
-    amountCents: number,
-    idempotencyKey: string,
-  ): Promise<{ id: string; status: string }>;
+  /**
+   * Full or partial refund on the merchant's account for our Refund row `refundId`: it is the idempotency key
+   * (`refund:{refundId}`) and the refund's `metadata.refundId`, so a refund can always be matched back to its row.
+   */
+  abstract refundPayment(accountId: string, paymentIntentId: string, amountCents: number, refundId: string): Promise<StripeRefund>;
+  /** A refund's current state (a pending refund can still succeed or fail). */
+  abstract retrieveRefund(accountId: string, stripeRefundId: string): Promise<StripeRefund>;
+  /** Every refund of a payment, ours (with `refundId`) and the merchant's own from the Dashboard. */
+  abstract listRefunds(accountId: string, paymentIntentId: string): Promise<StripeRefund[]>;
   /** Verifies the signature against the raw body; throws when it does not match. */
   abstract constructEvent(rawBody: Buffer | string, signature: string, secret: string): Stripe.Event;
 }
@@ -161,20 +179,26 @@ export class StripeSdkClient extends StripeClient {
     await callStripe(() => this.stripe.checkout.sessions.expire(sessionId, {}, { stripeAccount: accountId }));
   }
 
-  async refundPayment(
-    accountId: string,
-    paymentIntentId: string,
-    amountCents: number,
-    idempotencyKey: string,
-  ): Promise<{ id: string; status: string }> {
+  async refundPayment(accountId: string, paymentIntentId: string, amountCents: number, refundId: string): Promise<StripeRefund> {
     const refund = await callStripe(() =>
       this.stripe.refunds.create(
         // DESIGN §8.4: the platform fee is returned with the refund.
-        { payment_intent: paymentIntentId, amount: amountCents, refund_application_fee: true },
-        { stripeAccount: accountId, idempotencyKey },
+        { payment_intent: paymentIntentId, amount: amountCents, refund_application_fee: true, metadata: { refundId } },
+        { stripeAccount: accountId, idempotencyKey: `refund:${refundId}` },
       ),
     );
-    return { id: refund.id, status: refund.status ?? 'pending' };
+    return toStripeRefund(refund);
+  }
+
+  async retrieveRefund(accountId: string, stripeRefundId: string): Promise<StripeRefund> {
+    return toStripeRefund(await callStripe(() => this.stripe.refunds.retrieve(stripeRefundId, {}, { stripeAccount: accountId })));
+  }
+
+  async listRefunds(accountId: string, paymentIntentId: string): Promise<StripeRefund[]> {
+    const refunds = await callStripe(() =>
+      this.stripe.refunds.list({ payment_intent: paymentIntentId, limit: 100 }, { stripeAccount: accountId }).autoPagingToArray({ limit: 1000 }),
+    );
+    return refunds.map(toStripeRefund);
   }
 
   constructEvent(rawBody: Buffer | string, signature: string, secret: string): Stripe.Event {

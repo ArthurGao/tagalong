@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { errorText } from '../../common/errors/error-text.js';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import type { NotificationOutbox } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -50,7 +51,7 @@ export class OutboxJob {
         const attempts = row.attempts + 1;
         // A missing template will never succeed: fail at once instead of retrying for a day.
         const retryAt = e instanceof UnknownTemplateError ? null : nextAttemptAt(attempts, now);
-        const lastError = e instanceof Error ? e.message.slice(0, 500) : String(e);
+        const lastError = errorText(e);
         await this.prisma.notificationOutbox.update({
           where: { id: row.id },
           data: retryAt ? { attempts, lastError, nextAttemptAt: retryAt } : { attempts, lastError, status: 'FAILED' },

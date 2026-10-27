@@ -52,6 +52,12 @@ export type MerchantDisputePayload = {
   amountCents: number;
   reason: string;
 };
+export type RefundFailedPayload = {
+  publicCode: string;
+  listingTitle: string;
+  amountCents: number;
+  error: string;
+};
 export type CancellationFinishedPayload = {
   listingTitle: string;
   succeeded: number;
@@ -167,6 +173,14 @@ export function renderEmail(type: string, locale: string, to: string, payload: u
         zh
           ? `买家对「${p.listingTitle}」的订单 ${p.publicCode}（${money(p.amountCents)}）提出了付款争议，原因：${p.reason}。请尽快在 Stripe Dashboard 提交证据。`
           : `A buyer disputed order ${p.publicCode} (${money(p.amountCents)}) for "${p.listingTitle}", reason: ${p.reason}. Submit evidence in your Stripe Dashboard soon.`,
+      ]);
+    }
+    case 'REFUND_FAILED': {
+      const p = payload as RefundFailedPayload;
+      return email(to, zh ? `退款失败：订单 ${p.publicCode}` : `Refund failed: order ${p.publicCode}`, [
+        zh
+          ? `「${p.listingTitle}」订单 ${p.publicCode} 的 ${money(p.amountCents)} 退款多次尝试仍未成功（${p.error}）。这笔钱没有退回，可以在订单列表重新退款，或在 Stripe Dashboard 处理。`
+          : `The ${money(p.amountCents)} refund on order ${p.publicCode} for "${p.listingTitle}" failed after several tries (${p.error}). Nothing was refunded; refund again from your orders, or in your Stripe Dashboard.`,
       ]);
     }
     case 'CANCELLATION_FINISHED': {

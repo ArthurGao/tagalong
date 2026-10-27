@@ -7,12 +7,12 @@ import type { OrderStatus } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { type AuthUser, requireMerchantId } from '../auth/auth-user.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import { StripeClient } from '../stripe/stripe-client.js';
 import type { MerchantOrderDto, MerchantOrderListDto, MerchantOrdersQueryDto } from './merchant-order.dto.js';
 import { canTransition, transitionOrder } from './order-state-machine.js';
 import { readFormFields } from '../listings/form-fields.js';
 import { ordersCsv } from './orders-csv.js';
-import { confirmRefund, pendingByOrder, refundable, refundableCents } from './refunds.js';
+import { RefundProcessor } from './refund-processor.js';
+import { queueRefund, refundable, refundableCents, refundStateByOrder } from './refunds.js';
 import { eventStarted } from '../listings/availability.js';
 import { cancelFreeWithEmail, lockOrder, type OrderDetail, orderDetail } from './order-ops.js';
 
@@ -31,7 +31,7 @@ export class MerchantOrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
-    private readonly stripe: StripeClient,
+    private readonly refunds: RefundProcessor,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -64,8 +64,8 @@ export class MerchantOrdersService {
       orderBy: [{ sequenceNo: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       include: merchantDetail,
     });
-    const pending = await pendingByOrder(this.prisma, orders.map((o) => o.id));
-    return { listing, orders: orders.map((o) => toMerchantOrder(o, pending.get(o.id) ?? 0)) };
+    const refunds = await refundStateByOrder(this.prisma, orders.map((o) => o.id));
+    return { listing, orders: orders.map((o) => toMerchantOrder(o, refunds.pending.get(o.id) ?? 0, refunds.lastFailed.has(o.id))) };
   }
 
   /** Check-in (free) or hand-over (paid): DESIGN §6 → FULFILLED. */
@@ -95,13 +95,14 @@ export class MerchantOrdersService {
   }
 
   /**
-   * A merchant refund (DESIGN §8.4), full or partial. Decided under the order lock (a PENDING Refund row, so two refunds
-   * cannot exceed the total), sent to Stripe with the row id as idempotency key, then settled. A Stripe error leaves
-   * the row FAILED and nothing refunded.
+   * A merchant refund (DESIGN §8.4), full or partial. Decided under the order lock (a PENDING Refund row and its task,
+   * so two refunds cannot exceed the total), then tried at once. If Stripe does not confirm it now (an error, or a
+   * refund Stripe holds as pending), the order shows it as in flight and refund.job finishes it; a refund that keeps
+   * failing ends FAILED and the merchant is emailed.
    */
   async refund(user: AuthUser, orderId: string, amountCents: number, reason: string): Promise<MerchantOrderDto> {
     const merchantId = requireMerchantId(user);
-    const decided = await this.prisma.$transaction(async (tx) => {
+    const task = await this.prisma.$transaction(async (tx) => {
       const order = await lockOrder(tx, { id: orderId });
       if (!order || order.merchantId !== merchantId) throw new AppError('NOT_FOUND', 'Order not found');
       if (order.isFree || !REFUNDABLE.includes(order.status) || !order.stripePaymentIntentId) {
@@ -109,19 +110,9 @@ export class MerchantOrdersService {
       }
       const left = await refundableCents(tx, order);
       if (amountCents > left) throw new AppError('REFUND_EXCEEDS_TOTAL', 'More than is left to refund', { refundableCents: left });
-      const refund = await tx.refund.create({ data: { orderId, amountCents, reason, status: 'PENDING' } });
-      return { refund, accountId: order.merchant.stripeAccountId!, paymentIntentId: order.stripePaymentIntentId };
+      return queueRefund(tx, { orderId, amountCents, reason });
     });
-    let stripeRefund: { id: string; status: string };
-    try {
-      stripeRefund = await this.stripe.refundPayment(decided.accountId, decided.paymentIntentId, amountCents, `refund:${decided.refund.id}`);
-    } catch (e) {
-      await this.prisma.refund.update({ where: { id: decided.refund.id }, data: { status: 'FAILED' } });
-      throw e;
-    }
-    await this.prisma.$transaction(async (tx) => {
-      await confirmRefund(tx, this.deps, (await lockOrder(tx, { id: orderId }))!, decided.refund, stripeRefund.id);
-    });
+    await this.refunds.process(task);
     return this.read(orderId);
   }
 
@@ -134,7 +125,8 @@ export class MerchantOrdersService {
 
   private async read(orderId: string): Promise<MerchantOrderDto> {
     const order = await this.prisma.order.findUniqueOrThrow({ where: { id: orderId }, include: merchantDetail });
-    return toMerchantOrder(order, (await pendingByOrder(this.prisma, [orderId])).get(orderId) ?? 0);
+    const refunds = await refundStateByOrder(this.prisma, [orderId]);
+    return toMerchantOrder(order, refunds.pending.get(orderId) ?? 0, refunds.lastFailed.has(orderId));
   }
 
   /** Locks the merchant's own order, applies the change, and returns the updated order. Another merchant's is 404. */
@@ -157,7 +149,7 @@ const started = (o: MerchantDetail, now: Date) => eventStarted(o.items.map((i) =
 
 const REFUNDABLE: OrderStatus[] = ['PAID', 'PARTIALLY_REFUNDED', 'FULFILLED'];
 
-function toMerchantOrder(o: MerchantDetail, pendingRefundCents: number, now = new Date()): MerchantOrderDto {
+function toMerchantOrder(o: MerchantDetail, pendingRefundCents: number, lastRefundFailed: boolean, now = new Date()): MerchantOrderDto {
   const confirmed = o.isFree && o.status === 'CONFIRMED';
   return {
     id: o.id,
@@ -188,5 +180,7 @@ function toMerchantOrder(o: MerchantDetail, pendingRefundCents: number, now = ne
     canCancel: confirmed,
     canNoShow: confirmed && started(o, now),
     refundableCents: !o.isFree && REFUNDABLE.includes(o.status) ? refundable(o, pendingRefundCents) : 0,
+    pendingRefundCents,
+    lastRefundFailed,
   };
 }

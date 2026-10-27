@@ -1,4 +1,4 @@
-import { refundRetryAt } from './refund.job.js';
+import { refundRetryAt } from './refund-processor.js';
 
 describe('refund retry schedule (DESIGN §8.5: exponential backoff)', () => {
   it('waits 1, 2, 4, 8 minutes after attempts 1–4', () => {

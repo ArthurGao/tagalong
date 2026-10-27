@@ -131,7 +131,9 @@ export function OrderList({ initial }: { initial: OrderListData }) {
                 {formatNzDateTime(o.paidAt ?? o.createdAt, locale)}
                 {!o.isFree && ` · ${formatCents(o.totalCents)}`}
                 {o.refundedCents > 0 && ` · ${t('refunded', { amount: formatCents(o.refundedCents) })}`}
+                {o.pendingRefundCents > 0 && ` · ${t('refundPending', { amount: formatCents(o.pendingRefundCents) })}`}
               </p>
+              {o.lastRefundFailed && <p className="text-sm text-destructive">{t('refundFailed')}</p>}
               <div className="flex flex-wrap gap-2">
                 {o.canFulfil && (
                   <Button size="sm" disabled={save.saving} onClick={() => act(o, 'fulfil')}>

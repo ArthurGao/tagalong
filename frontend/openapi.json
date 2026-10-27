@@ -2236,6 +2236,14 @@
           "refundableCents": {
             "type": "number",
             "description": "Paid: what can still be refunded (total less refunded and refunds in flight)"
+          },
+          "pendingRefundCents": {
+            "type": "number",
+            "description": "Refunds decided but not yet confirmed by Stripe (being processed)"
+          },
+          "lastRefundFailed": {
+            "type": "boolean",
+            "description": "The latest refund failed for good: nothing was refunded"
           }
         },
         "required": [
@@ -2261,7 +2269,9 @@
           "canFulfil",
           "canCancel",
           "canNoShow",
-          "refundableCents"
+          "refundableCents",
+          "pendingRefundCents",
+          "lastRefundFailed"
         ]
       },
       "Pricing": {

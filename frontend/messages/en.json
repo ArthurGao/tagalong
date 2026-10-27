@@ -406,6 +406,8 @@
     "csv": "Download CSV",
     "refund": "Refund",
     "refunded": "Refunded {amount}",
+    "refundPending": "Refund of {amount} in progress",
+    "refundFailed": "The last refund failed: nothing was refunded. You can refund again.",
     "refundTitle": "Refund {name}",
     "refundBody": "Up to {amount} can still be refunded. Stripe fees are not returned to you.",
     "refundAmount": "Amount (NZD)",

@@ -1,15 +1,19 @@
+import { randomUUID } from 'node:crypto';
 import type { Env } from '../../config/env.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { NotificationsService } from '../notifications/notifications.service.js';
-import type { OrderRefundedPayload } from '../notifications/templates.js';
+import type { OrderAutoRefundedPayload, OrderRefundedPayload } from '../notifications/templates.js';
 import { canTransition, transitionOrder } from './order-state-machine.js';
 import type { OrderDetail } from './order-ops.js';
-import { orderUrl } from './urls.js';
+import { listingUrl, orderUrl } from './urls.js';
 
-// Every platform refund is first recorded as a PENDING Refund row (decided, in flight), then sent to Stripe with the
-// row id as idempotency key, then confirmed here. In-flight amounts count against what is still refundable, and
-// charge.refunded subtracts them so a refund is never counted twice. (The late-payment refund in checkout-webhooks
-// is the one exception: its order stays EXPIRED and its email differs.)
+// Every platform refund (merchant, late payment, listing cancellation) is a Refund row and a RefundTask with the same
+// id, written under the order lock (decided, in flight), then carried out by RefundProcessor: Stripe gets the row id as
+// idempotency key and metadata, and only a refund Stripe reports `succeeded` moves money here. In-flight amounts count
+// against what is still refundable; charge.refunded matches Stripe's refunds to rows by id (DESIGN §8.4).
+
+/** How long a worker holds a claimed task before another may take it over. */
+export const LEASE_MS = 5 * 60_000;
 
 /** Refunds decided but not yet confirmed by Stripe, per order, in one query. */
 export async function pendingByOrder(tx: Prisma.TransactionClient, orderIds: string[]): Promise<Map<string, number>> {
@@ -26,30 +30,107 @@ export async function refundableCents(tx: Prisma.TransactionClient, order: { id:
   return refundable(order, (await pendingByOrder(tx, [order.id])).get(order.id) ?? 0);
 }
 
+/** For the merchant's list, in one query: per order, the amount in flight and whether the latest refund failed. */
+export async function refundStateByOrder(db: Prisma.TransactionClient, orderIds: string[]) {
+  const rows = await db.refund.findMany({
+    where: { orderId: { in: orderIds } },
+    orderBy: { createdAt: 'desc' },
+    select: { orderId: true, status: true, amountCents: true },
+  });
+  const pending = new Map<string, number>();
+  const lastFailed = new Set<string>();
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (r.status === 'PENDING') pending.set(r.orderId, (pending.get(r.orderId) ?? 0) + r.amountCents);
+    if (!seen.has(r.orderId) && r.status === 'FAILED') lastFailed.add(r.orderId);
+    seen.add(r.orderId);
+  }
+  return { pending, lastFailed };
+}
+
+/** A task as a worker holds it. `leaseToken` must still match for any of its writes to land. */
+export interface ClaimedRefund {
+  id: string;
+  orderId: string;
+  amountCents: number;
+  attempts: number;
+  cancellationId: string | null;
+  stripeRefundId: string | null;
+  createdAt: Date;
+  leaseToken: string;
+}
+
+/**
+ * Decides refunds under the caller's order locks: per refund a PENDING Refund row and a RefundTask with the same id
+ * (the one rule RefundProcessor, markRefundSucceeded and retries rely on). Tasks of a cancellation wait for refund.job;
+ * a single refund (merchant, late payment) is returned already claimed, so the caller can try it at once, and if the
+ * caller dies refund.job takes it over after the lease.
+ */
+export async function queueRefunds(
+  tx: Prisma.TransactionClient,
+  refunds: { orderId: string; amountCents: number; reason: string | null }[],
+  cancellationId: string | null,
+  now = new Date(),
+): Promise<ClaimedRefund[]> {
+  const leaseToken = randomUUID();
+  const claim = cancellationId ? {} : { leaseToken, nextAttemptAt: new Date(now.getTime() + LEASE_MS) };
+  const tasks = await tx.refundTask.createManyAndReturn({
+    data: refunds.map((r) => ({ cancellationId, orderId: r.orderId, amountCents: r.amountCents, ...claim })),
+  });
+  await tx.refund.createMany({
+    data: tasks.map((t, i) => ({ id: t.id, orderId: t.orderId, amountCents: t.amountCents, reason: refunds[i].reason, status: 'PENDING' as const })),
+  });
+  return tasks.map((t) => ({ ...t, leaseToken }));
+}
+
+/** One refund decided under the caller's order lock, claimed for an immediate try. */
+export async function queueRefund(tx: Prisma.TransactionClient, refund: { orderId: string; amountCents: number; reason: string | null }) {
+  const [task] = await queueRefunds(tx, [refund], null);
+  return task;
+}
+
 export interface RefundDeps {
   notifications: NotificationsService;
   env: Env;
 }
 
 /**
- * Stripe accepted refund `refundId`: record its answer (first writer wins) and settle the money, under the caller's
- * order lock. Returns false when another delivery already recorded it.
+ * Stripe reports refund `refundId` succeeded: its row and task are marked (whatever state they were in, a FAILED one
+ * included: Stripe is the authority), the cancellation's counts follow, and the money is settled. Runs under the
+ * caller's order lock; returns false when it was already recorded.
  */
-export async function confirmRefund(
+export async function markRefundSucceeded(
   tx: Prisma.TransactionClient,
   deps: RefundDeps,
   order: OrderDetail,
-  refund: { id: string; amountCents: number; reason: string | null },
+  refundId: string,
   stripeRefundId: string,
 ): Promise<boolean> {
-  const { count } = await tx.refund.updateMany({ where: { id: refund.id, stripeRefundId: null }, data: { stripeRefundId, status: 'SUCCEEDED' } });
-  if (count) await settleRefund(tx, deps, order, refund.amountCents, refund.id, refund.reason);
-  return count > 0;
+  const row = await tx.refund.findUnique({ where: { id: refundId } });
+  if (!row || row.orderId !== order.id || row.status === 'SUCCEEDED') return false;
+  await tx.refund.update({ where: { id: refundId }, data: { status: 'SUCCEEDED', stripeRefundId } });
+  const task = await tx.refundTask.findUnique({ where: { id: refundId } });
+  if (task) {
+    await tx.refundTask.update({ where: { id: refundId }, data: { status: 'SUCCEEDED', stripeRefundId, leaseToken: null } });
+    if (task.cancellationId) {
+      const c = await tx.listingCancellation.update({
+        where: { id: task.cancellationId },
+        data: { succeeded: { increment: 1 }, ...(task.status === 'FAILED' && { failed: { decrement: 1 } }) },
+      });
+      // A refund given up on that Stripe later completed: a finished cancellation may have had its last failure.
+      if (c.status === 'COMPLETED_WITH_FAILURES' && c.failed === 0) {
+        await tx.listingCancellation.update({ where: { id: c.id }, data: { status: 'COMPLETED' } });
+      }
+    }
+  }
+  await settleRefund(tx, deps, order, row.amountCents, refundId, row.reason);
+  return true;
 }
 
 /**
  * Money that has gone back to the buyer (DESIGN §8.4): adds it to refundedCents, moves the order to REFUNDED or
- * PARTIALLY_REFUNDED where the state machine allows it, and queues the buyer's email. `dedupeKey` identifies this refund.
+ * PARTIALLY_REFUNDED where the state machine allows it, and queues the buyer's email (one per `dedupeKey`, i.e. per
+ * refund). An order that never became PAID (a late payment, §7.5) keeps its status and gets the auto-refund email.
  */
 export async function settleRefund(
   tx: Prisma.TransactionClient,
@@ -62,20 +143,37 @@ export async function settleRefund(
   const refundedCents = order.refundedCents + amountCents;
   const to = refundedCents >= order.totalCents ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
   if (canTransition(order.isFree, order.status, to)) await transitionOrder(tx, order, to, { refundedCents });
-  else await tx.order.update({ where: { id: order.id }, data: { refundedCents } }); // e.g. a second partial refund
-  await deps.notifications.enqueue(tx, {
-    type: 'ORDER_REFUNDED',
-    recipient: order.buyerEmail,
-    locale: order.locale,
-    payload: {
-      publicCode: order.publicCode,
-      listingTitle: order.listing.title,
-      amountCents,
-      refundedCents,
-      totalCents: order.totalCents,
-      reason,
-      orderUrl: orderUrl(deps.env, order.locale, order.publicCode, order.accessToken),
-    } satisfies OrderRefundedPayload,
-    dedupeKey: `ORDER_REFUNDED:${dedupeKey}`,
-  });
+  else await tx.order.update({ where: { id: order.id }, data: { refundedCents } }); // a second partial refund, or never paid
+  const neverPaid = order.status === 'EXPIRED' || order.status === 'CANCELLED';
+  await deps.notifications.enqueue(
+    tx,
+    neverPaid
+      ? {
+          type: 'ORDER_AUTO_REFUNDED',
+          recipient: order.buyerEmail,
+          locale: order.locale,
+          payload: {
+            publicCode: order.publicCode,
+            listingTitle: order.listing.title,
+            totalCents: amountCents,
+            listingUrl: listingUrl(deps.env, order.locale, order.listing.shortCode),
+          } satisfies OrderAutoRefundedPayload,
+          dedupeKey: `ORDER_AUTO_REFUNDED:${dedupeKey}`,
+        }
+      : {
+          type: 'ORDER_REFUNDED',
+          recipient: order.buyerEmail,
+          locale: order.locale,
+          payload: {
+            publicCode: order.publicCode,
+            listingTitle: order.listing.title,
+            amountCents,
+            refundedCents,
+            totalCents: order.totalCents,
+            reason,
+            orderUrl: orderUrl(deps.env, order.locale, order.publicCode, order.accessToken),
+          } satisfies OrderRefundedPayload,
+          dedupeKey: `ORDER_REFUNDED:${dedupeKey}`,
+        },
+  );
 }

@@ -406,6 +406,8 @@
     "csv": "下载 CSV",
     "refund": "退款",
     "refunded": "已退 {amount}",
+    "refundPending": "退款处理中 {amount}",
+    "refundFailed": "上次退款失败，没有退出任何款项，可以重新退款。",
     "refundTitle": "给 {name} 退款",
     "refundBody": "最多还可退 {amount}。Stripe 手续费不退还给你。",
     "refundAmount": "金额（NZD）",

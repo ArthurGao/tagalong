@@ -36,6 +36,8 @@ const order = (over: Partial<Order> = {}): Order => ({
   canCancel: true,
   canNoShow: false,
   refundableCents: 0,
+  pendingRefundCents: 0,
+  lastRefundFailed: false,
   ...over,
 });
 const data = (orders: Order[], pricing: 'FREE' | 'PAID' = 'FREE') => ({
@@ -109,6 +111,21 @@ describe('OrderList (merchant registrations)', () => {
     fireEvent.click(screen.getByRole('button', { name: t.confirmRefund.replace('{amount}', '$10.00') }));
     await waitFor(() => expect(screen.getByRole('listitem').textContent).toContain(t.refunded.replace('{amount}', '$10.00')));
     expect(post).toHaveBeenCalledWith('/api/v1/merchants/me/orders/{id}/refund', { params: { path: { id: 'o1' } }, body: { amountCents: 1000, reason: 'Short delivery' } });
+  });
+
+  it('shows a refund still being processed, and one that failed', () => {
+    renderWithIntl(
+      <OrderList
+        initial={data([
+          order({ id: 'o1', isFree: false, status: 'PAID', totalCents: 3900, refundableCents: 2900, pendingRefundCents: 1000 }),
+          order({ id: 'o2', isFree: false, status: 'PAID', totalCents: 3900, refundableCents: 3900, lastRefundFailed: true }),
+        ])}
+      />,
+    );
+    const [inFlight, failed] = screen.getAllByRole('listitem');
+    expect(inFlight.textContent).toContain(t.refundPending.replace('{amount}', '$10.00'));
+    expect(inFlight.textContent).not.toContain(t.refundFailed);
+    expect(failed.textContent).toContain(t.refundFailed);
   });
 
   it('links the CSV export of this listing', () => {

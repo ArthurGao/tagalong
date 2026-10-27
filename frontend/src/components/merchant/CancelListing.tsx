@@ -57,6 +57,7 @@ export function CancelListing({ listingId, title, onCancelled }: { listingId: st
   const [reason, setReason] = useState('');
 
   const openDialog = async () => {
+    setPreview(null); // never act on an earlier preview: the numbers may have changed
     setOpen(true);
     const data = await save.run(() => api.GET('/api/v1/merchants/me/listings/{id}/cancellation/preview', { params: { path: { id: listingId } } }));
     if (data) setPreview(data);
@@ -107,7 +108,8 @@ export function CancelListing({ listingId, title, onCancelled }: { listingId: st
             <Button variant="outline" onClick={() => setOpen(false)}>
               {t('keep')}
             </Button>
-            <Button disabled={save.saving || !reason.trim() || typed.trim() !== title.trim()} onClick={confirm}>
+            {/* Only once the merchant has seen what will happen (DESIGN §8.5). */}
+            <Button disabled={save.saving || !preview || !reason.trim() || typed.trim() !== title.trim()} onClick={confirm}>
               {t('confirm')}
             </Button>
           </DialogFooter>

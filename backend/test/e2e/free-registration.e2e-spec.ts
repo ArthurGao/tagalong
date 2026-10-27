@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 import type { FormField } from '../../src/modules/listings/form-fields.js';
+import { registerFree } from '../../src/modules/orders/reservation.js';
 import { createTestApp, type TestApp } from './support/app.js';
 import { resetDb, testPrisma } from './support/db.js';
 import { createMerchant } from './support/factories.js';
@@ -229,6 +230,16 @@ describe('free registration (DESIGN §6, §7.6, §9, M5b)', () => {
     const r3 = await register(never);
     expect((await cancelOwn(r3.body.publicCode, r3.body.accessToken)).body.code).toBe('SELF_CANCEL_WINDOW_PASSED');
     expect((await byCode(r3.body.publicCode)).status).toBe('CONFIRMED');
+  });
+
+  it('an option switched off after the request was checked cannot be taken (the check repeats under the lock)', async () => {
+    const l = await freeListing();
+    await prisma.listingOption.create({ data: { listingId: l.id, name: 'Standing', priceCents: 0, capacity: 5 } });
+    await prisma.listingOption.update({ where: { id: l.options[0].id }, data: { active: false } });
+    // The listing still takes orders (another option is on), as registerFree sees it under the lock.
+    const attempt = prisma.$transaction((tx) => registerFree(tx, l.id, [{ optionId: l.options[0].id, quantity: 1 }]));
+    await expect(attempt).rejects.toMatchObject({ code: 'SOLD_OUT' });
+    expect(await sold(l)).toEqual({ option: 0, reserved: 0, listing: 0 });
   });
 
   describe('merchant actions', () => {

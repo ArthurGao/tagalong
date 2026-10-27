@@ -682,6 +682,10 @@ export interface components {
             canNoShow: boolean;
             /** @description Paid: what can still be refunded (total less refunded and refunds in flight) */
             refundableCents: number;
+            /** @description Refunds decided but not yet confirmed by Stripe (being processed) */
+            pendingRefundCents: number;
+            /** @description The latest refund failed for good: nothing was refunded */
+            lastRefundFailed: boolean;
         };
         /** @enum {string} */
         Pricing: "FREE" | "PAID";

@@ -39,6 +39,17 @@ describe('CancelListing', () => {
     expect(post).toHaveBeenCalledWith('/api/v1/merchants/me/listings/{id}/cancel', { params: { path: { id: 'l1' } }, body: { reason: 'Storm', confirmTitle: 'Cherries' } });
   });
 
+  it('cannot cancel without having seen the preview', async () => {
+    get.mockResolvedValue({ error: { code: 'INTERNAL', message: 'down' }, response: new Response(null, { status: 500 }) });
+    renderWithIntl(<CancelListing listingId="l1" title="Cherries" onCancelled={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: t.button }));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(t.reason), { target: { value: 'Storm' } });
+    fireEvent.change(screen.getByLabelText(t.typeTitle.replace('{title}', 'Cherries')), { target: { value: 'Cherries' } });
+    expect(screen.getByRole('button', { name: t.confirm })).toHaveProperty('disabled', true);
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it('polls the refund progress until it is done, then stops', async () => {
     vi.useFakeTimers();
     get.mockResolvedValueOnce({ data: progress('RUNNING', 1) }).mockResolvedValue({ data: { ...progress('COMPLETED', 3), pending: 0 } });

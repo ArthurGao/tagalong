@@ -5,14 +5,15 @@ import type { Env } from '../../config/env.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import type { MerchantDisputePayload, OrderAutoRefundedPayload, OrderConfirmedPayload } from '../notifications/templates.js';
+import type { MerchantDisputePayload, OrderConfirmedPayload } from '../notifications/templates.js';
 import { DEFAULT_LOCALE } from '../../common/locale.js';
-import { pendingByOrder, settleRefund } from './refunds.js';
+import { RefundProcessor } from './refund-processor.js';
+import { type ClaimedRefund, markRefundSucceeded, queueRefund, settleRefund } from './refunds.js';
 import { StripeClient } from '../stripe/stripe-client.js';
 import { transitionOrder } from './order-state-machine.js';
 import { endUnpaid, lockOrder, type OrderDetail, orderDetail, recoverCheckoutSession } from './order-ops.js';
 import { sell, sellAfresh } from './reservation.js';
-import { listingUrl, orderUrl } from './urls.js';
+import { orderUrl } from './urls.js';
 
 // DESIGN §8.3 / §7.5. Every handler is idempotent and tolerates events in any order: the order row is locked,
 // and only the transition that still applies is made.
@@ -31,6 +32,7 @@ export class CheckoutWebhooksService {
     private readonly prisma: PrismaService,
     private readonly stripe: StripeClient,
     private readonly notifications: NotificationsService,
+    private readonly refunds: RefundProcessor,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -49,8 +51,8 @@ export class CheckoutWebhooksService {
     }
     await this.recoverUnsavedSession(orderId);
     const paid = { sessionId: session.id, paymentIntentId };
-    // The order to refund, when a payment arrived for places that are gone.
-    const toRefund = await this.prisma.$transaction(async (tx) => {
+    // The refund to try, when a payment arrived for places that are gone.
+    const toRefund = await this.prisma.$transaction(async (tx): Promise<ClaimedRefund | null> => {
       const order = await lockOrder(tx, { id: orderId });
       if (!order) {
         this.logger.warn(`checkout.session.completed for unknown order ${orderId}`);
@@ -65,23 +67,21 @@ export class CheckoutWebhooksService {
         return null;
       }
       if (order.status !== 'EXPIRED' && order.status !== 'CANCELLED') return null; // already paid: a replay
-      // A refund was decided earlier (under this lock): carry it out, never reconsider it, even if places freed up.
-      const decided = await tx.refund.findFirst({ where: { orderId: order.id }, select: { stripeRefundId: true } });
-      if (decided) return decided.stripeRefundId ? null : order;
-      // §7.5: paid just after the reservation ended. Take the places again if they are still there.
+      // A refund was decided earlier (under this lock): the refund queue carries it out; never reconsider it.
+      if (await tx.refund.findFirst({ where: { orderId: order.id }, select: { id: true } })) return null;
+      // §7.5: paid just after the reservation ended. Take the places again if they are still there (never on a
+      // cancelled listing: sellAfresh refuses it like a sold-out one).
       const seq = order.status === 'EXPIRED' ? await sellAfresh(tx, order.listingId, order.items) : null;
       if (seq !== null) {
         await this.markPaid(tx, order, paid, seq);
         return null;
       }
-      // Decide the refund before calling Stripe (a PENDING row), so a concurrent or retried delivery can only resume it.
+      // Full refund (fee included), decided before Stripe is called; the order stays EXPIRED / CANCELLED.
       await tx.order.update({ where: { id: order.id }, data: { stripePaymentIntentId: paymentIntentId } });
-      await tx.refund.create({
-        data: { orderId: order.id, amountCents: order.totalCents, reason: 'Paid after the reservation expired; sold out', status: 'PENDING' },
-      });
-      return order;
+      this.logger.warn(`late payment on order ${order.id} with no places (or a cancelled listing): refunding ${order.totalCents} cents`);
+      return queueRefund(tx, { orderId: order.id, amountCents: order.totalCents, reason: 'Paid after the reservation ended; no places left' });
     });
-    if (toRefund) await this.refundLatePayment(toRefund, paymentIntentId);
+    if (toRefund) await this.refunds.process(toRefund);
   }
 
   async expired(session: Stripe.Checkout.Session, account: string | undefined): Promise<void> {
@@ -95,23 +95,39 @@ export class CheckoutWebhooksService {
   }
 
   /**
-   * charge.refunded (DESIGN §8.3): a refund made outside TagAlong, e.g. by the merchant in the Stripe Dashboard. Only
-   * the part we have not recorded (or have in flight) is added, so our own refunds are never counted twice.
+   * charge.refunded (DESIGN §8.3 / §8.4): Stripe's refunds of this payment are matched to our rows by refund id. One
+   * of ours (metadata.refundId) that succeeded is confirmed if we have not yet heard; one made outside TagAlong (the
+   * merchant's Stripe Dashboard) is recorded once by its id. So nothing is counted twice or lost, whatever the order.
    */
   async chargeRefunded(charge: Stripe.Charge, account: string | undefined): Promise<void> {
     const paymentIntentId = paymentIntentIdOf(charge);
     if (!paymentIntentId) return;
+    const found = await this.prisma.order.findUnique({
+      where: { stripePaymentIntentId: paymentIntentId },
+      select: { id: true, refundedCents: true, merchant: { select: { stripeAccountId: true } } },
+    });
+    if (!found || !account || account !== found.merchant.stripeAccountId) {
+      this.logger.warn(`charge.refunded ${charge.id} matches no order of account ${account}; ignored`);
+      return;
+    }
+    if (charge.amount_refunded === found.refundedCents) return; // every refund already recorded (e.g. our own echoed)
+    const refunds = (await this.stripe.listRefunds(account, paymentIntentId)).filter((r) => r.status === 'succeeded');
     await this.prisma.$transaction(async (tx) => {
-      const found = await tx.order.findUnique({ where: { stripePaymentIntentId: paymentIntentId }, select: { id: true } });
-      const order = found && (await lockOrder(tx, { id: found.id }));
-      if (!order || !account || account !== order.merchant.stripeAccountId) {
-        this.logger.warn(`charge.refunded ${charge.id} matches no order of account ${account}; ignored`);
-        return;
+      let order = (await lockOrder(tx, { id: found.id }))!;
+      const recorded = new Set((await tx.refund.findMany({ where: { orderId: order.id, status: 'SUCCEEDED' }, select: { id: true } })).map((r) => r.id));
+      const known = new Set((await tx.refund.findMany({ where: { orderId: order.id, stripeRefundId: { not: null } }, select: { stripeRefundId: true } })).map((r) => r.stripeRefundId));
+      for (const r of refunds) {
+        if (r.refundId ? recorded.has(r.refundId) : known.has(r.id)) continue;
+        if (r.refundId) {
+          if (!(await markRefundSucceeded(tx, this.deps, order, r.refundId, r.id))) continue;
+        } else {
+          const row = await tx.refund.create({
+            data: { orderId: order.id, amountCents: r.amountCents, reason: 'Refunded in the Stripe Dashboard', status: 'SUCCEEDED', stripeRefundId: r.id },
+          });
+          await settleRefund(tx, this.deps, order, r.amountCents, row.id, null);
+        }
+        order = (await lockOrder(tx, { id: order.id }))!; // settled: refundedCents and status moved
       }
-      const unrecorded = charge.amount_refunded - order.refundedCents - ((await pendingByOrder(tx, [order.id])).get(order.id) ?? 0);
-      if (unrecorded <= 0) return;
-      await tx.refund.create({ data: { orderId: order.id, amountCents: unrecorded, reason: 'Refunded in the Stripe Dashboard', status: 'SUCCEEDED' } });
-      await settleRefund(tx, this.deps, order, unrecorded, `charge:${charge.id}:${charge.amount_refunded}`, null);
     });
   }
 
@@ -176,38 +192,6 @@ export class CheckoutWebhooksService {
       } satisfies OrderConfirmedPayload,
       dedupeKey: `ORDER_CONFIRMED:${order.id}`,
     });
-  }
-
-  /**
-   * §7.5: no places left for a payment that arrived after expiry. Full refund (fee included), recorded once;
-   * the Stripe idempotency key makes a retried webhook safe, and the order stays EXPIRED.
-   */
-  private async refundLatePayment(order: OrderDetail, paymentIntentId: string): Promise<void> {
-    const accountId = order.merchant.stripeAccountId;
-    if (!accountId) throw new Error(`Order ${order.id} paid on a merchant without a Stripe account`);
-    const refund = await this.stripe.refundPayment(accountId, paymentIntentId, order.totalCents, `late-refund:${order.id}`);
-    await this.prisma.$transaction(async (tx) => {
-      // First to record Stripe's answer wins; refundedCents moves only now that the money has moved.
-      const { count } = await tx.refund.updateMany({
-        where: { orderId: order.id, stripeRefundId: null },
-        data: { stripeRefundId: refund.id, status: refund.status === 'succeeded' ? 'SUCCEEDED' : 'PENDING' },
-      });
-      if (count === 0) return;
-      await tx.order.update({ where: { id: order.id }, data: { refundedCents: order.totalCents } });
-      await this.notifications.enqueue(tx, {
-        type: 'ORDER_AUTO_REFUNDED',
-        recipient: order.buyerEmail,
-        locale: order.locale,
-        payload: {
-          publicCode: order.publicCode,
-          listingTitle: order.listing.title,
-          totalCents: order.totalCents,
-          listingUrl: listingUrl(this.env, order.locale, order.listing.shortCode),
-        } satisfies OrderAutoRefundedPayload,
-        dedupeKey: `ORDER_AUTO_REFUNDED:${order.id}`,
-      });
-    });
-    this.logger.warn(`late payment on sold-out order ${order.id}: refunded ${order.totalCents} cents`);
   }
 }
 

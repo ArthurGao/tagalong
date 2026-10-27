@@ -348,7 +348,7 @@ model ListingCancellation {
 
 model RefundTask {
   id             String           @id @default(uuid(7)) @db.Uuid
-  cancellationId String           @map("cancellation_id") @db.Uuid
+  cancellationId String?          @map("cancellation_id") @db.Uuid // null: a single refund (merchant, late payment)
   orderId        String           @map("order_id") @db.Uuid
   amountCents    Int              @map("amount_cents")
   status         RefundTaskStatus @default(PENDING)
@@ -356,10 +356,11 @@ model RefundTask {
   nextAttemptAt  DateTime         @default(now()) @map("next_attempt_at") // exponential backoff
   lastError      String?          @map("last_error")
   stripeRefundId String?          @map("stripe_refund_id")
+  leaseToken     String?          @map("lease_token") @db.Uuid // the worker holding it; stale workers' writes miss
   createdAt      DateTime         @default(now()) @map("created_at")
   updatedAt      DateTime         @updatedAt @map("updated_at")
 
-  cancellation ListingCancellation @relation(fields: [cancellationId], references: [id])
+  cancellation ListingCancellation? @relation(fields: [cancellationId], references: [id], onDelete: Restrict)
   order        Order               @relation(fields: [orderId], references: [id])
 
   @@unique([cancellationId, orderId])

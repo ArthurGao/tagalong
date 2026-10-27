@@ -90,10 +90,10 @@ backend/
 - **Webhooks:** each one locks the order row and applies only the transition that still applies.
   - An event counts only for the order's own connected account and Checkout session (and, for `completed`, its amount in NZD). Otherwise it is ignored with a warning: a valid signature does not prove the payment is for this order.
   - **Async payments:** `async_payment_succeeded` is handled like a paid `completed`, and `async_payment_failed` like `expired`. Payment methods follow the connected account's settings, and this API version cannot restrict them from Checkout.
-  - **Late refunds:** the decision is a `Refund` row (`PENDING`, no `stripeRefundId`) written under the order lock before Stripe is called; a later delivery only resumes it. Stripe's answer fills the id, and only then does `refundedCents` move.
+  - **Late refunds:** the decision is a queued refund (`refunds.queueRefund`) written under the order lock; a later delivery sees it and decides nothing. `moveToSold` (held=false) refuses a cancelled listing and an inactive option in its conditional UPDATEs, like a sold-out one.
   - **EXPIRED + completed:** `sell(…, fromReserved=false)` inside a savepoint.
     - Places still free → PAID.
-    - SOLD_OUT → full refund after the tx (`late-refund:{orderId}`), recorded once via the Refund row; the order stays EXPIRED.
+    - SOLD_OUT (or a CANCELLED listing) → full refund through the refund queue; the order stays EXPIRED and gets ORDER_AUTO_REFUNDED.
   - **CANCELLED + completed:** refunded the same way.
 - **Notifications:**
   - `NotificationsService.enqueue(tx, …)` writes `notification_outbox` with `skipDuplicates`. The dedupe key is `TYPE:{id}`.
@@ -110,17 +110,20 @@ backend/
   - `ThrottlerGuard` on order creation limits each IP (`ORDER_RATE_LIMIT_PER_MINUTE`).
   - `TRUST_PROXY` decides which hops may set X-Forwarded-For.
 - **Refunds (M6):**
-  - Every merchant and cancellation refund writes a `PENDING` Refund row under the order lock first (`refunds.refundable` = total − refunded − pending, pending via `pendingByOrder`), calls Stripe with the row id as idempotency key, then `refunds.confirmRefund` records Stripe's answer once and `settleRefund` moves `refundedCents` and the status (where the state machine allows) and queues ORDER_REFUNDED.
-  - The late-payment refund above is the exception: it keeps the order EXPIRED/CANCELLED and sends ORDER_AUTO_REFUNDED.
-  - A Stripe error marks the row FAILED.
-  - `charge.refunded` adds only the unrecorded remainder (Dashboard refunds).
+  - **One queue for every platform refund** (merchant, late payment, cancellation): a `PENDING` Refund row and a `RefundTask` with the same id, written under the order lock (`refunds.refundable` = total − refunded − pending).
+  - `RefundProcessor.process(task)` carries one out (inline first try for merchant/late refunds, then `refund.job.ts`). Stripe gets idempotency key `refund:{id}` and `metadata.refundId`.
+  - Only `succeeded` settles (`markRefundSucceeded` → `settleRefund`: refundedCents, status via `canTransition`, ORDER_REFUNDED; an EXPIRED/CANCELLED order keeps its status and gets ORDER_AUTO_REFUNDED).
+  - `pending` stores the Stripe id and is re-read every 15 min; `failed`/`canceled` → FAILED. An error retries after backoff (the same key within 24 h; a task older than 23 h looks its refund up by metadata first), and the 5th → FAILED plus REFUND_FAILED to the merchant (single refunds).
+  - Every write is conditional on `status = PENDING` and the claim's `leaseToken`, so a worker whose lease ran out writes nothing; a success Stripe reports always lands.
+  - The merchant endpoint never returns STRIPE_ERROR for a refund: the DTO shows `pendingRefundCents` / `lastRefundFailed`.
+  - `charge.refunded` lists Stripe's refunds of the payment and matches them by id: ours (metadata) are confirmed, others (Dashboard) recorded once by `stripeRefundId`.
   - `charge.dispute.created` emails the merchant (MERCHANT_DISPUTE).
 - **Listing cancellation (§8.5):** `cancellation.service.ts`.
-  - It locks the listing's orders, then the listing.
+  - It locks the listing's orders, then the listing, then checks no order committed in between (else the whole tx is retried, 5 rounds, then ORDER_IN_PROGRESS).
   - The listing becomes CANCELLED, unpaid checkouts EXPIRED, free registrations CANCELLED (with an email).
   - Each PAID / PARTIALLY_REFUNDED order gets one `RefundTask` plus a Refund with the **same id**.
-  - `refund.job.ts`: every 30 s, 20 tasks, lease plus SKIP LOCKED; retries after 1/2/4/8 min; FAILED after 5 attempts. A cancellation with nothing pending becomes COMPLETED(_WITH_FAILURES) and the merchant is emailed.
-  - `retryFailed()` is for the admin console (M8).
+  - `refund.job.ts`: every 30 s, 20 tasks, lease token plus SKIP LOCKED; retries after 1/2/4/8 min; FAILED after 5 attempts. Every run finishes any RUNNING cancellation with nothing pending (COMPLETED(_WITH_FAILURES), merchant emailed).
+  - `retryFailed()` is for the admin console (M8): a refund Stripe refused gets a new id (its key would replay the refusal); one that only met errors keeps its id.
 - `orders-csv.ts` builds the merchant CSV (pure, one column table; BOM, CRLF, formula-safe cells).
 - `merchant-orders.*`: the merchant's list (`?status=&q=`), fulfil (check-in or hand-over), cancel (free only, emails the reason) and no-show (only after the event starts).
 - `StripeClient` lives in `StripeClientModule`, so orders and the Stripe module can both inject it without a cycle.
@@ -194,7 +197,7 @@ Merchants and admins share **one Clerk application** and are distinguished by ro
 - All jobs follow the same shape: batch select with `FOR UPDATE SKIP LOCKED`, process, update, log a one-line summary. They are safe to run on multiple instances.
 - `listing-close.job.ts` runs every minute and closes PUBLISHED listings whose `closesAt` has passed.
 - `outbox.job.ts` runs every 10 seconds (DESIGN §12 backoff schedule).
-- `refund.job.ts` runs every 30 seconds, 20 tasks per batch, with `RefundTask.id` as the Stripe idempotency key.
+- `refund.job.ts` runs every 30 seconds, 20 tasks per batch (every queued refund: merchant, late payment, cancellation), with `refund:{RefundTask.id}` as the Stripe idempotency key and a per-run lease token.
 - `pii-retention.job.ts` runs daily and anonymizes buyer PII on orders whose listing ended more than 12 months ago.
 - `reminder.job.ts` runs every 15 minutes. It sends event reminders for SESSION/EVENT orders and is idempotent via `Order.reminderSentAt`.
 - `expiry.job.ts` runs every minute. It only applies to paid orders. It processes in batches, uses `FOR UPDATE SKIP LOCKED` so that multiple instances are safe, expires the Stripe session, then transitions the order to EXPIRED.

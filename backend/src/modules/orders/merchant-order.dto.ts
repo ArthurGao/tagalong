@@ -50,6 +50,8 @@ export class MerchantOrderDto {
   @ApiProperty({ description: 'Cancel with a reason (free registrations only)' }) canCancel!: boolean;
   @ApiProperty({ description: 'Mark no-show (free, once the event has started)' }) canNoShow!: boolean;
   @ApiProperty({ description: 'Paid: what can still be refunded (total less refunded and refunds in flight)' }) refundableCents!: number;
+  @ApiProperty({ description: 'Refunds decided but not yet confirmed by Stripe (being processed)' }) pendingRefundCents!: number;
+  @ApiProperty({ description: 'The latest refund failed for good: nothing was refunded' }) lastRefundFailed!: boolean;
 }
 
 export class MerchantOrderListingDto {

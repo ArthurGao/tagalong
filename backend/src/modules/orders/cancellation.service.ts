@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { AppError } from '../../common/errors/app-error.js';
 import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import type { ListingStatus, OrderStatus } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { type AuthUser, requireMerchantId } from '../auth/auth-user.js';
@@ -10,11 +11,14 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { StripeClient } from '../stripe/stripe-client.js';
 import type { CancelListingDto, CancellationPreviewDto, CancellationProgressDto } from './cancellation.dto.js';
 import { cancelFreeWithEmail, type CheckoutSessionRef, endUnpaid, expireSessions, orderDetail, sessionsToEnd } from './order-ops.js';
-import { pendingByOrder, refundable } from './refunds.js';
+import { pendingByOrder, queueRefunds, refundable } from './refunds.js';
 
 // Paid orders refunded when a listing is cancelled (DESIGN §8.5). FULFILLED orders keep their money: the goods were
 // handed over, and the merchant can still refund one by one.
 const TO_REFUND: OrderStatus[] = ['PAID', 'PARTIALLY_REFUNDED'];
+// Every order a cancellation ends: refunded (TO_REFUND), expired (unpaid) or cancelled (free).
+const ENDED: OrderStatus[] = [...TO_REFUND, 'PENDING_PAYMENT', 'CONFIRMED'];
+const CANCEL_ROUNDS = 5;
 
 @Injectable()
 export class CancellationService {
@@ -26,6 +30,10 @@ export class CancellationService {
     private readonly notifications: NotificationsService,
     @Inject(ENV) private readonly env: Env,
   ) {}
+
+  private get deps() {
+    return { notifications: this.notifications, env: this.env };
+  }
 
   /** What a cancellation would do, for the confirmation dialog. */
   async preview(user: AuthUser, listingId: string): Promise<CancellationPreviewDto> {
@@ -59,18 +67,37 @@ export class CancellationService {
     if (dto.confirmTitle.trim() !== listing.title.trim()) {
       throw new AppError('VALIDATION_FAILED', 'Type the listing title to confirm', ['confirmTitle']);
     }
+    // Orders created while the scan below ran (their transaction held the listing) appear once we hold the listing:
+    // then everything starts again, so no order escapes the cancellation. Order creation is brief; a few rounds do.
+    for (let round = 0; round < CANCEL_ROUNDS; round++) {
+      const ended = await this.cancelOnce(user, listingId, dto);
+      if (ended) {
+        await expireSessions(this.stripe, this.logger, ended);
+        return this.progress(user, listingId);
+      }
+    }
+    throw new AppError('ORDER_IN_PROGRESS', 'Orders are still arriving; try again');
+  }
+
+  /** One attempt; null when an order appeared that it had not locked (nothing was written). */
+  private async cancelOnce(user: AuthUser, listingId: string, dto: CancelListingDto): Promise<CheckoutSessionRef[] | null> {
     const ended: CheckoutSessionRef[] = [];
     // Not through ListingsService.mutate(): that path locks the listing first, and this one must lock the listing's
     // orders before it (order → listing, as every order path does). No revision check either: cancelling wins.
-    await this.prisma.$transaction(
+    const complete = await this.prisma.$transaction(
       async (tx) => {
         const lockedIds = await tx.$queryRaw<{ id: string }[]>`
           SELECT id FROM "order"
-          WHERE listing_id = ${listingId}::uuid AND status IN ('PENDING_PAYMENT', 'PAID', 'PARTIALLY_REFUNDED', 'CONFIRMED')
+          WHERE listing_id = ${listingId}::uuid AND status::text IN (${Prisma.join(ENDED)})
           ORDER BY id FOR UPDATE`;
         const [locked] = await tx.$queryRaw<{ status: ListingStatus }[]>`
           SELECT status FROM listing WHERE id = ${listingId}::uuid FOR UPDATE`;
         assertListingTransition(locked.status, 'CANCELLED');
+        // New orders need the listing lock, so from here none can appear; one committed before we got it was not locked.
+        const missed = await tx.order.count({
+          where: { listingId, status: { in: ENDED }, id: { notIn: lockedIds.map((o) => o.id) } },
+        });
+        if (missed) return false;
         await tx.listing.update({ where: { id: listingId }, data: { status: 'CANCELLED', revision: { increment: 1 } } });
         const cancellation = await tx.listingCancellation.create({
           data: { listingId, initiatedByUserId: user.id, reason: dto.reason, refundAll: true, status: 'RUNNING', startedAt: new Date() },
@@ -84,23 +111,22 @@ export class CancellationService {
             await endUnpaid(tx, order, 'EXPIRED');
             ended.push(...sessionsToEnd(order));
           } else if (order.status === 'CONFIRMED') {
-            await cancelFreeWithEmail(tx, { notifications: this.notifications, env: this.env }, order, dto.reason);
+            await cancelFreeWithEmail(tx, this.deps, order, dto.reason);
           }
         }
         const toRefund = paid
-          .map((o) => ({ cancellationId: cancellation.id, orderId: o.id, amountCents: refundable(o, pending.get(o.id) ?? 0) }))
-          .filter((t) => t.amountCents > 0);
-        const tasks = await tx.refundTask.createManyAndReturn({ data: toRefund, select: { id: true, orderId: true, amountCents: true } });
-        await tx.refund.createMany({ data: tasks.map((t) => ({ ...t, reason: dto.reason, status: 'PENDING' as const })) });
+          .map((o) => ({ orderId: o.id, amountCents: refundable(o, pending.get(o.id) ?? 0), reason: dto.reason }))
+          .filter((r) => r.amountCents > 0);
+        const tasks = await queueRefunds(tx, toRefund, cancellation.id);
         await tx.listingCancellation.update({
           where: { id: cancellation.id },
           data: tasks.length ? { totalOrders: tasks.length } : { totalOrders: 0, status: 'COMPLETED', finishedAt: new Date() },
         });
+        return true;
       },
       { timeout: 30_000 }, // one statement per unpaid or free order: a big listing needs more than the 5 s default
     );
-    await expireSessions(this.stripe, this.logger, ended);
-    return this.progress(user, listingId);
+    return complete ? ended : null;
   }
 
   /** GET /merchants/me/listings/:id/cancellation — the batch refund's progress, for polling. */
@@ -114,20 +140,30 @@ export class CancellationService {
 
   /**
    * Puts FAILED refunds of a cancellation back in the queue (DESIGN §8.5: retried manually from the admin console, M8).
-   * Their Refund rows go back to PENDING too, so the money counts as in flight again.
+   * One Stripe refused outright gets a new refund (a new id: its idempotency key would only replay the refusal); one
+   * that ended on errors is tried again as itself, so the same key or metadata lookup keeps it from refunding twice.
+   * Either way the money counts as in flight again.
    */
   async retryFailed(cancellationId: string): Promise<number> {
     return this.prisma.$transaction(async (tx) => {
-      const failed = await tx.refundTask.findMany({ where: { cancellationId, status: 'FAILED' }, select: { id: true } });
+      const failed = await tx.refundTask.findMany({ where: { cancellationId, status: 'FAILED' } });
       if (!failed.length) return 0;
-      const ids = failed.map((t) => t.id);
-      await tx.refundTask.updateMany({ where: { id: { in: ids } }, data: { status: 'PENDING', attempts: 0, nextAttemptAt: new Date(), lastError: null } });
-      await tx.refund.updateMany({ where: { id: { in: ids } }, data: { status: 'PENDING' } });
+      const refused = failed.filter((t) => t.stripeRefundId);
+      const unanswered = failed.filter((t) => !t.stripeRefundId).map((t) => t.id);
+      await tx.refundTask.updateMany({
+        where: { id: { in: unanswered } },
+        data: { status: 'PENDING', attempts: 0, nextAttemptAt: new Date(), lastError: null, leaseToken: null },
+      });
+      await tx.refund.updateMany({ where: { id: { in: unanswered } }, data: { status: 'PENDING' } });
+      // The refused task makes way (one task per order and cancellation); its FAILED Refund row stays as the record.
+      const reasons = new Map((await tx.refund.findMany({ where: { id: { in: refused.map((t) => t.id) } } })).map((r) => [r.id, r.reason]));
+      await tx.refundTask.deleteMany({ where: { id: { in: refused.map((t) => t.id) } } });
+      await queueRefunds(tx, refused.map((t) => ({ orderId: t.orderId, amountCents: t.amountCents, reason: reasons.get(t.id) ?? null })), cancellationId);
       await tx.listingCancellation.update({
         where: { id: cancellationId },
-        data: { status: 'RUNNING', failed: { decrement: ids.length }, finishedAt: null },
+        data: { status: 'RUNNING', failed: { decrement: failed.length }, finishedAt: null },
       });
-      return ids.length;
+      return failed.length;
     });
   }
 
