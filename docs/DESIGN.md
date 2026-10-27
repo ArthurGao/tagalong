@@ -326,7 +326,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - `charge.refunded`：同步退款状态（用于商家在 Stripe Dashboard 里直接退款的情况）
   - `charge.dispute.created`：记录日志并邮件通知商家
   - `account.updated`：同步商家的 Stripe 状态
-- **签名只证明事件来自 Stripe，不证明这笔钱付给了这个订单**（任何入驻商家都能在自己账户的 Checkout 里写别人的 `metadata.orderId`）。所以 checkout 事件只有在 `event.account` 是该订单商家的账户、`session.id` 等于订单记录的 `stripeCheckoutSessionId`、`amount_total` 等于 `totalCents` 且币种为 NZD 时才生效，否则记录警告并忽略。订单还没来得及保存 session id 时（请求在 Stripe 返回后崩溃），接受该商家账户上金额一致的会话并补存 id。
+- **签名只证明事件来自 Stripe，不证明这笔钱付给了这个订单**（任何入驻商家都能在自己账户的 Checkout 里写别人的 `metadata.orderId`）。所以 checkout 事件只有在 `event.account` 是该订单商家的账户、`session.id` 等于订单记录的 `stripeCheckoutSessionId`、`amount_total` 等于 `totalCents` 且币种为 NZD 时才生效，否则记录警告并忽略。订单还没来得及保存 session id 时（请求在 Stripe 返回后崩溃），先用同一个幂等键向 Stripe 找回平台为该订单创建的会话并补存 id，再严格比对；事件里的 session id 本身从不被信任。
 - 业务处理必须幂等，并能容忍事件乱序到达。`account.updated` 与 `GET …/stripe/status` 共用的同步逻辑按账户加 Postgres advisory 锁（跨实例），持锁读取 Stripe 并写库，避免慢请求用旧结果覆盖新结果。
 - Stripe SDK 抛出的错误统一转为 `502 STRIPE_ERROR`（`details.stripeCode`），不把 Stripe 的原始消息返回给前端。
 

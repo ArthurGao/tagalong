@@ -1,6 +1,6 @@
 import type { Logger } from '@nestjs/common';
 import type { Env } from '../../config/env.js';
-import type { Prisma } from '../../generated/prisma/client.js';
+import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
 import type { CheckoutRequest, StripeClient } from '../stripe/stripe-client.js';
 import { transitionOrder } from './order-state-machine.js';
 import { release } from './reservation.js';
@@ -68,6 +68,21 @@ const CHECKOUT_HEADROOM_MS = 2 * 60_000;
 /** Checkout's expires_at: the reservation deadline plus headroom, whole seconds (derived, so replays match). */
 export function checkoutDeadline(reservationExpiresAt: Date): Date {
   return new Date(Math.ceil((reservationExpiresAt.getTime() + CHECKOUT_HEADROOM_MS) / 1000) * 1000);
+}
+
+/**
+ * The order's Checkout session when the request that opened it died before saving its id: the same stored request
+ * under the same idempotency key makes Stripe return that session, never a new one. Saves the id (first writer wins).
+ */
+export async function recoverCheckoutSession(
+  prisma: Pick<PrismaClient, 'order'>,
+  stripe: StripeClient,
+  env: Env,
+  order: OrderDetail,
+): Promise<{ id: string; url: string }> {
+  const session = await stripe.createCheckoutSession(checkoutRequest(env, order));
+  await prisma.order.updateMany({ where: { id: order.id, stripeCheckoutSessionId: null }, data: { stripeCheckoutSessionId: session.id } });
+  return session;
 }
 
 /**

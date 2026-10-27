@@ -84,7 +84,7 @@ backend/
   - in one tx: expire the same email's unpaid order, reserve, create;
   - **after commit**, create the Checkout session (Stripe idempotency key `checkout:{orderId}`).
   - If Stripe fails, the order is expired, its stock released and its `idempotencyKey` cleared, so the buyer's retry starts afresh.
-  - Only a Stripe error rolls the order back. If saving the session id fails afterwards, the order stays pending: a replay recovers the session, and a payment for it is still accepted.
+  - Only a Stripe error rolls the order back. If saving the session id fails afterwards, the order stays pending: a replay or the payment webhook recovers the session from Stripe (`recoverCheckoutSession`, same idempotency key). The event's session id is never trusted.
   - Checkout `expires_at` = `reservationExpiresAt` + 2 min (Stripe needs 30 min from creation); derived, so replays match.
   - **Replay:** with a saved session it reads the URL back (`retrieveCheckoutUrl`); without one it resends the stored request under the same key. Stripe's `idempotency_key_in_use` → `ORDER_IN_PROGRESS`.
 - **Webhooks:** each one locks the order row and applies only the transition that still applies.

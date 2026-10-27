@@ -8,7 +8,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import type { OrderAutoRefundedPayload, OrderConfirmedPayload } from '../notifications/templates.js';
 import { StripeClient } from '../stripe/stripe-client.js';
 import { transitionOrder } from './order-state-machine.js';
-import { endUnpaid, lockOrder, type OrderDetail } from './order-ops.js';
+import { endUnpaid, lockOrder, type OrderDetail, orderDetail, recoverCheckoutSession } from './order-ops.js';
 import { sell, sellAfresh } from './reservation.js';
 import { listingUrl, orderUrl } from './urls.js';
 
@@ -17,11 +17,9 @@ import { listingUrl, orderUrl } from './urls.js';
 //
 // A valid signature proves Stripe sent the event, not that it pays for this order: any connected merchant could put
 // another order's id in its own session's metadata. So an event only counts when it comes from the order's own
-// connected account and Checkout session, for the order's amount in NZD. An order that has not saved its session id yet
-// (the request died right after Stripe answered) accepts its merchant's session for it.
+// connected account and the Checkout session the platform opened for it, for the order's amount in NZD.
 function belongsTo(order: OrderDetail, session: Stripe.Checkout.Session, account: string | undefined): boolean {
-  if (!account || account !== order.merchant.stripeAccountId) return false;
-  return order.stripeCheckoutSessionId === null || order.stripeCheckoutSessionId === session.id;
+  return Boolean(account) && account === order.merchant.stripeAccountId && session.id === order.stripeCheckoutSessionId;
 }
 @Injectable()
 export class CheckoutWebhooksService {
@@ -43,6 +41,7 @@ export class CheckoutWebhooksService {
       this.logger.warn(`checkout.session.completed ${session.id} without orderId / payment_intent`);
       return;
     }
+    await this.recoverUnsavedSession(orderId);
     const paid = { sessionId: session.id, paymentIntentId };
     // The order to refund, when a payment arrived for places that are gone.
     const toRefund = await this.prisma.$transaction(async (tx) => {
@@ -87,6 +86,16 @@ export class CheckoutWebhooksService {
       // Anything but an unpaid order means the expiry job, a cancel or the payment got there first.
       if (order?.status === 'PENDING_PAYMENT' && belongsTo(order, session, account)) await endUnpaid(tx, order, 'EXPIRED');
     });
+  }
+
+  /**
+   * The order's own session id when the request that opened it died before saving it, recovered from Stripe (never
+   * taken from the event), so a payment that lands meanwhile still finds its order.
+   */
+  private async recoverUnsavedSession(orderId: string): Promise<void> {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId }, include: orderDetail });
+    if (order?.status !== 'PENDING_PAYMENT' || order.stripeCheckoutSessionId || !order.merchant.stripeAccountId) return;
+    await recoverCheckoutSession(this.prisma, this.stripe, this.env, order);
   }
 
   /** → PAID with its sign-up number, and the confirmation queued in the same transaction. */

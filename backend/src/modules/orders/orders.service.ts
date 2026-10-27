@@ -21,6 +21,7 @@ import {
   lockOrder,
   type OrderDetail,
   orderDetail,
+  recoverCheckoutSession,
   sessionsToEnd,
 } from './order-ops.js';
 import { reserve } from './reservation.js';
@@ -138,13 +139,8 @@ export class OrdersService {
       await this.prisma.$transaction((tx) => endUnpaid(tx, order, 'EXPIRED', { idempotencyKey: null }));
       throw e;
     }
-    // If this write is lost, a retry with the same key recovers the session (replay) and a payment still matches.
-    return this.opened(order.id, session);
-  }
-
-  /** Saves the order's Checkout session (first writer wins) and answers with its URL. */
-  private async opened(orderId: string, session: { id: string; url: string }): Promise<CreateOrderResultDto> {
-    await this.prisma.order.updateMany({ where: { id: orderId, stripeCheckoutSessionId: null }, data: { stripeCheckoutSessionId: session.id } });
+    // If this write is lost, a replay or the payment webhook recovers the session from Stripe.
+    await this.prisma.order.updateMany({ where: { id: order.id, stripeCheckoutSessionId: null }, data: { stripeCheckoutSessionId: session.id } });
     return { kind: 'checkout', checkoutUrl: session.url };
   }
 
@@ -165,7 +161,8 @@ export class OrdersService {
     // The first request has not saved its session (still running, or it died after Stripe answered). The same stored
     // request under the same idempotency key makes Stripe return that session, or tells us it is still being made.
     try {
-      return await this.opened(order.id, await this.stripe.createCheckoutSession(checkoutRequest(this.env, order)));
+      const session = await recoverCheckoutSession(this.prisma, this.stripe, this.env, order);
+      return { kind: 'checkout', checkoutUrl: session.url };
     } catch (e) {
       if (stripeErrorCode(e) === 'idempotency_key_in_use') throw new AppError('ORDER_IN_PROGRESS', 'This order is still being created');
       throw e;

@@ -459,6 +459,19 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
       expect(await counts(l)).toMatchObject({ options: [{ sold: 0, reserved: 0 }] });
     });
 
+    it('with no saved session id, a session the platform did not create for the order is still ignored', async () => {
+      const l = await listing();
+      const o = await placed(l);
+      await prisma.order.update({ where: { id: o.id }, data: { stripeCheckoutSessionId: null } });
+      // Right account, right amount, right metadata, but not the session the platform opened for this order.
+      const forged = await sessionEvent('checkout.session.completed', o, { id: 'cs_test_made_by_someone_else' });
+      expect((await deliver(forged)).status).toBe(200);
+      expect(await prisma.order.findUniqueOrThrow({ where: { id: o.id } })).toMatchObject({
+        status: 'PENDING_PAYMENT',
+        stripeCheckoutSessionId: o.stripeCheckoutSessionId, // recovered from Stripe, not taken from the event
+      });
+    });
+
     it('an expired event arriving after the payment leaves the order PAID', async () => {
       const l = await listing();
       const o = await placed(l);
