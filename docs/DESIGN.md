@@ -270,6 +270,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 2. 创建 Order（状态 `PENDING_PAYMENT`），设置 `reservationExpiresAt = now + 30min`。
    - **幂等**：公开下单接口要求 `Idempotency-Key` 请求头（前端生成 UUID，表单打开时生成一次，提交失败重试时沿用）。同一个 key 在 24 小时内重复提交，直接返回第一次的结果（`checkoutUrl` 或 `publicCode`），不再创建订单。实现方式：`Order.idempotencyKey` 唯一索引，捕获唯一冲突后查询原订单返回。
    - 一个接龙里同一邮箱只能有一个未支付的 `PENDING_PAYMENT` 订单；再次提交时让旧订单过期并释放库存，再创建新订单。
+     - **已知取舍（2026-10-28 决定保留）**：知道某买家邮箱的人可以借此让对方的未付款订单过期；对方若随后付款，按第 5 步重新预占或自动全额退款，不会丢钱。换来的是放弃付款的买家能立刻重下。M5b 的 Turnstile 和每 IP 限流用来抑制批量滥用。
 3. 在商家的 connected account 上创建 Checkout Session，并设置 `expires_at` 与 `reservationExpiresAt` 一致（Stripe 要求最短 30 分钟）。
 4. 由一个定时任务（`@nestjs/schedule`，每分钟运行）扫描已超时的 `PENDING_PAYMENT` 订单：
    - 调用 `checkout.sessions.expire` 让对应的 Checkout 失效
