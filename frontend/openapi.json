@@ -757,6 +757,106 @@
           "listings"
         ]
       }
+    },
+    "/api/v1/public/listings/{shortCode}": {
+      "get": {
+        "operationId": "PublicListingsController_get",
+        "parameters": [
+          {
+            "name": "shortCode",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicListingDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/api/v1/public/listings/{shortCode}/participants": {
+      "get": {
+        "operationId": "PublicListingsController_participants",
+        "parameters": [
+          {
+            "name": "shortCode",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "Last seq of the previous page",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParticipantPageDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
     }
   },
   "info": {
@@ -1707,6 +1807,298 @@
             "format": "date-time"
           }
         }
+      },
+      "Availability": {
+        "type": "string",
+        "enum": [
+          "OPEN",
+          "NOT_YET_OPEN",
+          "CLOSED",
+          "CANCELLED",
+          "TAKEN_DOWN",
+          "SUSPENDED",
+          "SOLD_OUT"
+        ]
+      },
+      "PublicOptionDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "priceCents": {
+            "type": "number"
+          },
+          "remaining": {
+            "type": "number",
+            "nullable": true,
+            "description": "Places left; null = unlimited"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "location": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "name",
+          "priceCents",
+          "remaining",
+          "startsAt",
+          "endsAt",
+          "location"
+        ]
+      },
+      "PublicPickupPointDto": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "windowStart": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "windowEnd": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "label",
+          "address",
+          "windowStart",
+          "windowEnd",
+          "notes"
+        ]
+      },
+      "PublicMerchantDto": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "verified": {
+            "type": "boolean",
+            "description": "Completed Stripe verification (D12)"
+          }
+        },
+        "required": [
+          "slug",
+          "displayName",
+          "logoUrl",
+          "verified"
+        ]
+      },
+      "PublicListingDto": {
+        "type": "object",
+        "properties": {
+          "shortCode": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "description": "Markdown"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingType"
+              }
+            ]
+          },
+          "pricing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Pricing"
+              }
+            ]
+          },
+          "fulfilment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Fulfilment"
+              }
+            ]
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingStatus"
+              }
+            ]
+          },
+          "availability": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Availability"
+              }
+            ]
+          },
+          "opensAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "closesAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "maxQtyPerOrder": {
+            "type": "number"
+          },
+          "policyText": {
+            "type": "string"
+          },
+          "indexable": {
+            "type": "boolean"
+          },
+          "showParticipants": {
+            "type": "boolean"
+          },
+          "joinedCount": {
+            "type": "number"
+          },
+          "totalCapacity": {
+            "type": "number",
+            "nullable": true
+          },
+          "totalRemaining": {
+            "type": "number",
+            "nullable": true
+          },
+          "formFields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FormFieldDto"
+            }
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicOptionDto"
+            }
+          },
+          "pickupPoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicPickupPointDto"
+            }
+          },
+          "merchant": {
+            "$ref": "#/components/schemas/PublicMerchantDto"
+          }
+        },
+        "required": [
+          "shortCode",
+          "title",
+          "description",
+          "images",
+          "type",
+          "pricing",
+          "fulfilment",
+          "status",
+          "availability",
+          "opensAt",
+          "closesAt",
+          "maxQtyPerOrder",
+          "policyText",
+          "indexable",
+          "showParticipants",
+          "joinedCount",
+          "totalCapacity",
+          "totalRemaining",
+          "formFields",
+          "options",
+          "pickupPoints",
+          "merchant"
+        ]
+      },
+      "ParticipantDto": {
+        "type": "object",
+        "properties": {
+          "seq": {
+            "type": "number"
+          },
+          "displayName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Masked name; null when the buyer chose anonymous"
+          },
+          "anonymous": {
+            "type": "boolean"
+          },
+          "summary": {
+            "type": "string",
+            "example": "2kg ×1, 5kg ×2"
+          },
+          "joinedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "displayName",
+          "anonymous",
+          "summary",
+          "joinedAt"
+        ]
+      },
+      "ParticipantPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ParticipantDto"
+            }
+          },
+          "nextCursor": {
+            "type": "number",
+            "nullable": true,
+            "description": "Pass as cursor for the next (older) page"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
       }
     }
   }

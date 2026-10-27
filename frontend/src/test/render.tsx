@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import messages from '../../messages/en.json';
 import { NZ_TIME_ZONE } from '@/lib/time';
 import type { Listing } from '@/components/merchant/listing-editor/types';
+import type { PublicListing } from '@/lib/api/public';
 
 export { messages };
 
@@ -50,4 +51,32 @@ export function listingFixture(over: Partial<Listing> = {}): Listing {
     pickupPoints: [],
     ...over,
   } as Listing;
+}
+
+export function publicListingFixture(over: Partial<PublicListing> = {}): PublicListing {
+  return {
+    shortCode: 'abcd2345',
+    title: 'Cherries 2kg',
+    description: '',
+    images: [],
+    type: 'RETAIL',
+    pricing: 'PAID',
+    fulfilment: 'PICKUP',
+    status: 'PUBLISHED',
+    availability: 'OPEN',
+    opensAt: null,
+    closesAt: null,
+    maxQtyPerOrder: 10,
+    policyText: 'No refunds after pickup.',
+    indexable: false,
+    showParticipants: true,
+    joinedCount: 0,
+    totalCapacity: null,
+    totalRemaining: null,
+    formFields: [],
+    options: [{ name: '2kg', priceCents: 3900, remaining: null, startsAt: null, endsAt: null, location: null }],
+    pickupPoints: [],
+    merchant: { slug: 'farm', displayName: 'Farm', logoUrl: null, verified: true },
+    ...over,
+  } as PublicListing;
 }

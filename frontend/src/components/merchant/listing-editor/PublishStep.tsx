@@ -10,7 +10,15 @@ import { formatNzDateTime, nzInputToIso } from '@/lib/time';
 import type { Listing, StepProps } from './types';
 import { useSave } from '@/lib/api/use-save';
 
-const MISSING_KEYS = ['title', 'policyText', 'options', 'options.startsAt', 'closesAt', 'pickupPoints'];
+// Backend publish-check details → listings.missing.* keys (next-intl keys cannot contain dots).
+const MISSING_KEYS: Record<string, string> = {
+  title: 'title',
+  policyText: 'policyText',
+  options: 'options',
+  'options.startsAt': 'optionsStartsAt',
+  closesAt: 'closesAt',
+  pickupPoints: 'pickupPoints',
+};
 
 export function PublishStep({ listing, onSaved }: StepProps) {
   const t = useTranslations('listings.publish');
@@ -23,7 +31,7 @@ export function PublishStep({ listing, onSaved }: StepProps) {
   const reopenInvalid = Boolean(reopenUntil) && reopenAt === null; // a time skipped by daylight saving
   const path = { params: { path: { id: listing.id } } };
   const shareUrl = `${typeof window === 'undefined' ? '' : window.location.origin}/l/${listing.shortCode}`;
-  const missing = save.details.filter((d) => MISSING_KEYS.includes(d));
+  const missing = save.details.flatMap((d) => MISSING_KEYS[d] ?? []);
 
   const act = async (call: () => Promise<{ data?: Listing }>) => {
     const updated = await save.run(call);

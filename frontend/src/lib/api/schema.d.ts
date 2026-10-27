@@ -228,6 +228,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/listings/{shortCode}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PublicListingsController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/listings/{shortCode}/participants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PublicListingsController_participants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -473,6 +505,77 @@ export interface components {
         ReopenListingDto: {
             /** Format: date-time */
             closesAt?: string;
+        };
+        /** @enum {string} */
+        Availability: "OPEN" | "NOT_YET_OPEN" | "CLOSED" | "CANCELLED" | "TAKEN_DOWN" | "SUSPENDED" | "SOLD_OUT";
+        PublicOptionDto: {
+            name: string;
+            priceCents: number;
+            /** @description Places left; null = unlimited */
+            remaining: number | null;
+            /** Format: date-time */
+            startsAt: string | null;
+            /** Format: date-time */
+            endsAt: string | null;
+            location: string | null;
+        };
+        PublicPickupPointDto: {
+            label: string;
+            address: string;
+            /** Format: date-time */
+            windowStart: string | null;
+            /** Format: date-time */
+            windowEnd: string | null;
+            notes: string | null;
+        };
+        PublicMerchantDto: {
+            slug: string;
+            displayName: string;
+            logoUrl: string | null;
+            /** @description Completed Stripe verification (D12) */
+            verified: boolean;
+        };
+        PublicListingDto: {
+            shortCode: string;
+            title: string;
+            /** @description Markdown */
+            description: string;
+            images: string[];
+            type: components["schemas"]["ListingType"];
+            pricing: components["schemas"]["Pricing"];
+            fulfilment: components["schemas"]["Fulfilment"];
+            status: components["schemas"]["ListingStatus"];
+            availability: components["schemas"]["Availability"];
+            /** Format: date-time */
+            opensAt: string | null;
+            /** Format: date-time */
+            closesAt: string | null;
+            maxQtyPerOrder: number;
+            policyText: string;
+            indexable: boolean;
+            showParticipants: boolean;
+            joinedCount: number;
+            totalCapacity: number | null;
+            totalRemaining: number | null;
+            formFields: components["schemas"]["FormFieldDto"][];
+            options: components["schemas"]["PublicOptionDto"][];
+            pickupPoints: components["schemas"]["PublicPickupPointDto"][];
+            merchant: components["schemas"]["PublicMerchantDto"];
+        };
+        ParticipantDto: {
+            seq: number;
+            /** @description Masked name; null when the buyer chose anonymous */
+            displayName: string | null;
+            anonymous: boolean;
+            /** @example 2kg ×1, 5kg ×2 */
+            summary: string;
+            /** Format: date-time */
+            joinedAt: string;
+        };
+        ParticipantPageDto: {
+            items: components["schemas"]["ParticipantDto"][];
+            /** @description Pass as cursor for the next (older) page */
+            nextCursor: number | null;
         };
     };
     responses: never;
@@ -1001,6 +1104,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListingDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    PublicListingsController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortCode: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicListingDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    PublicListingsController_participants: {
+        parameters: {
+            query?: {
+                /** @description Last seq of the previous page */
+                cursor?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                shortCode: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParticipantPageDto"];
                 };
             };
             /** @description Error (code from DESIGN §17) */

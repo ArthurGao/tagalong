@@ -6,6 +6,56 @@
       "sampleListing": "车厘子 2kg 接龙",
       "sampleJoined": "已接龙 {count} 人",
       "join": "接龙"
+    },
+    "listing": {
+      "by": "{merchant}",
+      "verified": "已验证商家",
+      "joined": {
+        "PAID": "已接龙 {count} 人",
+        "FREE": "已报名 {count} 人"
+      },
+      "progress": "{joined} / {capacity}",
+      "closesIn": "剩 {time}",
+      "closedAt": "{date} 已截止",
+      "opensAt": "{date} 开始",
+      "countdown": {
+        "days": "{d} 天 {h} 小时",
+        "hours": "{h} 小时 {m} 分",
+        "minutes": "{m} 分钟"
+      },
+      "choose": "选规格",
+      "remaining": "剩 {count} 份",
+      "free": "免费",
+      "priceFrom": "{price} 起",
+      "pickupTitle": "取货",
+      "window": "{start} – {end}",
+      "detailsTitle": "详情",
+      "policyTitle": "退款 / 取消政策",
+      "sheet": {
+        "PAID": "已接龙",
+        "FREE": "已报名"
+      },
+      "anonymous": "匿名",
+      "showMore": "查看更多",
+      "sheetEmpty": "还没有人，来做第一个。",
+      "buy": {
+        "PAID": "接龙",
+        "FREE": "报名"
+      },
+      "state": {
+        "SOLD_OUT": "已接满",
+        "CLOSED": "已截止",
+        "CANCELLED": "已取消",
+        "TAKEN_DOWN": "已下架",
+        "SUSPENDED": "暂停销售",
+        "NOT_YET_OPEN": "未开始"
+      },
+      "orderingSoon": "在线下单即将开放。",
+      "stateNotice": {
+        "TAKEN_DOWN": "这条接龙已被下架。",
+        "SUSPENDED": "该商家已暂停销售。",
+        "CANCELLED": "这条接龙已取消。"
+      }
     }
   },
   "admin": {
@@ -219,7 +269,7 @@
       "title": "标题",
       "policyText": "退款政策",
       "options": "至少一个在售规格",
-      "options.startsAt": "每个规格的开始时间",
+      "optionsStartsAt": "每个规格的开始时间",
       "closesAt": "未来的截止时间",
       "pickupPoints": "取货点"
     },

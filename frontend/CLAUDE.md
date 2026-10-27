@@ -94,6 +94,9 @@ frontend/
   - Never hardcode "接龙" (sign-up) or "报名" (register) inside components.
 - **i18n:** every user-facing string lives in `messages/*.json`, in both locales. Merchant-entered content is shown as written.
 - **OG images:** `l/[shortCode]/opengraph-image.tsx` shows the title, price range, remaining count and merchant name. This matters for WhatsApp, Facebook and Messenger previews.
+  - Satori has no CJK glyphs: `lib/og-font.ts` fetches a Noto Sans SC subset of just the characters used (Google Fonts `text=`, cached a day, skipped for Latin-only text). This is server-side rendering, not a web font, so it doesn't break the no-CJK-web-fonts rule.
+  - Colours come from `lib/surface-tokens.ts`; a test keeps it equal to `globals.css`.
+- **Live listing data:** `components/public/live-listing.tsx` seeds TanStack Query from the SSR data (`staleTime` 15 s, so no refetch on mount) and polls every 15 s only while the listing can still change (OPEN / NOT_YET_OPEN / SOLD_OUT).
 - **Privacy:** the frontend never receives buyer PII on public pages, so don't add fields for it. The order page requires the `t` token.
 - **Accessibility:** use semantic HTML, give inputs labels, and keep contrast at WCAG AA. shadcn/ui defaults are fine.
 - Generic UI pieces go in `components/ui`, and only shadcn/ui-generated components live there. Write feature components by hand.

@@ -10,6 +10,7 @@ import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { ListingsModule } from './modules/listings/listings.module.js';
 import { MerchantsModule } from './modules/merchants/merchants.module.js';
+import { PublicModule } from './modules/public/public.module.js';
 import { StripeModule } from './modules/stripe/stripe.module.js';
 import { UploadsModule } from './modules/uploads/uploads.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -29,6 +30,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
     StripeModule,
     UploadsModule,
     ListingsModule,
+    PublicModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: OriginGuard }],
 })

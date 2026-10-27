@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { centsToDollarsInput, dollarsToCents, formatCents } from './money';
+import { centsToDollarsInput, dollarsToCents, formatCents, formatPriceRange } from './money';
 
 describe('formatCents', () => {
   it('formats NZD cents with two decimals', () => {
@@ -42,5 +42,14 @@ describe('dollarsToCents (string arithmetic, never floats)', () => {
     expect(centsToDollarsInput(3950)).toBe('39.50');
     expect(centsToDollarsInput(0)).toBe('0.00');
     expect(dollarsToCents(centsToDollarsInput(123456))).toBe(123456);
+  });
+});
+
+describe('formatPriceRange', () => {
+  it('shows one price when all options cost the same, a min – max range otherwise', () => {
+    expect(formatPriceRange([3900])).toBe('$39.00');
+    expect(formatPriceRange([3900, 3900])).toBe('$39.00');
+    expect(formatPriceRange([5900, 3900, 4500])).toBe('$39.00 – $59.00');
+    expect(formatPriceRange([])).toBeNull();
   });
 });

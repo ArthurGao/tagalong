@@ -6,6 +6,56 @@
       "sampleListing": "Cherries 2kg group buy",
       "sampleJoined": "{count} joined",
       "join": "Join"
+    },
+    "listing": {
+      "by": "by {merchant}",
+      "verified": "Verified seller",
+      "joined": {
+        "PAID": "{count} joined",
+        "FREE": "{count} registered"
+      },
+      "progress": "{joined} / {capacity}",
+      "closesIn": "Closes in {time}",
+      "closedAt": "Closed {date}",
+      "opensAt": "Opens {date}",
+      "countdown": {
+        "days": "{d}d {h}h",
+        "hours": "{h}h {m}m",
+        "minutes": "{m} min"
+      },
+      "choose": "Options",
+      "remaining": "{count} left",
+      "free": "Free",
+      "priceFrom": "from {price}",
+      "pickupTitle": "Pickup",
+      "window": "{start} – {end}",
+      "detailsTitle": "Details",
+      "policyTitle": "Refund / cancellation policy",
+      "sheet": {
+        "PAID": "Joined",
+        "FREE": "Registered"
+      },
+      "anonymous": "Anonymous",
+      "showMore": "Show more",
+      "sheetEmpty": "Nobody yet. Be the first.",
+      "buy": {
+        "PAID": "Join",
+        "FREE": "Register"
+      },
+      "state": {
+        "SOLD_OUT": "Full",
+        "CLOSED": "Closed",
+        "CANCELLED": "Cancelled",
+        "TAKEN_DOWN": "Taken down",
+        "SUSPENDED": "Paused",
+        "NOT_YET_OPEN": "Not open yet"
+      },
+      "orderingSoon": "Online ordering opens soon.",
+      "stateNotice": {
+        "TAKEN_DOWN": "This listing was taken down.",
+        "SUSPENDED": "This seller has paused sales.",
+        "CANCELLED": "This listing was cancelled."
+      }
     }
   },
   "admin": {
@@ -219,7 +269,7 @@
       "title": "title",
       "policyText": "policy",
       "options": "at least one option on sale",
-      "options.startsAt": "start times for every option",
+      "optionsStartsAt": "start times for every option",
       "closesAt": "a closing time in the future",
       "pickupPoints": "a pickup point"
     },

@@ -6,6 +6,18 @@ export function formatCents(cents: number): string {
   return nzd.format(cents / 100);
 }
 
+/** Lowest and highest price, or null for none. The one rule for "from $x" and "$x – $y" labels. */
+export function priceSpan(prices: number[]): { min: number; max: number } | null {
+  return prices.length ? { min: Math.min(...prices), max: Math.max(...prices) } : null;
+}
+
+/** "$39.00" for one price (or equal prices), "$39.00 – $59.00" for a range, null for none. */
+export function formatPriceRange(prices: number[]): string | null {
+  const span = priceSpan(prices);
+  if (!span) return null;
+  return span.min === span.max ? formatCents(span.min) : `${formatCents(span.min)} – ${formatCents(span.max)}`;
+}
+
 /** "39.5" → 3950. String arithmetic only: 0.29 * 100 is 28.999… in floating point. null when invalid. */
 export function dollarsToCents(input: string): number | null {
   const match = /^(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?$/.exec(input.trim());
