@@ -14,6 +14,13 @@ import { listingUrl, orderUrl } from './urls.js';
 
 // DESIGN §8.3 / §7.5. Every handler is idempotent and tolerates events in any order: the order row is locked,
 // and only the transition that still applies is made.
+//
+// A valid signature proves Stripe sent the event, not that it pays for this order: any connected merchant could put
+// another order's id in its own session's metadata. So an event only counts when it comes from the order's own
+// connected account and Checkout session, for the order's amount in NZD.
+function belongsTo(order: OrderDetail, session: Stripe.Checkout.Session, account: string | undefined): boolean {
+  return Boolean(account) && account === order.merchant.stripeAccountId && session.id === order.stripeCheckoutSessionId;
+}
 @Injectable()
 export class CheckoutWebhooksService {
   private readonly logger = new Logger(CheckoutWebhooksService.name);
@@ -25,7 +32,7 @@ export class CheckoutWebhooksService {
     @Inject(ENV) private readonly env: Env,
   ) {}
 
-  async completed(session: Stripe.Checkout.Session): Promise<void> {
+  async completed(session: Stripe.Checkout.Session, account: string | undefined): Promise<void> {
     if (session.payment_status !== 'paid') return; // card payments are paid on completion; nothing else is offered
     const orderId = session.metadata?.orderId;
     const paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id;
@@ -39,6 +46,10 @@ export class CheckoutWebhooksService {
       const order = await lockOrder(tx, { id: orderId });
       if (!order) {
         this.logger.warn(`checkout.session.completed for unknown order ${orderId}`);
+        return null;
+      }
+      if (!belongsTo(order, session, account) || session.amount_total !== order.totalCents || session.currency !== 'nzd') {
+        this.logger.warn(`checkout.session.completed ${session.id} does not match order ${orderId}; ignored`);
         return null;
       }
       if (order.status === 'PENDING_PAYMENT') {
@@ -59,13 +70,13 @@ export class CheckoutWebhooksService {
     if (toRefund) await this.refundLatePayment(toRefund, paymentIntentId);
   }
 
-  async expired(session: Stripe.Checkout.Session): Promise<void> {
+  async expired(session: Stripe.Checkout.Session, account: string | undefined): Promise<void> {
     const orderId = session.metadata?.orderId;
     if (!orderId) return;
     await this.prisma.$transaction(async (tx) => {
       const order = await lockOrder(tx, { id: orderId });
       // Anything but an unpaid order means the expiry job, a cancel or the payment got there first.
-      if (order?.status === 'PENDING_PAYMENT') await endUnpaid(tx, order, 'EXPIRED');
+      if (order?.status === 'PENDING_PAYMENT' && belongsTo(order, session, account)) await endUnpaid(tx, order, 'EXPIRED');
     });
   }
 

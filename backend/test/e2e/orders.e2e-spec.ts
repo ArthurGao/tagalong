@@ -95,21 +95,31 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
       .send(raw);
   }
 
-  const sessionEvent = (type: string, orderId: string, sessionId: string, eventId = `evt_${randomUUID()}`) => ({
-    id: eventId,
-    object: 'event',
-    type,
-    account: ACCOUNT,
-    data: {
-      object: {
-        id: sessionId,
-        object: 'checkout.session',
-        payment_status: type === 'checkout.session.completed' ? 'paid' : 'unpaid',
-        payment_intent: type === 'checkout.session.completed' ? `pi_${orderId.slice(-8)}` : null,
-        metadata: { orderId },
+  type PlacedOrder = { id: string; stripeCheckoutSessionId: string | null; totalCents: number; merchantId: string };
+
+  /** A Checkout event as Stripe sends it for this order's own session, account and amount. */
+  async function sessionEvent(type: string, o: PlacedOrder, over: Record<string, unknown> = {}) {
+    const { stripeAccountId } = await prisma.merchant.findUniqueOrThrow({ where: { id: o.merchantId } });
+    const { account = stripeAccountId, ...session } = over;
+    return {
+      id: `evt_${randomUUID()}`,
+      object: 'event',
+      type,
+      account,
+      data: {
+        object: {
+          id: o.stripeCheckoutSessionId,
+          object: 'checkout.session',
+          payment_status: type === 'checkout.session.completed' ? 'paid' : 'unpaid',
+          payment_intent: type === 'checkout.session.completed' ? `pi_${o.id.slice(-8)}` : null,
+          amount_total: o.totalCents,
+          currency: 'nzd',
+          metadata: { orderId: o.id },
+          ...session,
+        },
       },
-    },
-  });
+    };
+  }
 
   /** Places an order and returns its row (with the Checkout session id the fake issued). */
   async function placed(l: Listing, over: Record<string, unknown> = {}) {
@@ -319,7 +329,7 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
     it('checkout.session.completed marks the order PAID, numbers it and queues one confirmation, even when replayed', async () => {
       const l = await listing({ capacities: [5] });
       const o = await placed(l, { items: [{ optionId: l.options[0].id, quantity: 2 }] });
-      const event = sessionEvent('checkout.session.completed', o.id, o.stripeCheckoutSessionId!);
+      const event = await sessionEvent('checkout.session.completed', o);
       expect((await deliver(event)).status).toBe(200);
       expect((await deliver(event)).status).toBe(200); // same event again
       expect((await deliver({ ...event, id: `evt_${randomUUID()}` })).status).toBe(200); // Stripe resends as a new event
@@ -334,11 +344,36 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
       expect(outbox[0].payload).toMatchObject({ seq: 1, totalCents: 7800, pickup: { label: 'Albany', address: '1 Main St' } });
     });
 
+    it.each([
+      ['another merchant\'s account', { account: 'acct_someone_else' }],
+      ['no connected account (platform event)', { account: undefined }],
+      ['a different Checkout session', { id: 'cs_test_other' }],
+      ['a different amount', { amount_total: 100 }],
+      ['another currency', { currency: 'aud' }],
+    ])('ignores a completed event with %s: the order stays unpaid', async (_, over) => {
+      const l = await listing();
+      const o = await placed(l);
+      const event = await sessionEvent('checkout.session.completed', o, over);
+      if ('account' in over && over.account === undefined) delete (event as { account?: string }).account;
+      expect((await deliver(event)).status).toBe(200);
+      expect((await prisma.order.findUniqueOrThrow({ where: { id: o.id } })).status).toBe('PENDING_PAYMENT');
+      expect(await counts(l)).toMatchObject({ options: [{ sold: 0, reserved: 1 }] });
+      expect(await prisma.notificationOutbox.count()).toBe(0);
+    });
+
+    it('ignores an expired event from another account: the places stay held', async () => {
+      const l = await listing();
+      const o = await placed(l);
+      expect((await deliver(await sessionEvent('checkout.session.expired', o, { account: 'acct_someone_else' }))).status).toBe(200);
+      expect((await prisma.order.findUniqueOrThrow({ where: { id: o.id } })).status).toBe('PENDING_PAYMENT');
+      expect(await counts(l)).toMatchObject({ options: [{ sold: 0, reserved: 1 }] });
+    });
+
     it('an expired event arriving after the payment leaves the order PAID', async () => {
       const l = await listing();
       const o = await placed(l);
-      expect((await deliver(sessionEvent('checkout.session.completed', o.id, o.stripeCheckoutSessionId!))).status).toBe(200);
-      expect((await deliver(sessionEvent('checkout.session.expired', o.id, o.stripeCheckoutSessionId!))).status).toBe(200);
+      expect((await deliver(await sessionEvent('checkout.session.completed', o))).status).toBe(200);
+      expect((await deliver(await sessionEvent('checkout.session.expired', o))).status).toBe(200);
       expect((await prisma.order.findUniqueOrThrow({ where: { id: o.id } })).status).toBe('PAID');
       expect(await counts(l)).toMatchObject({ options: [{ sold: 1, reserved: 0 }] });
     });
@@ -346,7 +381,7 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
     it('checkout.session.expired on an unpaid order expires it and frees the places', async () => {
       const l = await listing();
       const o = await placed(l);
-      await deliver(sessionEvent('checkout.session.expired', o.id, o.stripeCheckoutSessionId!));
+      await deliver(await sessionEvent('checkout.session.expired', o));
       expect((await prisma.order.findUniqueOrThrow({ where: { id: o.id } })).status).toBe('EXPIRED');
       expect(await counts(l)).toMatchObject({ options: [{ sold: 0, reserved: 0 }] });
     });
@@ -356,7 +391,7 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
       const o = await placed(l);
       await prisma.order.update({ where: { id: o.id }, data: { reservationExpiresAt: new Date(Date.now() - 1000) } });
       await t.app.get(ExpiryJob).expireDue();
-      await deliver(sessionEvent('checkout.session.completed', o.id, o.stripeCheckoutSessionId!));
+      await deliver(await sessionEvent('checkout.session.completed', o));
       expect((await prisma.order.findUniqueOrThrow({ where: { id: o.id } })).status).toBe('PAID');
       expect(await counts(l)).toEqual({ options: [{ sold: 1, reserved: 0 }], listing: { sold: 1, reserved: 0, seq: 1 } });
       expect(t.stripe.refunds).toEqual([]);
@@ -368,9 +403,9 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
       await prisma.order.update({ where: { id: late.id }, data: { reservationExpiresAt: new Date(Date.now() - 1000) } });
       await t.app.get(ExpiryJob).expireDue();
       const other = await placed(l, { buyer: buyer(2) });
-      await deliver(sessionEvent('checkout.session.completed', other.id, other.stripeCheckoutSessionId!));
+      await deliver(await sessionEvent('checkout.session.completed', other));
 
-      const event = sessionEvent('checkout.session.completed', late.id, late.stripeCheckoutSessionId!);
+      const event = await sessionEvent('checkout.session.completed', late);
       expect((await deliver(event)).status).toBe(200);
       expect((await deliver({ ...event, id: `evt_${randomUUID()}` })).status).toBe(200);
 
@@ -393,9 +428,9 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
       await prisma.order.update({ where: { id: late.id }, data: { reservationExpiresAt: new Date(Date.now() - 1000) } });
       await t.app.get(ExpiryJob).expireDue();
       const other = await placed(l, { buyer: buyer(2) });
-      await deliver(sessionEvent('checkout.session.completed', other.id, other.stripeCheckoutSessionId!));
+      await deliver(await sessionEvent('checkout.session.completed', other));
 
-      expect((await deliver(sessionEvent('checkout.session.completed', late.id, late.stripeCheckoutSessionId!))).status).toBe(200);
+      expect((await deliver(await sessionEvent('checkout.session.completed', late))).status).toBe(200);
       expect(t.stripe.refunds).toHaveLength(1);
       // The option had room, the listing did not: nothing of the attempt may remain.
       expect(await counts(l)).toEqual({ options: [{ sold: 1, reserved: 0 }], listing: { sold: 1, reserved: 0, seq: 1 } });
@@ -425,7 +460,7 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
     async function paidOrder() {
       const l = await listing();
       const o = await placed(l);
-      await deliver(sessionEvent('checkout.session.completed', o.id, o.stripeCheckoutSessionId!));
+      await deliver(await sessionEvent('checkout.session.completed', o));
       return o;
     }
 

@@ -61,9 +61,9 @@ export class StripeWebhookController {
         return;
       }
       case 'checkout.session.completed':
-        return this.checkout.completed(event.data.object);
+        return this.checkout.completed(event.data.object, event.account);
       case 'checkout.session.expired':
-        return this.checkout.expired(event.data.object);
+        return this.checkout.expired(event.data.object, event.account);
       default:
         return; // recorded; refund and dispute handlers arrive in M6
     }

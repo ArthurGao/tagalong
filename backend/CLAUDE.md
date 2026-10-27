@@ -82,6 +82,7 @@ backend/
   - If Stripe fails, the order is expired, its stock released and its `idempotencyKey` cleared, so the buyer's retry starts afresh.
   - A replayed key calls `createCheckoutSession` again with the identical request: Stripe returns the original session, so no URL is stored.
 - **Webhooks:** each one locks the order row and applies only the transition that still applies.
+  - An event counts only for the order's own connected account and Checkout session (and, for `completed`, its amount in NZD). Otherwise it is ignored with a warning: a valid signature does not prove the payment is for this order.
   - **EXPIRED + completed:** `sell(…, fromReserved=false)` inside a savepoint.
     - Places still free → PAID.
     - SOLD_OUT → full refund after the tx (`late-refund:{orderId}`), recorded once via the Refund row; the order stays EXPIRED.
