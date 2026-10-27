@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { messages, publicListingFixture, renderWithIntl } from '@/test/render';
+import { messages, poll, publicListingFixture, renderLive } from '@/test/render';
 import type { ParticipantPage, PublicListing } from '@/lib/api/public';
-import { LiveListingProvider } from './live-listing';
 import { SignUpSheet } from './SignUpSheet';
 
 // Network boundary: the public API fetchers.
 const fetchParticipants = vi.fn();
+const fetchPublicListing = vi.fn();
 vi.mock('@/lib/api/public', () => ({
-  fetchPublicListing: vi.fn(),
+  fetchPublicListing: (...args: unknown[]) => fetchPublicListing(...args),
   fetchParticipants: (...args: unknown[]) => fetchParticipants(...args),
 }));
 
@@ -22,16 +22,14 @@ const row = (seq: number, displayName: string | null) => ({
   joinedAt: '2026-10-27T01:00:00.000Z',
 });
 const renderSheet = (listing: PublicListing, participants: ParticipantPage | null) =>
-  renderWithIntl(
-    <LiveListingProvider initial={{ listing, participants }}>
-      <SignUpSheet />
-    </LiveListingProvider>,
-  );
+  renderLive(<SignUpSheet />, listing, participants);
 
 describe('SignUpSheet', () => {
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     fetchParticipants.mockReset();
+    fetchPublicListing.mockReset();
   });
 
   it('numbers rows by seq, newest first, and shows anonymous buyers as "Anonymous"', () => {
@@ -61,5 +59,17 @@ describe('SignUpSheet', () => {
     renderSheet(publicListingFixture({ pricing: 'FREE' }), { items: [], nextCursor: null });
     expect(screen.getByRole('heading').textContent).toBe(t.sheet.FREE);
     expect(screen.getByText(t.sheetEmpty)).toBeTruthy();
+  });
+
+  it('loads the sheet when the merchant turns it on after the page was rendered', async () => {
+    vi.useFakeTimers();
+    const hidden = publicListingFixture({ showParticipants: false });
+    fetchPublicListing.mockResolvedValue({ ...hidden, showParticipants: true });
+    fetchParticipants.mockResolvedValue({ items: [row(1, 'Amy L.')], nextCursor: null });
+    renderSheet(hidden, null);
+    expect(screen.queryByRole('heading')).toBeNull();
+    await poll();
+    expect(fetchParticipants).toHaveBeenCalledWith('abcd2345', undefined);
+    expect(screen.getByText('Amy L.')).toBeTruthy();
   });
 });

@@ -1,21 +1,15 @@
 // @vitest-environment jsdom
 import { cleanup, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { messages, publicListingFixture, renderWithIntl } from '@/test/render';
+import { messages, publicListingFixture, renderLive } from '@/test/render';
 import type { PublicListing } from '@/lib/api/public';
-import { LiveListingProvider } from './live-listing';
 import { StickyBuyBar } from './StickyBuyBar';
 
 // Network boundary: the public API fetchers (the 15 s refresh).
 vi.mock('@/lib/api/public', () => ({ fetchPublicListing: vi.fn(), fetchParticipants: vi.fn() }));
 
 const t = messages.public.listing;
-const renderBar = (listing: PublicListing) =>
-  renderWithIntl(
-    <LiveListingProvider initial={{ listing, participants: null }}>
-      <StickyBuyBar />
-    </LiveListingProvider>,
-  );
+const renderBar = (listing: PublicListing) => renderLive(<StickyBuyBar />, listing);
 
 describe('StickyBuyBar', () => {
   afterEach(cleanup);

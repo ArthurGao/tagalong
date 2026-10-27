@@ -1,10 +1,12 @@
-import { render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
+import { vi } from 'vitest';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactElement } from 'react';
 import messages from '../../messages/en.json';
 import { NZ_TIME_ZONE } from '@/lib/time';
 import type { Listing } from '@/components/merchant/listing-editor/types';
-import type { PublicListing } from '@/lib/api/public';
+import type { ParticipantPage, PublicListing } from '@/lib/api/public';
+import { LiveListingProvider } from '@/components/public/live-listing';
 
 export { messages };
 
@@ -17,6 +19,16 @@ export const renderWithIntl = (ui: ReactElement) =>
       </NextIntlClientProvider>
     ),
   });
+
+/** A public component inside the live-listing provider, seeded like the SSR page. */
+export const renderLive = (ui: ReactElement, listing: PublicListing, participants: ParticipantPage | null = null) =>
+  renderWithIntl(<LiveListingProvider initial={{ listing, participants }}>{ui}</LiveListingProvider>);
+
+/** With fake timers: run one 15 s poll, then let TanStack flush its batched render notification. */
+export const poll = async (ms = 15_000) => {
+  await act(() => vi.advanceTimersByTimeAsync(ms));
+  await act(() => vi.advanceTimersByTimeAsync(100));
+};
 
 export function listingFixture(over: Partial<Listing> = {}): Listing {
   return {
