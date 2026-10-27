@@ -284,6 +284,33 @@ describe('merchant order management: refunds, CSV, listing cancellation (DESIGN 
       expect(await prisma.notificationOutbox.count({ where: { type: 'ORDER_REFUNDED' } })).toBe(1);
     });
 
+    it('a Dashboard refund carrying one of our refund ids in its metadata is still counted for its own amount', async () => {
+      const l = await paidListing();
+      const o = await paidOrder(l, 1);
+      t.stripe.failRefund = true;
+      await refund(o.id, 1000);
+      for (let minutes = 2; minutes <= 60; minutes += 10) await runJob(minutes);
+      const failed = await prisma.refund.findFirstOrThrow({ where: { orderId: o.id } });
+      expect(failed.status).toBe('FAILED');
+      t.stripe.failRefund = false;
+      t.stripe.dashboardRefund(ACCOUNT, o.stripePaymentIntentId!, 100, failed.id);
+      await chargeRefunded(o);
+      expect(await orderRow(o.id)).toMatchObject({ refundedCents: 100, status: 'PARTIALLY_REFUNDED' });
+      expect(await prisma.refund.findUniqueOrThrow({ where: { id: failed.id } })).toMatchObject({ status: 'FAILED' });
+    });
+
+    it('a refund Stripe already holds is never given up for lack of an answer', async () => {
+      const l = await paidListing();
+      const o = await paidOrder(l, 1);
+      t.stripe.newRefundStatus = 'pending';
+      await refund(o.id, 1000);
+      t.stripe.failRefund = true;
+      for (let minutes = 16; minutes <= 16 * 8; minutes += 16) await runJob(minutes);
+      expect(await prisma.refundTask.findFirstOrThrow({ where: { orderId: o.id } })).toMatchObject({ status: 'PENDING', lastError: expect.any(String) });
+      expect(await listOrder(l, o.id)).toMatchObject({ pendingRefundCents: 1000, refundableCents: 2900, lastRefundFailed: false });
+      expect(await prisma.notificationOutbox.count({ where: { type: 'REFUND_FAILED' } })).toBe(0);
+    });
+
     it('a dispute is logged and the merchant emailed', async () => {
       const l = await paidListing();
       const o = await paidOrder(l, 1);

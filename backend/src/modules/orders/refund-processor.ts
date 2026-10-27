@@ -58,7 +58,7 @@ export class RefundProcessor {
     if (refund.status === 'succeeded') {
       await this.prisma.$transaction(async (tx) => {
         const locked = (await lockOrder(tx, { id: task.orderId }))!;
-        await markRefundSucceeded(tx, this.deps, locked, task.id, refund.id);
+        await markRefundSucceeded(tx, this.deps, locked, { ...refund, refundId: task.id });
       });
       return 'succeeded';
     }
@@ -84,14 +84,24 @@ export class RefundProcessor {
   private async askStripe(task: ClaimedRefund, accountId: string, paymentIntentId: string): Promise<StripeRefund> {
     if (task.stripeRefundId) return this.stripe.retrieveRefund(accountId, task.stripeRefundId);
     if (Date.now() - task.createdAt.getTime() > KEY_SAFE_MS) {
-      const earlier = (await this.stripe.listRefunds(accountId, paymentIntentId)).find((r) => r.refundId === task.id);
+      const earlier = (await this.stripe.listRefunds(accountId, paymentIntentId)).find((r) => r.refundId === task.id && r.amountCents === task.amountCents);
       if (earlier) return earlier;
     }
     return this.stripe.refundPayment(accountId, paymentIntentId, task.amountCents, task.id);
   }
 
-  /** No answer from Stripe: try again after a backoff, or give up after the last attempt. */
+  /**
+   * No answer from Stripe: try again after a backoff, or give up after the last attempt. A refund Stripe already holds is
+   * never given up on for lack of an answer (only Stripe's own `failed` ends it): freeing its amount could refund twice.
+   */
   private async recordFailure(task: ClaimedRefund, lastError: string, now: Date): Promise<RefundOutcome> {
+    if (task.stripeRefundId) {
+      await this.prisma.refundTask.updateMany({
+        where: { id: task.id, status: 'PENDING', leaseToken: task.leaseToken },
+        data: { lastError, nextAttemptAt: new Date(now.getTime() + PENDING_RECHECK_MS), leaseToken: null },
+      });
+      return 'waiting';
+    }
     const attempts = task.attempts + 1;
     if (attempts >= MAX_ATTEMPTS) return this.giveUp(task, attempts, lastError, null);
     await this.prisma.refundTask.updateMany({

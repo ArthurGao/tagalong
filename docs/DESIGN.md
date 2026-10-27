@@ -336,10 +336,10 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - **每笔平台发起的退款都走同一条队列**（商家退款、迟到付款的自动退款、整条接龙取消）：
   - 在订单锁内写一条 `PENDING` Refund 和同 id 的 `RefundTask`（取消产生的任务带 `cancellationId`），所以并发的两笔退款不会超额。
   - 调 Stripe 时幂等键为 `refund:{id}`，并把 id 写进 `metadata.refundId`，任何一笔 Stripe 退款都能对回它的那一行。
-  - 只有 Stripe 返回 `succeeded` 才增加 `refundedCents`、改订单状态、发 `ORDER_REFUNDED`。`pending` / `requires_action`（如商家余额不足）记下 Stripe 退款 id，之后由 job 每 15 分钟查询一次；`failed` / `canceled` 标记 `FAILED`，这部分金额重新可退。
+  - 只有 Stripe 返回 `succeeded` 才增加 `refundedCents`、改订单状态、发 `ORDER_REFUNDED`。`pending` / `requires_action`（如商家余额不足）记下 Stripe 退款 id，之后由 job 每 15 分钟查询一次；`failed` / `canceled` 标记 `FAILED`，这部分金额重新可退。Stripe 已经受理的退款（有 Stripe 退款 id）不会因为查询出错而放弃，只有 Stripe 自己报告失败才算失败，否则金额重新可退会导致重复退款。
   - 商家退款和迟到付款退款当场先试一次。没有结果（Stripe 出错、请求中途崩溃）就留在队列里，由 `refund.job.ts` 接着做：租约到期后接管；24 小时内靠同一个幂等键，任务超过 23 小时则先按 metadata 查 Stripe 上是否已有这笔退款，绝不重复退。
   - 商家看到的是「退款处理中」而不是报错；5 次仍失败则标记 `FAILED`，订单列表显示「上次退款失败」，并邮件通知商家（`REFUND_FAILED`）。
-- `charge.refunded`：列出这笔付款在 Stripe 上的全部退款，按 Stripe 退款 id 逐笔对账。带 `metadata.refundId` 的是我们的，没记成功就补记成功；没有的就是商家在 Stripe Dashboard 里直接做的退款，按其 id 只记一次。不再用「已退总额 − 已记录 − 在途」相减，因为那样在途退款和 Dashboard 退款同时发生时会漏记。
+- `charge.refunded`：列出这笔付款在 Stripe 上的全部退款，按 Stripe 退款 id 逐笔对账。带 `metadata.refundId`、且金额与该行一致（该行已知 Stripe 退款 id 时还要 id 一致）的是我们的，没记成功就补记成功。metadata 本身不可信：商家在 Dashboard 里可以随便填，不符合这些条件的一律当作 Dashboard 退款，按它自己的金额记；没有的就是商家在 Stripe Dashboard 里直接做的退款，按其 id 只记一次。不再用「已退总额 − 已记录 − 在途」相减，因为那样在途退款和 Dashboard 退款同时发生时会漏记。
 - 导出 CSV（`GET /merchants/me/listings/:id/orders.csv`）：UTF-8 带 BOM，以 `= + - @` 开头的单元格前加 `'`，防止表格公式注入。
 
 ### 8.5 整条接龙取消与批量退款

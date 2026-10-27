@@ -95,19 +95,23 @@ export interface RefundDeps {
 }
 
 /**
- * Stripe reports refund `refundId` succeeded: its row and task are marked (whatever state they were in, a FAILED one
- * included: Stripe is the authority), the cancellation's counts follow, and the money is settled. Runs under the
- * caller's order lock; returns false when it was already recorded.
+ * Stripe reports a refund carrying `metadata.refundId` succeeded. Metadata alone proves nothing (a merchant can type any
+ * metadata on a Dashboard refund), so it counts as ours only for this order's row, for the row's amount, and for the
+ * Stripe refund the row already knows if it knows one. Then the row and task are marked (a FAILED one included: Stripe
+ * is the authority), the cancellation's counts follow, and the money is settled. Runs under the caller's order lock.
  */
 export async function markRefundSucceeded(
   tx: Prisma.TransactionClient,
   deps: RefundDeps,
   order: OrderDetail,
-  refundId: string,
-  stripeRefundId: string,
-): Promise<boolean> {
+  stripeRefund: { id: string; amountCents: number; refundId: string },
+): Promise<'settled' | 'recorded' | 'not-ours'> {
+  const refundId = stripeRefund.refundId;
+  const stripeRefundId = stripeRefund.id;
   const row = await tx.refund.findUnique({ where: { id: refundId } });
-  if (!row || row.orderId !== order.id || row.status === 'SUCCEEDED') return false;
+  if (!row || row.orderId !== order.id || row.amountCents !== stripeRefund.amountCents) return 'not-ours';
+  if (row.stripeRefundId && row.stripeRefundId !== stripeRefundId) return 'not-ours';
+  if (row.status === 'SUCCEEDED') return 'recorded';
   await tx.refund.update({ where: { id: refundId }, data: { status: 'SUCCEEDED', stripeRefundId } });
   const task = await tx.refundTask.findUnique({ where: { id: refundId } });
   if (task) {
@@ -124,7 +128,7 @@ export async function markRefundSucceeded(
     }
   }
   await settleRefund(tx, deps, order, row.amountCents, refundId, row.reason);
-  return true;
+  return 'settled';
 }
 
 /**

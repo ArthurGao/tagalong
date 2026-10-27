@@ -145,10 +145,10 @@ export class FakeStripeClient implements StripeClient {
     return [...this.stripeRefunds.values()].filter((r) => r.accountId === accountId && r.paymentIntentId === paymentIntentId).map((r) => this.view(r));
   }
 
-  /** A refund the merchant made in the Stripe Dashboard (no metadata). */
-  dashboardRefund(accountId: string, paymentIntentId: string, amountCents: number): string {
+  /** A refund the merchant made in the Stripe Dashboard (any metadata the merchant typed, usually none). */
+  dashboardRefund(accountId: string, paymentIntentId: string, amountCents: number, metadataRefundId: string | null = null): string {
     const id = `re_dash_${this.stripeRefunds.size}`;
-    this.stripeRefunds.set(id, { id, status: 'succeeded', amountCents, refundId: null, accountId, paymentIntentId });
+    this.stripeRefunds.set(id, { id, status: 'succeeded', amountCents, refundId: metadataRefundId, accountId, paymentIntentId });
     return id;
   }
 

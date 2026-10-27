@@ -114,13 +114,14 @@ export class CheckoutWebhooksService {
     const refunds = (await this.stripe.listRefunds(account, paymentIntentId)).filter((r) => r.status === 'succeeded');
     await this.prisma.$transaction(async (tx) => {
       let order = (await lockOrder(tx, { id: found.id }))!;
-      const recorded = new Set((await tx.refund.findMany({ where: { orderId: order.id, status: 'SUCCEEDED' }, select: { id: true } })).map((r) => r.id));
-      const known = new Set((await tx.refund.findMany({ where: { orderId: order.id, stripeRefundId: { not: null } }, select: { stripeRefundId: true } })).map((r) => r.stripeRefundId));
+      const settled = await tx.refund.findMany({ where: { orderId: order.id, status: 'SUCCEEDED' }, select: { stripeRefundId: true } });
+      const done = new Set(settled.map((r) => r.stripeRefundId));
       for (const r of refunds) {
-        if (r.refundId ? recorded.has(r.refundId) : known.has(r.id)) continue;
-        if (r.refundId) {
-          if (!(await markRefundSucceeded(tx, this.deps, order, r.refundId, r.id))) continue;
-        } else {
+        if (done.has(r.id)) continue;
+        const ours = r.refundId ? await markRefundSucceeded(tx, this.deps, order, { ...r, refundId: r.refundId }) : 'not-ours';
+        if (ours === 'recorded') continue;
+        if (ours === 'not-ours') {
+          // Made outside TagAlong (whatever its metadata says): recorded once, by its Stripe id, for its own amount.
           const row = await tx.refund.create({
             data: { orderId: order.id, amountCents: r.amountCents, reason: 'Refunded in the Stripe Dashboard', status: 'SUCCEEDED', stripeRefundId: r.id },
           });

@@ -116,7 +116,8 @@ backend/
   - `pending` stores the Stripe id and is re-read every 15 min; `failed`/`canceled` → FAILED. An error retries after backoff (the same key within 24 h; a task older than 23 h looks its refund up by metadata first), and the 5th → FAILED plus REFUND_FAILED to the merchant (single refunds).
   - Every write is conditional on `status = PENDING` and the claim's `leaseToken`, so a worker whose lease ran out writes nothing; a success Stripe reports always lands.
   - The merchant endpoint never returns STRIPE_ERROR for a refund: the DTO shows `pendingRefundCents` / `lastRefundFailed`.
-  - `charge.refunded` lists Stripe's refunds of the payment and matches them by id: ours (metadata) are confirmed, others (Dashboard) recorded once by `stripeRefundId`.
+  - `charge.refunded` lists Stripe's refunds of the payment and matches them by id: ours are confirmed, others (Dashboard) recorded once by `stripeRefundId` for their own amount. Metadata is merchant-editable, so `markRefundSucceeded` accepts a refund as ours only for this order's row, the row's amount and (if known) the row's Stripe id.
+  - A task whose refund Stripe already holds is never given up on for lack of an answer, only on Stripe's own `failed`.
   - `charge.dispute.created` emails the merchant (MERCHANT_DISPUTE).
 - **Listing cancellation (§8.5):** `cancellation.service.ts`.
   - It locks the listing's orders, then the listing, then checks no order committed in between (else the whole tx is retried, 5 rounds, then ORDER_IN_PROGRESS).
