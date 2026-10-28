@@ -194,11 +194,6 @@ export class ListingsService {
         distinct: ['optionId'],
       });
       const used = new Set(withOrders.map((o) => o.optionId));
-      const { priceChanges } = validateOptionsReplace(
-        listing.pricing,
-        listing.options.map((o) => ({ ...o, hasOrders: used.has(o.id) })),
-        dto.options.map((o) => ({ id: o.id, priceCents: o.priceCents, capacity: o.capacity, active: o.active })),
-      );
       const rows = dto.options.map((o, sortOrder) => ({
         id: o.id,
         data: {
@@ -212,6 +207,11 @@ export class ListingsService {
           sortOrder,
         },
       }));
+      const { priceChanges } = validateOptionsReplace(
+        listing.pricing,
+        listing.options.map((o) => ({ ...o, hasOrders: used.has(o.id) })),
+        rows.map((r) => ({ id: r.id, ...r.data })),
+      );
       await tx.listingOption.deleteMany({
         where: { listingId: id, id: { notIn: dto.options.flatMap((o) => (o.id ? [o.id] : [])) } },
       });

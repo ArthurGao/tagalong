@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useState, useSyncExternalStore } from 'react';
 import { copyText } from '@/lib/clipboard';
+import { noSubscription } from '@/lib/no-subscription';
 
 /**
  * Inside WeChat's browser Apple Pay is unavailable (DESIGN §11): a banner that stays put, saying how to open the page
@@ -30,5 +31,3 @@ export function WeChatBanner() {
     </div>
   );
 }
-
-const noSubscription = () => () => {}; // the user agent never changes

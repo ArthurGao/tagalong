@@ -79,6 +79,14 @@ describe('listings (DESIGN §5b, §9, M3)', () => {
     const { id } = await newListing('user_m', { pricing: 'FREE', type: 'EVENT', fulfilment: 'ONSITE', title: '讲座' });
     const startsAt = new Date(Date.now() + 10 * DAY);
     expect((await patch('user_m', id, { policyText: 'Free', closesAt: future(9) })).status).toBe(200);
+    const backwards = await put('user_m', id, 'options', {
+      options: [{ name: 'Seat', priceCents: 0, capacity: 50, active: true, startsAt: startsAt.toISOString(), endsAt: new Date(startsAt.getTime() - 60_000).toISOString() }],
+    });
+    expect(backwards.body).toMatchObject({ code: 'VALIDATION_FAILED', details: ['options.0.endsAt must be after startsAt'] });
+    // The database refuses it from any other writer too.
+    await expect(
+      prisma.listingOption.create({ data: { listingId: id, name: 'Raw', priceCents: 0, capacity: 1, startsAt, endsAt: startsAt } }),
+    ).rejects.toThrow(/listing_option_ends_after_start/);
     expect((await put('user_m', id, 'options', { options: [{ name: 'Seat', priceCents: 0, capacity: 50, active: true, startsAt: startsAt.toISOString() }] })).status).toBe(200);
     const res = await http().post(`${base}/${id}/publish`).set(as('user_m'));
     expect(res.status).toBe(201);

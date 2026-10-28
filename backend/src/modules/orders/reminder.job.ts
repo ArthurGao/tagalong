@@ -26,23 +26,37 @@ export class ReminderJob {
   ) {}
 
   @Cron('0 */15 * * * *', { name: 'reminder' })
-  async remindDue(now = new Date()): Promise<number> {
-    const reminded = await this.prisma.$transaction(async (tx) => {
+  async remindDue(now = new Date(), batch = BATCH): Promise<number> {
+    // Batches until none is left, so a big event never pushes orders past their session; soonest sessions first.
+    let reminded = 0;
+    let claimed: number;
+    do {
+      claimed = await this.remindBatch(now, batch);
+      reminded += claimed;
+    } while (claimed === batch);
+    if (reminded) this.logger.log(`reminder: queued ${reminded} reminder(s)`);
+    return reminded;
+  }
+
+  private remindBatch(now: Date, batch: number): Promise<number> {
+    return this.prisma.$transaction(async (tx) => {
       // Candidates come from sessions starting within the longest window (index on starts_at); an order whose next
       // session is inside its listing's window has its first upcoming session there too.
       const due = await tx.$queryRaw<{ id: string }[]>`
         UPDATE "order" SET reminder_sent_at = ${now}, updated_at = now()
         WHERE id IN (
           SELECT o.id FROM "order" o
+          JOIN (
+            SELECT oi.order_id, MIN(lo.starts_at) AS next_start FROM listing_option lo
+            JOIN listing l ON l.id = lo.listing_id AND l.type IN ('SESSION', 'EVENT')
+            JOIN order_item oi ON oi.option_id = lo.id
+            JOIN "order" pending ON pending.id = oi.order_id AND pending.status IN ('PAID', 'CONFIRMED') AND pending.reminder_sent_at IS NULL
+            WHERE lo.starts_at > ${now} AND lo.starts_at <= ${now}::timestamp + make_interval(hours => ${MAX_REMIND_BEFORE_HOURS})
+              AND lo.starts_at <= ${now}::timestamp + make_interval(hours => COALESCE(l.remind_before_hours, ${DEFAULT_REMIND_BEFORE_HOURS}))
+            GROUP BY oi.order_id
+          ) s ON s.order_id = o.id
           WHERE o.status IN ('PAID', 'CONFIRMED') AND o.reminder_sent_at IS NULL
-            AND o.id IN (
-              SELECT oi.order_id FROM listing_option lo
-              JOIN listing l ON l.id = lo.listing_id AND l.type IN ('SESSION', 'EVENT')
-              JOIN order_item oi ON oi.option_id = lo.id
-              WHERE lo.starts_at > ${now} AND lo.starts_at <= ${now}::timestamp + make_interval(hours => ${MAX_REMIND_BEFORE_HOURS})
-                AND lo.starts_at <= ${now}::timestamp + make_interval(hours => COALESCE(l.remind_before_hours, ${DEFAULT_REMIND_BEFORE_HOURS}))
-            )
-          ORDER BY o.id LIMIT ${BATCH}
+          ORDER BY s.next_start, o.id LIMIT ${batch}
           FOR UPDATE OF o SKIP LOCKED
         )
         RETURNING id`;
@@ -66,7 +80,5 @@ export class ReminderJob {
       );
       return orders.length;
     });
-    if (reminded) this.logger.log(`reminder: queued ${reminded} reminder(s)`);
-    return reminded;
   }
 }

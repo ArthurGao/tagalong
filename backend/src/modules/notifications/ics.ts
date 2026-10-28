@@ -17,7 +17,6 @@ export type CalendarEvent = {
   url: string;
 };
 
-
 /** 20261031T013000Z */
 function utc(value: string | Date): string {
   return new Date(value).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
@@ -25,7 +24,7 @@ function utc(value: string | Date): string {
 
 /** TEXT value escaping (RFC 5545 §3.3.11). */
 function text(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+  return value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r\n?|\n/g, '\\n');
 }
 
 /** Lines longer than 75 octets continue on the next line after a space (§3.1), never splitting a character. */

@@ -100,7 +100,7 @@ frontend/
   - The merchant-side editor is `components/merchant/FormFieldBuilder`: add, reorder and delete fields, with at most 10.
 - **WeChat:** `WeChatBanner` (in the public layout) renders when the UA contains `MicroMessenger`: a persistent top banner that explains Apple Pay is unavailable and shows how to open in the browser, plus a copy-link button. The UA is read with `useSyncExternalStore` (false on the server), so cached HTML stays shared.
 - **Public footer** (`PublicFooter`, in the public layout): find-my-orders link and the language switch. `/find-order` (`FindOrderForm`) always shows the same message after a successful submit.
-- **Language switch:** `LocaleSwitch` (one per surface; logic in `lib/locale-switch.ts`) swaps the locale segment and keeps the query string (the order token). Public: footer; merchant: dashboard and auth layouts.
+- **Language switch:** `LocaleSwitch` (one per surface; logic in `lib/locale-switch.ts`) swaps the locale segment and keeps the query string (the order token), in the real `href` too (read with `useSyncExternalStore`, empty on the server), so a new tab or a copied link keeps it. Public: footer; merchant: dashboard and auth layouts.
 - **Merchant page** `/m/[slug]`: SSR, `revalidate: 60`, always noindex; `MerchantListings` renders the cards. The listing page's seller name links to it.
 - **Share text:** `lib/share-text.ts` builds the group-chat message from `ListingSummaryDto.share` with `listings.share.*` strings; `ShareTextButton` (published rows in `ListingRows`) copies it with this site's origin.
 - **Calendar:** `OrderView` shows "add to calendar" when `hasCalendar`; it fetches `calendar.ics` with the token header and saves it through `lib/download.ts`.

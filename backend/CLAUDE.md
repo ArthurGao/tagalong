@@ -128,7 +128,7 @@ backend/
   - `refund.job.ts`: every 30 s, 20 tasks, lease token plus SKIP LOCKED; retries after 1/2/4/8 min; FAILED after 5 attempts. Every run finishes any RUNNING cancellation with nothing pending (COMPLETED(_WITH_FAILURES), merchant emailed).
   - `retryFailed()` is for the admin console (M8): a refund Stripe refused gets a new id (its key would replay the refusal); one that only met errors keeps its id.
 - `orders-csv.ts` builds the merchant CSV (pure, one column table; BOM, CRLF, formula-safe cells).
-- **Find my orders** (`OrdersService.recover`): Turnstile + per-IP throttler, always `202 { ok: true }`, at most 3 ORDER_RECOVERY emails per address per clock hour: the n-th has dedupe key `ORDER_RECOVERY:{email}:{hour}:{n}`, so the unique key holds the limit under races.
+- **Find my orders** (`OrdersService.recover`): Turnstile + per-IP throttler, then only an `order_recovery_request` row and `202 { ok: true }`: every request does the same work, so neither answer nor timing reveals the address. `recovery.job.ts` (every 10 s, SKIP LOCKED, rows deleted as claimed) looks the orders up and queues at most 3 ORDER_RECOVERY emails per address per clock hour of the request: the n-th has dedupe key `ORDER_RECOVERY:{email}:{hour}:{n}`, so the unique key holds the limit under races.
 - `GET /public/orders/:code/calendar.ics`: the order's `.ics` for attending event/lesson orders (`hasCalendar` on the DTO).
 - `modules/public/public-merchants.*`: `GET /public/merchants/:slug` (merchant page; PUBLISHED/CLOSED listings only, nothing private).
 - DTO class names must be unique (`src/dto-names.spec.ts`): Swagger names schemas after classes and silently overwrites duplicates.
@@ -206,7 +206,8 @@ Merchants and admins share **one Clerk application** and are distinguished by ro
 - `outbox.job.ts` runs every 10 seconds (DESIGN §12 backoff schedule).
 - `refund.job.ts` runs every 30 seconds, 20 tasks per batch (every queued refund: merchant, late payment, cancellation), with `refund:{RefundTask.id}` as the Stripe idempotency key and a per-run lease token.
 - `pii-retention.job.ts` runs daily and anonymizes buyer PII on orders whose listing ended more than 12 months ago.
-- `reminder.job.ts` (orders module) runs every 15 minutes. One UPDATE … SKIP LOCKED claims PAID/CONFIRMED SESSION/EVENT orders with a session starting within `remindBeforeHours` (default 24; candidates found through the `listing_option.starts_at` index) and sets `reminderSentAt`; the EVENT_REMINDER emails are queued in the same transaction. Past sessions are never reminded. `order-ops.hasCalendar` / `calendarEvents` are the TS side of the same rule.
+- `reminder.job.ts` (orders module) runs every 15 minutes and drains the due orders in batches of 100 (each its own transaction, soonest session first). Each UPDATE … SKIP LOCKED claims PAID/CONFIRMED SESSION/EVENT orders with a session starting within `remindBeforeHours` (default 24; candidates found through the `listing_option.starts_at` index) and sets `reminderSentAt`; the EVENT_REMINDER emails are queued in the same transaction. Past sessions are never reminded. `order-ops.hasCalendar` / `calendarEvents` are the TS side of the same rule.
+- `recovery.job.ts` (orders module) runs every 10 seconds and turns find-my-orders requests into ORDER_RECOVERY emails (see Find my orders).
 - `expiry.job.ts` runs every minute. It only applies to paid orders. It processes in batches, uses `FOR UPDATE SKIP LOCKED` so that multiple instances are safe, expires the Stripe session, then transitions the order to EXPIRED.
 
 ## Testing

@@ -40,6 +40,14 @@ describe('.ics calendar (RFC 5545)', () => {
     expect(ics).not.toContain('LOCATION');
   });
 
+  it('escapes every kind of line break, so merchant text cannot add calendar lines', () => {
+    const ics = icsCalendar([{ ...event, location: 'a\r\nb\rc\nd', title: 'Class\rEND:VEVENT' }]);
+    expect(ics).toContain('LOCATION:a\\nb\\nc\\nd\r\n');
+    expect(ics).toContain('SUMMARY:Class\\nEND:VEVENT\r\n');
+    expect(ics.split('\r\n').filter((l) => l === 'END:VEVENT')).toHaveLength(1);
+    expect(ics.replace(/\r\n/g, '')).not.toMatch(/[\r\n]/);
+  });
+
   it('folds long lines at 75 octets without splitting a character', () => {
     const ics = icsCalendar([{ ...event, title: '瑜伽课'.repeat(20) }]);
     const lines = ics.split('\r\n');

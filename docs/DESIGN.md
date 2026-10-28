@@ -129,7 +129,7 @@ Merchant 1──* MerchantNote (admin 内部备注)
 - `priceCents`：PAID 接龙最低 100（$1.00），上限 2,000,000（$20,000）；FREE 接龙固定为 0
 - `capacity?`（null 表示不限量），修改时不能低于 `soldCount + reservedCount`
 - `soldCount`, `reservedCount`
-- `startsAt?`, `endsAt?`, `location?`（SESSION / EVENT 类型使用）
+- `startsAt?`, `endsAt?`, `location?`（SESSION / EVENT 类型使用；两者都填时 `endsAt` 必须晚于 `startsAt`：保存时返回 `VALIDATION_FAILED`，数据库另有 CHECK 约束 `listing_option_ends_after_start` 兜底）
 - `sortOrder`, `active`：发布后 option 不能删除，只能设为 `active=false`（已有订单仍然引用它）
 
 **PickupPoint**
@@ -423,7 +423,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - 请求体中额外包含 `formAnswers`、`items[].attendeeAnswers`、`turnstileToken`
   - 服务端会按接龙的 `formFields` 校验答案：必填项、类型、选项是否合法
 - `GET /public/orders/:publicCode`（请求头 `X-Order-Token: {accessToken}`）：返回订单状态；`PENDING_PAYMENT` 且带有 `stripeCheckoutSessionId` 时，前端据此显示「正在确认付款」
-- `POST /public/orders/recover` {email, turnstileToken, locale?}：**找回订单**。把该邮箱最近 90 天内所有有效订单（PAID / CONFIRMED / FULFILLED）的链接汇总成一封邮件发送；无论邮箱是否存在，接口都返回相同的 `202 { ok: true }`；限流为同一邮箱每个整点小时 3 次（第 n 封的去重键是 `ORDER_RECOVERY:{email}:{小时}:{n}`，并发时由唯一键保证；超出时不发但回答不变），另有按 IP 的限流和 Turnstile
+- `POST /public/orders/recover` {email, turnstileToken, locale?}：**找回订单**。把该邮箱最近 90 天内所有有效订单（PAID / CONFIRMED / FULFILLED）的链接汇总成一封邮件发送；无论邮箱是否存在，接口都返回相同的 `202 { ok: true }`，且做的事完全一样：只把请求写入 `order_recovery_request` 队列，查订单和限流由 `recovery.job.ts`（每 10 秒）异步完成，所以响应时间也不泄露邮箱是否有订单；限流为同一邮箱每个整点小时（按请求时间）3 次（第 n 封的去重键是 `ORDER_RECOVERY:{email}:{小时}:{n}`，并发时由唯一键保证；超出或没有订单时不发），另有按 IP 的限流和 Turnstile
 - `GET /public/orders/:publicCode/calendar.ics`（请求头 `X-Order-Token`）：活动/课程订单（PAID / CONFIRMED / FULFILLED，且有开始时间的场次）的 .ics 日历文件，其它情况 404；订单接口的 `hasCalendar` 表示是否可用
 - **Origin 校验（CSRF 补充防线，全局 `OriginGuard`）**：所有公开写接口，以及所有带 cookie 的写请求（POST/PUT/PATCH/DELETE），`Origin` 请求头都必须是我们自己的域名（`APP_URL` 和 `CLERK_AUTHORIZED_PARTIES`），否则返回 403。Clerk 的 `__session` 是 SameSite=Lax，但 admin 子域名与主站同站，所以仍需这道检查；不带 cookie 的调用（webhook、Bearer 客户端）不受影响
 - `POST /public/orders/:publicCode/cancel`（同样用 `X-Order-Token` 请求头）。买家看到的链接仍是 `/o/{publicCode}?t=`，但 API 不接受查询串里的 token，避免它出现在代理和平台的请求日志里；订单页设置 `Referrer-Policy: no-referrer`
@@ -585,11 +585,11 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - **Outbox 机制（D16）**：业务代码只调用 `notifications.enqueue(type, recipient, payload, dedupeKey)`，在业务事务内写入 `NotificationOutbox`。`outbox.job.ts` 每 10 秒取一批 `PENDING` 记录（`FOR UPDATE SKIP LOCKED`）发送：成功写 `sentAt`，失败则 `attempts += 1` 并按 1、5、30 分钟、2 小时、12 小时退避（首次发送 + 5 次重试），第 6 次仍失败才标记 `FAILED` 并上报 Sentry；没有对应模板的类型直接 `FAILED`，不重试。发送前用租约认领（把 `nextAttemptAt` 推后 5 分钟），发送本身不在事务里，进程中途崩溃的行租约到期后会被重发（至少一次）。`dedupeKey` 保证重复的 webhook 不会发两封邮件。
 - 使用 `EmailService` 抽象层：开发环境用 Mailpit，生产环境用 Resend 或 AWS SES。
 - 邮件模板为手写的中英双语模板（`notifications/templates.ts`），共用一个布局：后端没有 JSX 构建，邮件都很短，转义集中在一处，所以没有用 React Email / MJML。买家邮件页脚带「找回你的所有订单」链接（`/{locale}/find-order`）。
-- 活动/课程订单的付款确认、报名确认和活动提醒附带 .ics 日历文件（`notifications/ics.ts`，RFC 5545，时间写成 UTC），每个已订场次一个事件，地点为场次地点或取货点地址。
+- 活动/课程订单的付款确认、报名确认和活动提醒附带 .ics 日历文件（`notifications/ics.ts`，RFC 5545，时间写成 UTC；没有结束时间的按一小时计；文本里的 CR、LF、CRLF 都转义成 `\n`），每个已订场次一个事件，地点为场次地点或取货点地址。
 - 需要发送的邮件：
   - 买家：付款确认、退款通知、订单被自动退款（超时边界情况）
   - 免费报名：报名成功确认（附取消链接和 .ics 文件）、商家取消报名的通知
-  - 活动提醒：SESSION / EVENT 类订单在开始前 `remindBeforeHours` 小时发送（付费和免费都发），由 `reminder.job.ts` 每 15 分钟扫描一次，`Order.reminderSentAt` 用来保证幂等
+  - 活动提醒：SESSION / EVENT 类订单在开始前 `remindBeforeHours` 小时发送（付费和免费都发），由 `reminder.job.ts` 每 15 分钟扫描一次，按最早场次先处理、一次运行内分批处理到没有为止（订单再多也不会拖过开场），`Order.reminderSentAt` 用来保证幂等
   - 买家：找回订单的链接汇总邮件；取货点变更通知；接龙被取消的通知
   - 商家：入驻完成、出现争议、批量退款完成（含失败数）、单笔退款最终失败（`REFUND_FAILED`）、每日订单汇总（Phase 2）
   - 确认邮件和收据中带上商家的 GST 号（如有）。税务发票由商家自行负责，平台不开具

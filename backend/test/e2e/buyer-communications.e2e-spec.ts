@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 import { OutboxJob } from '../../src/modules/notifications/outbox.job.js';
+import { RecoveryJob } from '../../src/modules/orders/recovery.job.js';
 import { ReminderJob } from '../../src/modules/orders/reminder.job.js';
 import { createTestApp, type TestApp } from './support/app.js';
 import { resetDb, testPrisma } from './support/db.js';
@@ -150,7 +151,7 @@ describe('buyer communications: emails, .ics, reminders, find my orders, merchan
   });
 
   describe('event reminders', () => {
-    const remind = (at = new Date()) => t.app.get(ReminderJob).remindDue(at);
+    const remind = (at = new Date(), batch?: number) => t.app.get(ReminderJob).remindDue(at, batch);
 
     it('reminds once, inside the window before the first session', async () => {
       const soon = await listing({ startsIn: 20 * HOUR });
@@ -163,6 +164,14 @@ describe('buyer communications: emails, .ics, reminders, find my orders, merchan
       expect((await prisma.order.findUniqueOrThrow({ where: { publicCode: body.publicCode } })).reminderSentAt).not.toBeNull();
       await t.app.get(OutboxJob).run();
       expect(t.email.sent.find((m) => m.subject.startsWith('Reminder: Saturday yoga'))?.attachments).toHaveLength(1);
+    });
+
+    it('drains every due order in one run, one batch at a time, soonest session first', async () => {
+      await register(await listing({ startsIn: 20 * HOUR }), 'late@example.test');
+      await register(await listing({ startsIn: 5 * HOUR }), 'first@example.test');
+      await register(await listing({ startsIn: 10 * HOUR }), 'middle@example.test');
+      expect(await remind(new Date(), 1)).toBe(3);
+      expect((await outbox('EVENT_REMINDER')).map((r) => r.recipient)).toEqual(['first@example.test', 'middle@example.test', 'late@example.test']);
     });
 
     it('waits until the window opens, uses the listing setting, and skips retail, cancelled and past orders', async () => {
@@ -181,13 +190,20 @@ describe('buyer communications: emails, .ics, reminders, find my orders, merchan
   });
 
   describe('find my orders', () => {
-    it('answers the same for an address with orders and one without', async () => {
+    const handle = () => t.app.get(RecoveryJob).run();
+
+    it('answers the same for an address with orders and one without, doing the same work for both', async () => {
       await register(await listing());
       const known = await recover('amy@example.test');
       const unknown = await recover('nobody@example.test');
       expect(known.status).toBe(202);
       expect({ status: unknown.status, body: unknown.body }).toEqual({ status: known.status, body: known.body });
+      // The request only queues itself; nothing about the address is looked up before the answer.
+      expect((await prisma.orderRecoveryRequest.findMany({ orderBy: { createdAt: 'asc' } })).map((r) => r.email)).toEqual(['amy@example.test', 'nobody@example.test']);
+      expect(await outbox('ORDER_RECOVERY')).toHaveLength(0);
+      expect(await handle()).toBe(1);
       expect((await outbox('ORDER_RECOVERY')).map((r) => r.recipient)).toEqual(['amy@example.test']);
+      expect(await prisma.orderRecoveryRequest.count()).toBe(0);
     });
 
     it('lists only valid orders of the last 90 days, whatever the case of the address', async () => {
@@ -197,6 +213,7 @@ describe('buyer communications: emails, .ics, reminders, find my orders, merchan
       const gone = await register(await listing({ title: 'Cancelled class' }), 'amy@example.test');
       await http().post(`/api/v1/public/orders/${gone.body.publicCode}/cancel`).set('Origin', ORIGIN).set('X-Order-Token', gone.body.accessToken);
       await recover('AMY@example.TEST');
+      await handle();
       const [row] = await outbox('ORDER_RECOVERY');
       expect(row.recipient).toBe('amy@example.test');
       expect((row.payload as { orders: { publicCode: string; url: string }[] }).orders).toEqual([
@@ -207,13 +224,16 @@ describe('buyer communications: emails, .ics, reminders, find my orders, merchan
     it('sends at most 3 an hour per address, still answering the same', async () => {
       await register(await listing());
       for (let i = 0; i < 4; i++) expect((await recover('amy@example.test')).status).toBe(202);
+      expect(await handle()).toBe(3);
+      await recover('amy@example.test');
+      expect(await handle()).toBe(0); // a later run counts the emails already queued
       expect(await outbox('ORDER_RECOVERY')).toHaveLength(3);
     });
 
     it('requires the human check', async () => {
       const res = await recover('amy@example.test', 'bot');
       expect(res.body.code).toBe('TURNSTILE_FAILED');
-      expect(await outbox('ORDER_RECOVERY')).toHaveLength(0);
+      expect(await prisma.orderRecoveryRequest.count()).toBe(0);
     });
   });
 

@@ -93,6 +93,15 @@ describe('validateOptionsReplace', () => {
     expect(code(() => validateOptionsReplace('FREE', [], [{ priceCents: 0, capacity: null, active: true }]))).toBe('OK');
   });
 
+  it('rejects a session that does not end after it starts', () => {
+    const at = (iso: string) => new Date(iso);
+    const session = (startsAt: Date | null, endsAt: Date | null) => [{ priceCents: 0, capacity: null, active: true, startsAt, endsAt }];
+    expect(code(() => validateOptionsReplace('FREE', [], session(at('2026-11-01T01:00:00Z'), at('2026-11-01T00:00:00Z'))))).toBe('VALIDATION_FAILED');
+    expect(code(() => validateOptionsReplace('FREE', [], session(at('2026-11-01T01:00:00Z'), at('2026-11-01T01:00:00Z'))))).toBe('VALIDATION_FAILED');
+    expect(code(() => validateOptionsReplace('FREE', [], session(at('2026-11-01T01:00:00Z'), at('2026-11-01T02:00:00Z'))))).toBe('OK');
+    expect(code(() => validateOptionsReplace('FREE', [], session(at('2026-11-01T01:00:00Z'), null)))).toBe('OK');
+  });
+
   it('rejects ids that are not options of this listing', () => {
     expect(code(() => validateOptionsReplace('PAID', existing, [keep({ id: 'other' })]))).toBe('VALIDATION_FAILED');
   });

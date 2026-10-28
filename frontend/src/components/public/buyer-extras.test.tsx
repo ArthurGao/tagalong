@@ -53,6 +53,8 @@ describe('LocaleSwitch', () => {
     renderWithIntl(<LocaleSwitch />);
     const link = screen.getByRole('link', { name: messages.common.switchToLabel });
     expect(link.textContent).toBe('中文');
+    // The real href too, for a new tab or a copied link.
+    expect(link.getAttribute('href')).toBe('/zh-CN/o/TA-K7M2Q9?t=secret&paid=1');
     fireEvent.click(link);
     expect(goTo).toHaveBeenCalledWith('/zh-CN/o/TA-K7M2Q9?t=secret&paid=1');
   });

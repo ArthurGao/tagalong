@@ -2,8 +2,10 @@
 
 import { usePathname } from 'next/navigation';
 import { useLocale } from 'next-intl';
+import { useSyncExternalStore } from 'react';
 import { routing } from '@/i18n/routing';
 import { goTo } from '@/lib/navigate';
+import { noSubscription } from '@/lib/no-subscription';
 
 export type Locale = (typeof routing.locales)[number];
 
@@ -27,10 +29,15 @@ export function switchLocalePath(pathname: string, search: string, target: Local
   return `/${[target, ...path].join('/')}${search}`;
 }
 
-/** What each surface's LocaleSwitch needs: the target language, a crawlable href, and a click that keeps the query. */
+/**
+ * What each surface's LocaleSwitch needs: the target language, an href with the query (so a new tab or a copied link
+ * keeps the order token), and a click that reads the live location. The server renders the href without the query,
+ * which the client fills in after hydration.
+ */
 export function useLocaleSwitch() {
   const target = otherLocale(useLocale());
-  const href = switchLocalePath(usePathname(), '', target);
+  const search = useSyncExternalStore(noSubscription, () => window.location.search, () => '');
+  const href = switchLocalePath(usePathname(), search, target);
   const onClick = (e: { preventDefault(): void }) => {
     e.preventDefault();
     goTo(switchLocalePath(window.location.pathname, window.location.search, target));

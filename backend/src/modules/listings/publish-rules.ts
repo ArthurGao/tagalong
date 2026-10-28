@@ -81,6 +81,8 @@ export interface OptionInput {
   priceCents: number;
   capacity: number | null;
   active: boolean;
+  startsAt?: Date | null;
+  endsAt?: Date | null;
 }
 
 export function assertPriceInRange(pricing: Pricing, priceCents: number): void {
@@ -102,8 +104,12 @@ export function validateOptionsReplace(
 ): { priceChanges: { optionId: string; fromCents: number; toCents: number }[] } {
   const byId = new Map(existing.map((o) => [o.id, o]));
   const priceChanges: { optionId: string; fromCents: number; toCents: number }[] = [];
-  for (const option of next) {
+  for (const [i, option] of next.entries()) {
     assertPriceInRange(pricing, option.priceCents);
+    // A session that ends before it starts would reach calendars upside down.
+    if (option.startsAt && option.endsAt && option.endsAt <= option.startsAt) {
+      throw new AppError('VALIDATION_FAILED', 'Validation failed', [`options.${i}.endsAt must be after startsAt`]);
+    }
     if (!option.id) continue;
     const current = byId.get(option.id);
     if (!current) throw new AppError('VALIDATION_FAILED', 'Validation failed', [`options: unknown option ${option.id}`]);

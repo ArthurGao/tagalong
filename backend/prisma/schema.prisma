@@ -388,6 +388,18 @@ model NotificationOutbox {
   @@map("notification_outbox")
 }
 
+// Find-my-orders requests waiting for recovery.job (DESIGN §9): the request only writes a row, the same for every
+// address, and the job looks the orders up and applies the per-address limit. Rows are deleted once handled.
+model OrderRecoveryRequest {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  email     String
+  locale    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt]) // recovery.job, oldest first
+  @@map("order_recovery_request")
+}
+
 model StripeEvent {
   id          String    @id // Stripe evt_...
   type        String
