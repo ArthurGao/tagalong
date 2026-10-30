@@ -69,7 +69,7 @@ describe('merchant order management: refunds, CSV, listing cancellation (DESIGN 
         stripePaymentIntentId: paid ? `pi_${randomUUID().slice(0, 12)}` : null,
         stripeCheckoutSessionId: `cs_${randomUUID().slice(0, 12)}`,
         reservationExpiresAt: new Date(Date.now() + 1_800_000),
-        items: { create: [{ optionId: l.options[0].id, quantity: 1, unitPriceCents: 3900 }] },
+        items: { create: [{ optionId: l.options[0].id, quantity: 1, unitPriceCents: 3900, checkoutName: 'Fixture · item' }] },
       },
     });
     const counter = paid ? 'sold_count' : 'reserved_count';
@@ -402,6 +402,32 @@ describe('merchant order management: refunds, CSV, listing cancellation (DESIGN 
       expect(await prisma.notificationOutbox.count({ where: { type: 'ORDER_REFUNDED' } })).toBe(50);
     }, 60_000);
 
+    it('a refund already in flight when the listing is cancelled keeps the cancellation running until it settles', async () => {
+      const l = await paidListing('Cherry run');
+      const o = await paidOrder(l, 1);
+      t.stripe.failRefund = true;
+      expect((await refund(o.id, 1500)).status).toBe(200); // Stripe down: the merchant's refund stays in flight
+      t.stripe.failRefund = false;
+      const [single] = await prisma.refundTask.findMany();
+      t.stripe.failRefundKeys.add(single.id); // and it will end up failing
+
+      const started = await cancel(l);
+      expect(started.body).toMatchObject({ status: 'RUNNING', totalOrders: 1 });
+      expect(await prisma.refundTask.findFirstOrThrow({ where: { cancellationId: { not: null } } })).toMatchObject({ amountCents: 3900 - 1500 });
+
+      await t.app.get(RefundJob).run(new Date(Date.now() + 10 * 60_000));
+      // The cancellation's own refund is done, the merchant's earlier one is still being retried: not finished yet.
+      expect(await prisma.refundTask.findUniqueOrThrow({ where: { id: single.id } })).toMatchObject({ status: 'PENDING' });
+      expect(await prisma.listingCancellation.findFirstOrThrow({ where: { listingId: l.id } })).toMatchObject({ status: 'RUNNING', succeeded: 1 });
+      expect(await prisma.notificationOutbox.count({ where: { type: 'CANCELLATION_FINISHED' } })).toBe(0);
+
+      await drain(new Date(Date.now() + 20 * 60_000));
+      expect(await prisma.refundTask.findUniqueOrThrow({ where: { id: single.id } })).toMatchObject({ status: 'FAILED' });
+      expect(await prisma.listingCancellation.findFirstOrThrow({ where: { listingId: l.id } })).toMatchObject({ status: 'COMPLETED', succeeded: 1, failed: 0 });
+      expect(await prisma.notificationOutbox.count({ where: { type: 'CANCELLATION_FINISHED' } })).toBe(1);
+      expect(await prisma.notificationOutbox.count({ where: { type: 'REFUND_FAILED' } })).toBe(1); // the merchant hears of that one
+    });
+
     it('an order created while the cancellation waits for the listing is cancelled too', async () => {
       const merchant = await prisma.merchant.findFirstOrThrow({ where: { owner: { clerkUserId: 'user_m' } } });
       const l = await prisma.listing.create({
@@ -423,7 +449,7 @@ describe('merchant order management: refunds, CSV, listing cancellation (DESIGN 
           data: {
             publicCode: 'TA-RACE01', accessToken: randomUUID(), listingId: l.id, merchantId: merchant.id, buyerName: 'Amy', buyerEmail: 'amy@example.test',
             buyerPhone: '021', isFree: true, onePerEmail: true, status: 'CONFIRMED', sequenceNo: seq, subtotalCents: 0, platformFeeCents: 0, totalCents: 0,
-            items: { create: [{ optionId: l.options[0].id, quantity: 1, unitPriceCents: 0 }] },
+            items: { create: [{ optionId: l.options[0].id, quantity: 1, unitPriceCents: 0, checkoutName: 'Fixture · item' }] },
           },
         });
       });
@@ -541,7 +567,7 @@ describe('merchant order management: refunds, CSV, listing cancellation (DESIGN 
         data: {
           publicCode: 'TA-FREE01', accessToken: randomUUID(), listingId: l.id, merchantId: merchant.id, buyerName: 'Amy', buyerEmail: 'amy@example.test',
           buyerPhone: '021', isFree: true, onePerEmail: true, status: 'CONFIRMED', sequenceNo: 1, subtotalCents: 0, platformFeeCents: 0, totalCents: 0,
-          items: { create: [{ optionId: l.options[0].id, quantity: 1, unitPriceCents: 0 }] },
+          items: { create: [{ optionId: l.options[0].id, quantity: 1, unitPriceCents: 0, checkoutName: 'Fixture · item' }] },
         },
       });
       expect((await cancel(l)).body).toMatchObject({ status: 'COMPLETED', totalOrders: 0 });

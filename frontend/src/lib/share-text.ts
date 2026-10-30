@@ -1,5 +1,5 @@
 import type { components } from '@/lib/api/schema';
-import { priceLabel } from '@/lib/money';
+import { priceLabel, spanPrices } from '@/lib/money';
 import { formatNzDateTime } from '@/lib/time';
 
 type Summary = components['schemas']['ListingSummaryDto'];
@@ -13,7 +13,7 @@ type Translate = (key: string, values?: Record<string, string | number>) => stri
  */
 export function shareText(l: Summary, url: string, locale: string, t: Translate): string {
   const { minPriceCents: min, maxPriceCents: max, remaining, place, startsAt } = l.share;
-  const price = priceLabel(l.pricing, [min, max].filter((c) => c !== null), { free: t('free'), from: (p) => t('from', { price: p }) });
+  const price = priceLabel(l.pricing, spanPrices(min, max), { free: t('free'), from: (p) => t('from', { price: p }) });
   const where = [startsAt ? formatNzDateTime(startsAt, locale) : null, place].filter(Boolean).join(' ');
   const head = t('head', { kind: t(`kind${l.pricing}`), title: l.title, price }) + (where ? ` | ${where}` : '');
   const count = t(`joined${l.pricing}`, { count: l.soldCount }) + (remaining === null ? '' : t('left', { count: remaining }));

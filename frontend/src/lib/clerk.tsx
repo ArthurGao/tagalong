@@ -2,14 +2,13 @@ import { enUS, zhCN } from '@clerk/localizations';
 import { ClerkProvider } from '@clerk/nextjs';
 import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
-import { routing } from '@/i18n/routing';
+import type { Locale } from '@/lib/locale-switch';
 
 // Clerk is wired only when its publishable key is set, so local dev and CI builds work before the
 // Clerk application exists (DESIGN §16 item 8). Without it, protected pages redirect to /login,
 // which explains that sign-in is not configured.
 export const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
-type Locale = (typeof routing.locales)[number];
 const localizations: Record<Locale, typeof enUS> = { 'zh-CN': zhCN, en: enUS };
 
 // Clerk components take the active surface's CSS variables, so they follow docs/UI-STYLE.md tokens.

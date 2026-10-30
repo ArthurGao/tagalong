@@ -27,8 +27,8 @@ export class ExpiryJob {
         LIMIT ${BATCH}
         FOR UPDATE SKIP LOCKED`;
       const ended = [];
-      for (const { id } of due) {
-        const order = await tx.order.findUniqueOrThrow({ where: { id }, include: orderDetail });
+      const orders = await tx.order.findMany({ where: { id: { in: due.map((d) => d.id) } }, orderBy: { reservationExpiresAt: 'asc' }, include: orderDetail });
+      for (const order of orders) {
         await endUnpaid(tx, order, 'EXPIRED');
         ended.push(...sessionsToEnd(order));
       }

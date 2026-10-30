@@ -4,6 +4,7 @@ import { maskName } from '../../common/mask.js';
 import type { OrderStatus } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { readFormFields } from '../listings/form-fields.js';
+import { toPickupPointDto } from '../listings/listings.service.js';
 import { availabilityOf, isTakenDown, remainingPlaces } from '../listings/availability.js';
 import type { ParticipantPageDto, PublicListingDto } from './public-listing.dto.js';
 
@@ -60,14 +61,7 @@ export class PublicListingsService {
       totalRemaining,
       formFields: readFormFields(l.formFields),
       options,
-      pickupPoints: l.pickupPoints.map((p) => ({
-        id: p.id,
-        label: p.label,
-        address: p.address,
-        windowStart: p.windowStart,
-        windowEnd: p.windowEnd,
-        notes: p.notes,
-      })),
+      pickupPoints: l.pickupPoints.map(toPickupPointDto),
       merchant: {
         slug: l.merchant.slug,
         displayName: l.merchant.displayName,

@@ -5,7 +5,6 @@ import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import type { OrderRecoveryPayload } from '../notifications/templates.js';
 import { ATTENDING } from './order-ops.js';
 import { orderUrl } from './urls.js';
 
@@ -63,7 +62,7 @@ export class RecoveryJob {
               createdAt: o.createdAt.toISOString(),
               url: orderUrl(this.env, locale, o.publicCode, o.accessToken),
             })),
-          } satisfies OrderRecoveryPayload,
+          },
           dedupeKey: `ORDER_RECOVERY:${email}:${hour.key}:${sentThisHour + 1}`,
         });
         emails++;

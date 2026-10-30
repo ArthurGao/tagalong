@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import type { AdminSignInPayload } from '../notifications/templates.js';
 
 // DESIGN §10: every admin sign-in is audited and every admin is alerted (Hobby tier has no MFA).
 @Injectable()
@@ -31,10 +30,10 @@ export class AdminSignInService {
       await this.notifications.enqueue(
         tx,
         ...admins.map((admin) => ({
-          type: 'ADMIN_SIGN_IN',
+          type: 'ADMIN_SIGN_IN' as const,
           recipient: admin.email,
           locale: 'en',
-          payload: { adminEmail: user.email, sessionId, signedInAt } satisfies AdminSignInPayload,
+          payload: { adminEmail: user.email, sessionId, signedInAt },
           dedupeKey: `ADMIN_SIGN_IN:${sessionId}:${admin.id}`,
         })),
       );

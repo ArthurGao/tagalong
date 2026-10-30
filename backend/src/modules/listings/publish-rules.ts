@@ -1,11 +1,12 @@
 import { AppError } from '../../common/errors/app-error.js';
+import { HOUR_MS } from '../../common/time.js';
 import type { Fulfilment, ListingStatus, ListingType, MerchantStatus, Pricing } from '../../generated/prisma/enums.js';
 import type { FormField } from './form-fields.js';
 
 // DESIGN §5b (what may change after publishing), D11 (pricing per listing), D12 (publish gate).
 
-export const PAID_MIN_CENTS = 100; // $1.00, Stripe's NZD minimum with headroom
-export const PAID_MAX_CENTS = 2_000_000; // $20,000
+const PAID_MIN_CENTS = 100; // $1.00, Stripe's NZD minimum with headroom
+const PAID_MAX_CENTS = 2_000_000; // $20,000
 const FREE_MAX_QTY = 10;
 const PAID_MAX_QTY = 50;
 
@@ -85,7 +86,7 @@ export interface OptionInput {
   endsAt?: Date | null;
 }
 
-export function assertPriceInRange(pricing: Pricing, priceCents: number): void {
+function assertPriceInRange(pricing: Pricing, priceCents: number): void {
   const ok = pricing === 'FREE' ? priceCents === 0 : priceCents >= PAID_MIN_CENTS && priceCents <= PAID_MAX_CENTS;
   if (!ok) {
     throw new AppError('PRICE_OUT_OF_RANGE', 'Price out of range', {
@@ -180,5 +181,5 @@ export function applyListingDefaults(type: ListingType, pricing: Pricing) {
 /** Default self-cancel deadline: 2 hours before the earliest session (DESIGN §5.1). */
 export function defaultSelfCancelUntil(startTimes: (Date | null)[]): Date | null {
   const earliest = startTimes.filter((d): d is Date => d !== null).sort((a, b) => a.getTime() - b.getTime())[0];
-  return earliest ? new Date(earliest.getTime() - 2 * 60 * 60 * 1000) : null;
+  return earliest ? new Date(earliest.getTime() - 2 * HOUR_MS) : null;
 }

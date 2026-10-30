@@ -3,6 +3,8 @@ import request from 'supertest';
 import { Webhook } from 'svix';
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 import { Auth } from '../../src/modules/auth/auth.decorator.js';
+import { UserSyncService } from '../../src/modules/auth/user-sync.service.js';
+import { PrismaService } from '../../src/prisma/prisma.service.js';
 import { createTestApp, type TestApp } from './support/app.js';
 import { resetDb, testPrisma } from './support/db.js';
 import { createMerchant } from './support/factories.js';
@@ -227,6 +229,29 @@ describe('auth', () => {
       await post(signed('msg_o2', userEvent('user.created', 'user_o', 'old@example.test', 1_000)));
       await post(signed('msg_o3', userEvent('user.updated', 'user_o', 'older@example.test', 1_500)));
       expect((await prisma.user.findUniqueOrThrow({ where: { clerkUserId: 'user_o' } })).email).toBe('new@example.test');
+    });
+
+    it('overlapping user events: the older one never wins, even when it read the row first', async () => {
+      await prisma.user.create({ data: { email: 'start@example.test', clerkUserId: 'user_c', clerkUpdatedAt: new Date(1_000) } });
+      const sync = t.app.get(UserSyncService);
+      const users = t.app.get(PrismaService).user;
+      // The older event's handler reads the row, then stalls until the newer event has been applied.
+      let resume!: () => void;
+      const stalled = new Promise<void>((r) => (resume = r));
+      const read = users.findUnique.bind(users);
+      const spy = vi.spyOn(users, 'findUnique').mockImplementationOnce((async (args: Parameters<typeof read>[0]) => {
+        const row = await read(args);
+        await stalled;
+        return row;
+      }) as unknown as typeof users.findUnique);
+      const older = sync.upsertFromClerk('user_c', 'older@example.test', new Date(1_500));
+      await sync.upsertFromClerk('user_c', 'newer@example.test', new Date(2_000));
+      resume();
+      await older;
+      spy.mockRestore();
+      const user = await prisma.user.findUniqueOrThrow({ where: { clerkUserId: 'user_c' } });
+      expect(user.email).toBe('newer@example.test');
+      expect(user.clerkUpdatedAt).toEqual(new Date(2_000));
     });
 
     it('session.created by an admin writes one audit entry and one alert per admin, even when replayed', async () => {

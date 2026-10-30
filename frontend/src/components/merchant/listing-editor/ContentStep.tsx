@@ -13,6 +13,7 @@ import { ImageUploader } from './ImageUploader';
 import { SaveBar } from './SaveBar';
 import type { StepProps } from './types';
 import { useSave } from '@/lib/api/use-save';
+import { DateTimeField } from './DateTimeField';
 
 const schema = z.object({
   title: z.string().trim().min(1).max(120),
@@ -63,15 +64,7 @@ export function ContentStep({ listing, onSaved }: StepProps) {
         <Label htmlFor="description">{t('description')}</Label>
         <Textarea id="description" rows={6} {...register('description')} />
       </div>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="closesAt">{t('closesAt')}</Label>
-        <Input id="closesAt" type="datetime-local" aria-invalid={Boolean(formState.errors.closesAt)} {...register('closesAt')} />
-        {formState.errors.closesAt && (
-          <p role="alert" className="text-sm text-destructive">
-            {formState.errors.closesAt.message}
-          </p>
-        )}
-      </div>
+      <DateTimeField id="closesAt" label={t('closesAt')} error={formState.errors.closesAt?.message} {...register('closesAt')} />
       <div className="flex flex-col gap-1">
         <span className="text-sm font-bold">{t('images')}</span>
         <Controller

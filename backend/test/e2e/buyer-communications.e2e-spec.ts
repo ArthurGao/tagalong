@@ -120,6 +120,31 @@ describe('buyer communications: emails, .ics, reminders, find my orders, merchan
     });
   });
 
+  describe('outbox leases', () => {
+    it('a worker whose lease ran out cannot overwrite the send of the worker that took over', async () => {
+      await prisma.notificationOutbox.create({
+        data: { type: 'PICKUP_POINT_CHANGED', recipient: 'amy@example.test', locale: 'en', payload: { label: 'Hall', address: '1 Main St' }, dedupeKey: 'lease-test' },
+      });
+      const job = t.app.get(OutboxJob);
+      // The first worker's send hangs past its lease, then fails.
+      let fail!: (e: Error) => void;
+      const send = vi.spyOn(t.email, 'send').mockImplementationOnce(() => new Promise<void>((_, reject) => (fail = reject)));
+      const now = new Date();
+      const stalled = job.run(now);
+      await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+      expect(await job.run(new Date(now.getTime() + 6 * 60_000))).toEqual({ sent: 1, retrying: 0, failed: 0 });
+      fail(new Error('provider timeout'));
+      await stalled;
+      send.mockRestore();
+      expect(await prisma.notificationOutbox.findUniqueOrThrow({ where: { dedupeKey: 'lease-test' } })).toMatchObject({
+        status: 'SENT',
+        attempts: 0,
+        lastError: null,
+      });
+      expect(t.email.sent.map((m) => m.to)).toEqual(['amy@example.test']);
+    });
+  });
+
   describe('calendar download', () => {
     const calendar = (code: string, token: string) => http().get(`/api/v1/public/orders/${code}/calendar.ics`).set('X-Order-Token', token);
 

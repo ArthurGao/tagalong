@@ -151,7 +151,7 @@ Merchant 1──* MerchantNote (admin 内部备注)
 - 时间：`reservationExpiresAt`, `paidAt?`, `fulfilledAt?`, `cancelledAt?`, `reminderSentAt?`, `createdAt`
 
 **OrderItem**
-- `id`, `orderId`, `optionId`, `quantity`, `unitPriceCents`, `attendeeName?`（课程类订单填写学员姓名）, `attendeeAnswers` (json，`scope=attendee` 的字段答案)
+- `id`, `orderId`, `optionId`, `quantity`, `unitPriceCents`, `checkoutName`（下单时固定的 Checkout 行名「接龙标题 · 选项名」，找回会话时原样重发）, `attendeeName?`（课程类订单填写学员姓名）, `attendeeAnswers` (json，`scope=attendee` 的字段答案)
 
 **Refund**
 - `id`, `orderId`, `amountCents`, `reason?`, `stripeRefundId?`, `status`, `createdAt`
@@ -268,8 +268,9 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
    ```
    如果影响行数为 0，整个事务回滚，返回 `409 SOLD_OUT`。
    任一失败都回滚。加锁顺序处处一致：订单行 → 接龙行 → option（按 id），与商家编辑接龙相同，避免死锁。
+   拿到锁之后，订单内容（选项与价格、每单上限、取货点、必填字段与答案、`onePerEmail`）按锁住时的接龙**再校验一次**，订单按这次的结果写入；锁外的第一次校验只用于尽早报错。所以买家提交途中商家刚提交的修改（新增必填字段、调低上限、改价）同样约束这笔订单。
 2. 创建 Order（状态 `PENDING_PAYMENT`），设置 `reservationExpiresAt = now + 30min`。
-   - **幂等**：公开下单接口要求 `Idempotency-Key` 请求头（前端生成 UUID，表单打开时生成一次，提交失败重试时沿用）。同一个 key 在 24 小时内重复提交，直接返回第一次的结果（`checkoutUrl` 或 `publicCode`），不再创建订单。实现方式：`Order.idempotencyKey` 唯一索引，捕获唯一冲突后查询原订单返回。已保存会话的订单重放时读取该会话的 URL（不再重发请求，商家之后改名也不影响）；还没保存会话的订单用同一个 Stripe 幂等键重发同样的请求，找回并补存会话，Stripe 仍在处理第一次请求时返回 `409 ORDER_IN_PROGRESS`。
+   - **幂等**：公开下单接口要求 `Idempotency-Key` 请求头（前端生成 UUID，表单打开时生成一次，提交失败重试时沿用）。同一个 key 在 24 小时内重复提交，直接返回第一次的结果（`checkoutUrl` 或 `publicCode`），不再创建订单。实现方式：`Order.idempotencyKey` 唯一索引，捕获唯一冲突后查询原订单返回。已保存会话的订单重放时读取该会话的 URL（不再重发请求，商家之后改名也不影响）；还没保存会话的订单用同一个 Stripe 幂等键重发同样的请求（请求只取自订单里存下的内容，行名用 `OrderItem.checkoutName`，商家之后改名也不变），找回并补存会话，Stripe 仍在处理第一次请求时返回 `409 ORDER_IN_PROGRESS`。
    - 一个接龙里同一邮箱只能有一个未支付的 `PENDING_PAYMENT` 订单；再次提交时让旧订单过期并释放库存，再创建新订单。
      - **已知取舍（2026-10-28 决定保留）**：知道某买家邮箱的人可以借此让对方的未付款订单过期；对方若随后付款，按第 5 步重新预占或自动全额退款，不会丢钱。换来的是放弃付款的买家能立刻重下。M5b 的 Turnstile 和每 IP 限流用来抑制批量滥用。
 3. 在商家的 connected account 上创建 Checkout Session，`expires_at` 见 §8.2（预留截止 + 2 分钟，满足 Stripe 最短 30 分钟）。
@@ -351,7 +352,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
    - 失败：`attempts += 1`，指数退避，最多 5 次；超过后标记 `FAILED`
    - Stripe 返回 pending：不计次数，稍后再查
    - 所有写入都要求任务仍是 `PENDING` 且租约令牌未变，所以租约过期后的旧 worker 写不进任何东西（Stripe 报告的成功除外：以 Stripe 为准）
-4. 每轮都检查所有已无 `PENDING` 任务的 `RUNNING` 取消，更新 `ListingCancellation.status`；即使处理最后一笔的那一轮中途崩溃，下一轮也会收尾。有失败时通知商家，并在 admin 后台显示失败列表，支持手动重试：Stripe 明确拒绝的退款重试时新建一笔（新 id，旧的 `FAILED` 记录保留）；只是一直出错、没有得到答复的，用原来的 id 重试。Stripe 后来报告某笔已放弃的退款其实成功了，照样记成功，取消的失败数归零时状态回到 `COMPLETED`。
+4. 每轮都检查所有 `RUNNING` 取消：接龙的订单上已没有 `PENDING` 任务（取消自己的，以及取消前就在途的商家退款）时才收尾，更新 `ListingCancellation.status`；在途的商家退款失败时照常单独通知商家，不计入取消的成功/失败数；即使处理最后一笔的那一轮中途崩溃，下一轮也会收尾。有失败时通知商家，并在 admin 后台显示失败列表，支持手动重试：Stripe 明确拒绝的退款重试时新建一笔（新 id，旧的 `FAILED` 记录保留）；只是一直出错、没有得到答复的，用原来的 id 重试。Stripe 后来报告某笔已放弃的退款其实成功了，照样记成功，取消的失败数归零时状态回到 `COMPLETED`。
 5. 商家后台的取消弹窗必须显示：订单数、退款总额、「Stripe 手续费不退还」的提示，并要求输入接龙标题确认。预览没有成功加载时不能确认；每次打开都重新加载预览。
 6. `GET /merchants/me/listings/:id/cancellation` 返回进度，前端轮询展示。
 
@@ -470,7 +471,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 ## 10. 隐私与安全
 
 - **姓名脱敏**：「Arthur Gao」显示为「Arthur G.」；中文姓名「高阳」显示为「高*」；买家勾选匿名时显示「匿名」。邮箱和手机号绝不出现在任何公开接口中。
-- **订单访问**：买家通过 `accessToken` 查看订单。比较 token 时使用常量时间比较；token 只放在链接和邮件中，不写入日志。
+- **订单访问**：买家通过 `accessToken` 查看订单。比较 token 时使用常量时间比较；token 只放在链接和邮件中，不写入日志：请求日志遮蔽 `X-Order-Token` 和 `Idempotency-Key` 请求头（后者重放时会返回订单链接）以及 URL 里的 `t=`。
 - **限流**：
   - 登录相关的限流和暴力破解防护由 Clerk 负责
   - 公开下单：同一 IP 每分钟最多 10 次
@@ -582,7 +583,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 
 ## 12. 通知
 
-- **Outbox 机制（D16）**：业务代码只调用 `notifications.enqueue(type, recipient, payload, dedupeKey)`，在业务事务内写入 `NotificationOutbox`。`outbox.job.ts` 每 10 秒取一批 `PENDING` 记录（`FOR UPDATE SKIP LOCKED`）发送：成功写 `sentAt`，失败则 `attempts += 1` 并按 1、5、30 分钟、2 小时、12 小时退避（首次发送 + 5 次重试），第 6 次仍失败才标记 `FAILED` 并上报 Sentry；没有对应模板的类型直接 `FAILED`，不重试。发送前用租约认领（把 `nextAttemptAt` 推后 5 分钟），发送本身不在事务里，进程中途崩溃的行租约到期后会被重发（至少一次）。`dedupeKey` 保证重复的 webhook 不会发两封邮件。
+- **Outbox 机制（D16）**：业务代码只调用 `notifications.enqueue(type, recipient, payload, dedupeKey)`，在业务事务内写入 `NotificationOutbox`。`outbox.job.ts` 每 10 秒取一批 `PENDING` 记录（`FOR UPDATE SKIP LOCKED`）发送：成功写 `sentAt`，失败则 `attempts += 1` 并按 1、5、30 分钟、2 小时、12 小时退避（首次发送 + 5 次重试），第 6 次仍失败才标记 `FAILED` 并上报 Sentry；没有对应模板的类型直接 `FAILED`，不重试。发送前用租约认领（把 `nextAttemptAt` 推后 5 分钟并写入本轮的 `leaseToken`），每封发送前续租；之后的写入都要求令牌未变，所以租约过期后被别的实例接管的行，旧实例写不回结果（不会把已发送改成失败）。发送本身不在事务里，进程中途崩溃的行租约到期后会被重发（至少一次）。`dedupeKey` 保证重复的 webhook 不会发两封邮件。
 - 使用 `EmailService` 抽象层：开发环境用 Mailpit，生产环境用 Resend 或 AWS SES。
 - 邮件模板为手写的中英双语模板（`notifications/templates.ts`），共用一个布局：后端没有 JSX 构建，邮件都很短，转义集中在一处，所以没有用 React Email / MJML。买家邮件页脚带「找回你的所有订单」链接（`/{locale}/find-order`）。
 - 活动/课程订单的付款确认、报名确认和活动提醒附带 .ics 日历文件（`notifications/ics.ts`，RFC 5545，时间写成 UTC；没有结束时间的按一小时计；文本里的 CR、LF、CRLF 都转义成 `\n`），每个已订场次一个事件，地点为场次地点或取货点地址。

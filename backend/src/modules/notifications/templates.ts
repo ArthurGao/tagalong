@@ -96,6 +96,22 @@ export type OrderRecoveryPayload = {
 export class UnknownTemplateError extends Error {}
 
 /** What every email needs besides its payload. */
+/** Every email type with the payload it renders from: producers are checked against it (notifications.service). */
+export interface PayloadByType {
+  ORDER_CONFIRMED: OrderConfirmedPayload;
+  ORDER_AUTO_REFUNDED: OrderAutoRefundedPayload;
+  REGISTRATION_CONFIRMED: RegistrationConfirmedPayload;
+  REGISTRATION_CANCELLED: RegistrationCancelledPayload;
+  ORDER_REFUNDED: OrderRefundedPayload;
+  EVENT_REMINDER: EventReminderPayload;
+  ORDER_RECOVERY: OrderRecoveryPayload;
+  MERCHANT_DISPUTE: MerchantDisputePayload;
+  REFUND_FAILED: RefundFailedPayload;
+  CANCELLATION_FINISHED: CancellationFinishedPayload;
+  PICKUP_POINT_CHANGED: PickupPointChangedPayload;
+  ADMIN_SIGN_IN: AdminSignInPayload;
+}
+
 export interface RenderContext {
   appUrl: string;
 }
@@ -158,6 +174,10 @@ export function renderEmail(type: string, locale: string, to: string, payload: u
     const note = zh ? '附件是日历文件，可以加入你的日历。' : 'The attached calendar file adds this to your calendar.';
     return email(to, subject, [...lines, note], link, footer, [ics]);
   };
+  const refundEta = zh ? '退款通常在 5–10 个工作日内回到原支付方式。' : 'Refunds usually reach your card within 5–10 business days.';
+  const reasonLine = (reason: string | null | undefined) => (reason ? [zh ? `原因：${reason}` : `Reason: ${reason}`] : []);
+  const viewOrder = (url: string): Link => ({ label: zh ? '查看订单' : 'View your order', url });
+  const viewListing = (url: string): Link => ({ label: zh ? '查看接龙' : 'View the listing', url });
   /** To a merchant or an admin: no buyer footer. */
   const toStaff = (subject: string, lines: string[]) => email(to, subject, lines, undefined, null);
   switch (type) {
@@ -174,7 +194,7 @@ export function renderEmail(type: string, locale: string, to: string, payload: u
           ...merchantLine(zh, p.merchant),
           ...pickup,
         ],
-        { label: zh ? '查看订单' : 'View your order', url: p.orderUrl },
+        viewOrder(p.orderUrl),
         p,
       );
     }
@@ -186,9 +206,9 @@ export function renderEmail(type: string, locale: string, to: string, payload: u
           zh
             ? `你的付款在预留时间结束后才到账，而名额已经被订完，所以我们已全额退款 ${money(p.totalCents)}。订单号 ${p.publicCode}`
             : `Your payment arrived after your reservation ended and the places had sold out, so we refunded ${money(p.totalCents)} in full. Order ${p.publicCode}`,
-          zh ? '退款通常在 5–10 个工作日内回到原支付方式。' : 'Refunds usually reach your card within 5–10 business days.',
+          refundEta,
         ],
-        { label: zh ? '查看接龙' : 'View the listing', url: p.listingUrl },
+        viewListing(p.listingUrl),
       );
     }
     case 'REGISTRATION_CONFIRMED': {
@@ -216,9 +236,9 @@ export function renderEmail(type: string, locale: string, to: string, payload: u
         zh ? `报名已被取消：${p.listingTitle}` : `Registration cancelled: ${p.listingTitle}`,
         [
           zh ? `商家取消了你在「${p.listingTitle}」的报名。` : `The organiser cancelled your registration for "${p.listingTitle}".`,
-          ...(p.reason ? [zh ? `原因：${p.reason}` : `Reason: ${p.reason}`] : []),
+          ...reasonLine(p.reason),
         ],
-        { label: zh ? '查看接龙' : 'View the listing', url: p.listingUrl },
+        viewListing(p.listingUrl),
       );
     }
     case 'ORDER_REFUNDED': {
@@ -228,11 +248,11 @@ export function renderEmail(type: string, locale: string, to: string, payload: u
         zh ? `已退款 ${money(p.amountCents)}：${p.listingTitle}` : `Refund of ${money(p.amountCents)}: ${p.listingTitle}`,
         [
           zh ? `商家已为订单 ${p.publicCode} 退款 ${money(p.amountCents)}${full ? '（全额）' : ''}。` : `The seller refunded ${money(p.amountCents)}${full ? ' (in full)' : ''} for order ${p.publicCode}.`,
-          ...(p.reason ? [zh ? `原因：${p.reason}` : `Reason: ${p.reason}`] : []),
-          zh ? '退款通常在 5–10 个工作日内回到原支付方式。' : 'Refunds usually reach your card within 5–10 business days.',
+          ...reasonLine(p.reason),
+          refundEta,
           ...merchantLine(zh, p.merchant),
         ],
-        { label: zh ? '查看订单' : 'View your order', url: p.orderUrl },
+        viewOrder(p.orderUrl),
       );
     }
     case 'EVENT_REMINDER': {
@@ -246,7 +266,7 @@ export function renderEmail(type: string, locale: string, to: string, payload: u
           ...(first.location ? [zh ? `地点：${first.location}` : `Where: ${first.location}`] : []),
           zh ? `订单号 ${p.publicCode}` : `Order ${p.publicCode}`,
         ],
-        { label: zh ? '查看订单' : 'View your order', url: p.orderUrl },
+        viewOrder(p.orderUrl),
         p,
       );
     }

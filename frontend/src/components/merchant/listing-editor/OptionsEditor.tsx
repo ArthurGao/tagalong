@@ -14,6 +14,7 @@ import { centsToDollarsInput, dollarsToCents } from '@/lib/money';
 import { instantForInput, isoToNzInput } from '@/lib/time';
 import { SaveBar } from './SaveBar';
 import type { Listing, StepProps } from './types';
+import { DateTimeField } from './DateTimeField';
 
 const row = z.object({
   id: z.string().optional(),
@@ -137,20 +138,7 @@ export function OptionsEditor({ listing, onSaved }: StepProps) {
             {timed && (
               <>
                 {(['startsAt', 'endsAt'] as const).map((key) => (
-                  <div key={key} className="flex flex-col gap-1">
-                    <Label htmlFor={`options.${i}.${key}`}>{t(key)}</Label>
-                    <Input
-                      id={`options.${i}.${key}`}
-                      type="datetime-local"
-                      aria-invalid={Boolean(errorOf(i, key))}
-                      {...register(`options.${i}.${key}`)}
-                    />
-                    {errorOf(i, key) && (
-                      <p role="alert" className="text-sm text-destructive">
-                        {errorOf(i, key)}
-                      </p>
-                    )}
-                  </div>
+                  <DateTimeField key={key} id={`options.${i}.${key}`} label={t(key)} error={errorOf(i, key)} {...register(`options.${i}.${key}`)} />
                 ))}
                 <div className="flex flex-col gap-1">
                   <Label htmlFor={`options.${i}.location`}>{t('location')}</Label>

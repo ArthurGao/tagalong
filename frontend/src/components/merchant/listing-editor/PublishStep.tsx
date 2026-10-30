@@ -10,6 +10,7 @@ import { formatNzDateTime, nzInputToIso } from '@/lib/time';
 import type { Listing, StepProps } from './types';
 import { useSave } from '@/lib/api/use-save';
 import { CancelListing, CancellationProgress, type Progress } from '../CancelListing';
+import { DateTimeField } from './DateTimeField';
 
 // Backend publish-check details → listings.missing.* keys (next-intl keys cannot contain dots).
 const MISSING_KEYS: Record<string, string> = {
@@ -75,21 +76,13 @@ export function PublishStep({ listing, onSaved }: StepProps) {
       {listing.status === 'CLOSED' && (
         <>
           <p>{t('closed')}</p>
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="reopenUntil">{t('reopenUntil')}</Label>
-            <Input
-              id="reopenUntil"
-              type="datetime-local"
-              value={reopenUntil}
-              aria-invalid={reopenInvalid}
-              onChange={(e) => setReopenUntil(e.target.value)}
-            />
-            {reopenInvalid && (
-              <p role="alert" className="text-sm text-destructive">
-                {tListings('timeInvalid')}
-              </p>
-            )}
-          </div>
+          <DateTimeField
+            id="reopenUntil"
+            label={t('reopenUntil')}
+            error={reopenInvalid ? tListings('timeInvalid') : undefined}
+            value={reopenUntil}
+            onChange={(e) => setReopenUntil(e.target.value)}
+          />
           <Button
             className="self-start"
             disabled={save.saving || reopenInvalid}

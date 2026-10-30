@@ -15,6 +15,9 @@ const FREE: Partial<Record<OrderStatus, readonly OrderStatus[]>> = {
   CONFIRMED: ['FULFILLED', 'CANCELLED', 'NO_SHOW'],
 };
 
+/** An order that ended without being paid; a payment that still lands is handled late (DESIGN §7.5). */
+export const ENDED_UNPAID: readonly OrderStatus[] = ['EXPIRED', 'CANCELLED'];
+
 export function canTransition(isFree: boolean, from: OrderStatus, to: OrderStatus): boolean {
   return ((isFree ? FREE : PAID)[from] ?? []).includes(to);
 }

@@ -84,6 +84,7 @@ describe('public listing API (DESIGN §9, §10, M4)', () => {
             optionId: listing.options[i].id,
             quantity,
             unitPriceCents: 3900,
+            checkoutName: 'Fixture · item',
             attendeeName: 'Child Secret',
             attendeeAnswers: [{ age: SECRET_ANSWER }],
           })),

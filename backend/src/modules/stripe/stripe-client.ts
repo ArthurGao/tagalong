@@ -4,7 +4,7 @@ import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import { AppError } from '../../common/errors/app-error.js';
 
-export interface CheckoutLine {
+interface CheckoutLine {
   name: string;
   unitAmountCents: number;
   quantity: number;

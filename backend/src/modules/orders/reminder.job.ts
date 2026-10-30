@@ -4,7 +4,6 @@ import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import type { EventReminderPayload } from '../notifications/templates.js';
 import { calendarEvents, orderDetail } from './order-ops.js';
 import { orderUrl } from './urls.js';
 
@@ -64,7 +63,7 @@ export class ReminderJob {
       await this.notifications.enqueue(
         tx,
         ...orders.map((order) => ({
-          type: 'EVENT_REMINDER',
+          type: 'EVENT_REMINDER' as const,
           recipient: order.buyerEmail,
           locale: order.locale,
           payload: {
@@ -74,7 +73,7 @@ export class ReminderJob {
             events: calendarEvents(this.env, order)
               .filter((e) => new Date(e.startsAt) > now)
               .sort((x, y) => x.startsAt.localeCompare(y.startsAt)),
-          } satisfies EventReminderPayload,
+          },
           dedupeKey: `EVENT_REMINDER:${order.id}`,
         })),
       );

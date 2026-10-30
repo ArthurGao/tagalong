@@ -112,7 +112,7 @@ describe('listings (DESIGN §5b, §9, M3)', () => {
 
     const listing = await prisma.listing.findUniqueOrThrow({ where: { id }, include: { options: true } });
     const order = await createFreeOrder(prisma, listing, 'amy@example.test');
-    await prisma.orderItem.create({ data: { orderId: order.id, optionId: listing.options[0].id, quantity: 1, unitPriceCents: 0 } });
+    await prisma.orderItem.create({ data: { orderId: order.id, optionId: listing.options[0].id, quantity: 1, unitPriceCents: 0, checkoutName: 'Fixture · item' } });
 
     const deleteWithOrders = await put('user_m', id, 'options', { options: [] });
     expect(deleteWithOrders.body.code).toBe('OPTION_HAS_ORDERS');
@@ -133,7 +133,7 @@ describe('listings (DESIGN §5b, §9, M3)', () => {
     const listing = await prisma.listing.findUniqueOrThrow({ where: { id }, include: { options: true } });
     const optionId = listing.options[0].id;
     const order = await createFreeOrder(prisma, listing, 'amy@example.test');
-    const item = await prisma.orderItem.create({ data: { orderId: order.id, optionId, quantity: 1, unitPriceCents: 3900 } });
+    const item = await prisma.orderItem.create({ data: { orderId: order.id, optionId, quantity: 1, unitPriceCents: 3900, checkoutName: 'Fixture · item' } });
 
     expect((await put('user_m', id, 'options', { options: [{ id: optionId, name: '2kg', priceCents: 4200, capacity: 30, active: true }] })).status).toBe(200);
 

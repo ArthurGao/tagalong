@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import type { PublicMerchant } from '@/lib/api/public';
-import { priceLabel } from '@/lib/money';
+import { priceLabel, spanPrices } from '@/lib/money';
 import { formatNzDateTime } from '@/lib/time';
 
 /** A merchant's listings on its public page: title, price, whether it still takes orders. */
@@ -12,7 +12,7 @@ export function MerchantListings({ listings }: { listings: PublicMerchant['listi
   return (
     <ul className="flex flex-col divide-y divide-border rounded-[var(--radius)] border border-border bg-card">
       {listings.map((l) => {
-        const price = priceLabel(l.pricing, [l.minPriceCents, l.maxPriceCents].filter((c) => c !== null), {
+        const price = priceLabel(l.pricing, spanPrices(l.minPriceCents, l.maxPriceCents), {
           free: t('listing.free'),
           from: (p) => t('listing.priceFrom', { price: p }),
         });

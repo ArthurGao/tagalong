@@ -35,6 +35,16 @@ describe('httpLoggerOptions', () => {
     expect(log).not.toContain('secret-bearer-jwt');
   });
 
+  it('never writes the order token or idempotency key headers to the log', async () => {
+    const log = await logOneRequest('/api/v1/public/orders/TA-7K3Q9P', {
+      'x-order-token': 'secret-order-token',
+      'idempotency-key': '0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+    });
+    expect(log).toContain('/api/v1/public/orders/TA-7K3Q9P');
+    expect(log).not.toContain('secret-order-token');
+    expect(log).not.toContain('0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b');
+  });
+
   it('masks the order access token in the URL but keeps the rest of the query', async () => {
     const log = await logOneRequest('/api/v1/public/orders/TA-7K3Q9P?paid=1&t=secret-access-token', {});
     expect(log).not.toContain('secret-access-token');

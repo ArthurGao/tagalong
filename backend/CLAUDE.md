@@ -70,11 +70,11 @@ backend/
   - `order-state-machine.ts`: `transitionOrder(tx, order, to, data)` is the only status write. It is a conditional `updateMany` on the expected status, so a concurrent change fails instead of overwriting.
   - `reservation.ts`: `reserve` / `release` / `sell` are raw conditional UPDATEs.
     - **Lock order everywhere:** order row → listing row → options by id, the same as `ListingsService.mutate()` (listing, then options). Inverting it deadlocked in tests.
-    - `reserve` locks the listing (`FOR UPDATE`, merchant `FOR SHARE`) and runs `assertOrderable(availabilityOf(...))` on the locked rows, so the public page's rules decide and a close or suspension mid-request cannot slip through.
+    - `reserve` locks the listing (`FOR UPDATE`, merchant `FOR SHARE`) and runs `assertOrderable(availabilityOf(...))` on the locked rows, so the public page's rules decide and a close or suspension mid-request cannot slip through. After the lock, `orders.service` checks the order again on the locked listing (`lockedOrderLines`: options and prices, limits, pickup, answers, `onePerEmail`) and stores that result; the check before the transaction only fails fast.
     - `sellAfresh` owns the savepoint for a late payment and returns null when sold out.
     - Listing counters (`sold_count`, `reserved_count`) always move with the options, and `sell` returns the next `paid_seq`.
     - Order creation retries deadlocks and serialization failures (`isRetryableTransactionError`).
-  - `order-ops.ts`: the shared steps. `orderDetail` include, `lockOrder` (FOR UPDATE + load), `endUnpaid` (→ EXPIRED/CANCELLED + release), `sessionsToEnd` / `expireSessions`, and `checkoutRequest(env, order)`, which builds the Checkout request from the stored order only, so a replay is byte-identical.
+  - `order-ops.ts`: the shared steps. `orderDetail` include, `lockOrder` (FOR UPDATE + load), `endUnpaid` (→ EXPIRED/CANCELLED + release), `sessionsToEnd` / `expireSessions`, and `checkoutRequest(env, order)`, which builds the Checkout request from the stored order only (line names from `OrderItem.checkoutName`), so a replay is byte-identical even after a rename.
   - `availability.ts`: `assertOrderable` maps each non-OPEN state to its error code (exhaustive).
   - `orders.service.ts`: create, replay, status and cancel.
   - `checkout-webhooks.service.ts`: `completed` / `expired`.
@@ -97,7 +97,7 @@ backend/
   - **CANCELLED + completed:** refunded the same way.
 - **Notifications:**
   - `NotificationsService.enqueue(tx, …)` writes `notification_outbox` with `skipDuplicates`. The dedupe key is `TYPE:{id}`.
-  - `outbox.job.ts` claims a batch with a 5-minute lease (`SKIP LOCKED`) and sends outside the tx.
+  - `outbox.job.ts` claims a batch with a 5-minute lease and a lease token (`SKIP LOCKED`), renews each row's lease before sending it, and sends outside the tx. Every write is conditional on the token, so a run whose lease ran out never overwrites the run that took over.
   - Retries follow 1/5/30 min, 2 h, 12 h; the 6th failure → FAILED. A missing template → FAILED at once.
   - `EmailService`: SMTP (Mailpit) or Resend by `EMAIL_PROVIDER`. e2e tests use `test/e2e/support/email-fake.ts`.
   - Templates live in `templates.ts`: hand-written, bilingual, one shared layout, everything escaped. The buyer's language is `order.locale`. `renderEmail(type, locale, to, payload, { appUrl })`; buyer emails carry the find-my-orders footer.
@@ -125,7 +125,7 @@ backend/
   - It locks the listing's orders, then the listing, then checks no order committed in between (else the whole tx is retried, 5 rounds, then ORDER_IN_PROGRESS).
   - The listing becomes CANCELLED, unpaid checkouts EXPIRED, free registrations CANCELLED (with an email).
   - Each PAID / PARTIALLY_REFUNDED order gets one `RefundTask` plus a Refund with the **same id**.
-  - `refund.job.ts`: every 30 s, 20 tasks, lease token plus SKIP LOCKED; retries after 1/2/4/8 min; FAILED after 5 attempts. Every run finishes any RUNNING cancellation with nothing pending (COMPLETED(_WITH_FAILURES), merchant emailed).
+  - `refund.job.ts`: every 30 s, 20 tasks, lease token plus SKIP LOCKED; retries after 1/2/4/8 min; FAILED after 5 attempts. Every run finishes any RUNNING cancellation once no refund on its listing is pending, including a merchant refund already in flight when it was cancelled (COMPLETED(_WITH_FAILURES), merchant emailed).
   - `retryFailed()` is for the admin console (M8): a refund Stripe refused gets a new id (its key would replay the refusal); one that only met errors keeps its id.
 - `orders-csv.ts` builds the merchant CSV (pure, one column table; BOM, CRLF, formula-safe cells).
 - **Find my orders** (`OrdersService.recover`): Turnstile + per-IP throttler, then only an `order_recovery_request` row and `202 { ok: true }`: every request does the same work, so neither answer nor timing reveals the address. `recovery.job.ts` (every 10 s, SKIP LOCKED, rows deleted as claimed) looks the orders up and queues at most 3 ORDER_RECOVERY emails per address per clock hour of the request: the n-th has dedupe key `ORDER_RECOVERY:{email}:{hour}:{n}`, so the unique key holds the limit under races.

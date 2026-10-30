@@ -118,9 +118,11 @@ export class CancellationService {
           .map((o) => ({ orderId: o.id, amountCents: refundable(o, pending.get(o.id) ?? 0), reason: dto.reason }))
           .filter((r) => r.amountCents > 0);
         const tasks = await queueRefunds(tx, toRefund, cancellation.id);
+        // A refund already in flight (a merchant refund) keeps it running too: refund.job finishes it once that settles.
+        const inFlight = tasks.length > 0 || [...pending.values()].some((cents) => cents > 0);
         await tx.listingCancellation.update({
           where: { id: cancellation.id },
-          data: tasks.length ? { totalOrders: tasks.length } : { totalOrders: 0, status: 'COMPLETED', finishedAt: new Date() },
+          data: inFlight ? { totalOrders: tasks.length } : { totalOrders: 0, status: 'COMPLETED', finishedAt: new Date() },
         });
         return true;
       },
@@ -134,7 +136,8 @@ export class CancellationService {
     await this.ownListing(user, listingId);
     const c = await this.prisma.listingCancellation.findUnique({ where: { listingId } });
     if (!c) throw new AppError('NOT_FOUND', 'This listing was not cancelled');
-    const pending = await this.prisma.refundTask.count({ where: { cancellationId: c.id, status: 'PENDING' } });
+    // Every refund still in flight on the listing: the cancellation's, and any queued before it, which it waits for.
+    const pending = await this.prisma.refundTask.count({ where: { status: 'PENDING', order: { listingId } } });
     return { status: c.status, totalOrders: c.totalOrders, succeeded: c.succeeded, failed: c.failed, pending, finishedAt: c.finishedAt };
   }
 
@@ -168,7 +171,7 @@ export class CancellationService {
   }
 
   private async ownListing(user: AuthUser, listingId: string) {
-    const listing = await this.prisma.listing.findFirst({ where: { id: listingId, merchantId: requireMerchantId(user) } });
+    const listing = await this.prisma.listing.findFirst({ where: { id: listingId, merchantId: requireMerchantId(user) }, select: { id: true, title: true } });
     if (!listing) throw new AppError('NOT_FOUND', 'Listing not found');
     return listing;
   }

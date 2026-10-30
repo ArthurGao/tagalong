@@ -45,9 +45,21 @@ async function lockOrderable(tx: Prisma.TransactionClient, listingId: string, no
     SELECT l.id FROM listing l JOIN merchant m ON m.id = l.merchant_id
     WHERE l.id = ${listingId}::uuid
     FOR UPDATE OF l FOR SHARE OF m`;
+  // Only what availabilityOf reads: this runs under the listing lock every order waits for.
+  const counts = { capacity: true, soldCount: true, reservedCount: true } as const;
   const listing = await tx.listing.findUniqueOrThrow({
     where: { id: listingId },
-    include: { options: true, merchant: { select: { status: true } } },
+    select: {
+      status: true,
+      takenDownAt: true,
+      opensAt: true,
+      closesAt: true,
+      totalCapacity: true,
+      soldCount: true,
+      reservedCount: true,
+      merchant: { select: { status: true } },
+      options: { where: { active: true }, select: { active: true, ...counts } },
+    },
   });
   assertOrderable(availabilityOf(listing, now));
 }

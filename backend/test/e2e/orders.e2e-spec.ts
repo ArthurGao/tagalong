@@ -288,6 +288,51 @@ describe('paid ordering (DESIGN §6, §7, §8.2, §8.3, §12, M5)', () => {
       expect(again.body.checkoutUrl).toBe(first.body.checkoutUrl);
     });
 
+    it('recovers a session the first request never saved even after a rename: the replayed request is the original', async () => {
+      const l = await listing();
+      const key = randomUUID();
+      const first = await order(l, {}, key);
+      const { id } = await prisma.order.findFirstOrThrow();
+      await prisma.order.update({ where: { id }, data: { stripeCheckoutSessionId: null } });
+      await prisma.listing.update({ where: { id: l.id }, data: { title: 'Renamed' } });
+      await prisma.listingOption.update({ where: { id: l.options[0].id }, data: { name: 'Renamed option' } });
+      const again = await order(l, {}, key);
+      expect(again.status).toBe(201);
+      expect(again.body.checkoutUrl).toBe(first.body.checkoutUrl);
+      expect((await prisma.order.findUniqueOrThrow({ where: { id } })).stripeCheckoutSessionId).toBe(first.body.checkoutUrl.split('/').pop());
+    });
+
+    it('checks the order against the listing as locked: a limit lowered while the order waited for the lock applies', async () => {
+      const l = await listing({ capacities: [10], maxQtyPerOrder: 5 });
+      // The merchant's edit holds the listing lock; the order passes its first check, then waits for that lock.
+      let commitEdit!: () => void;
+      const editReady = new Promise<void>((r) => (commitEdit = r));
+      const edit = prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM listing WHERE id = ${l.id}::uuid FOR UPDATE`;
+          await editReady;
+          await tx.listing.update({ where: { id: l.id }, data: { maxQtyPerOrder: 1 } });
+        },
+        { timeout: 20_000 },
+      );
+      const placed = order(l, { items: [{ optionId: l.options[0].id, quantity: 2 }] }).then((r) => r);
+      await vi.waitFor(
+        async () => {
+          const [{ waiting }] = await prisma.$queryRaw<{ waiting: number }[]>`
+            SELECT count(*)::int AS waiting FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND datname = current_database()`;
+          expect(waiting).toBeGreaterThan(0);
+        },
+        { timeout: 10_000 },
+      );
+      commitEdit();
+      await edit;
+      const res = await placed;
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('QTY_EXCEEDS_LIMIT');
+      expect(await prisma.order.count()).toBe(0);
+      expect((await counts(l)).listing.reserved).toBe(0);
+    });
+
     it('re-checks the listing inside the transaction: closed, past its deadline or suspended means no reservation', async () => {
       const l = await listing({ capacities: [5] });
       const items = [{ optionId: l.options[0].id, quantity: 1 }];

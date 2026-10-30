@@ -41,3 +41,6 @@ export function dollarsToCents(input: string): number | null {
 export function centsToDollarsInput(cents: number): string {
   return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
 }
+
+/** The prices of a backend price span ({min, max}, null when none), for priceLabel. */
+export const spanPrices = (min: number | null, max: number | null): number[] => [min, max].filter((c) => c !== null);

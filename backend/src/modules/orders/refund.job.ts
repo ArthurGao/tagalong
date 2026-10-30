@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { DEFAULT_LOCALE } from '../../common/locale.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { NotificationsService } from '../notifications/notifications.service.js';
-import type { CancellationFinishedPayload } from '../notifications/templates.js';
+import { NotificationsService, toMerchant } from '../notifications/notifications.service.js';
 import { type RefundOutcome, RefundProcessor } from './refund-processor.js';
 import { type ClaimedRefund, LEASE_MS } from './refunds.js';
 
@@ -13,6 +12,9 @@ const BATCH = 20;
 // DESIGN §8.4 / §8.5: every queued refund (a listing cancellation's, or a single one whose first try did not finish),
 // 20 at a time every 30 s. A claim is a lease with this run's token, so instances never share a task and a run that
 // outlives its lease writes nothing. RefundTask.id is the Refund row's id and Stripe's idempotency key.
+// No refund of the listing's orders still in flight, the cancellation's own or one queued before it.
+const NOTHING_IN_FLIGHT = { listing: { orders: { none: { refundTasks: { some: { status: 'PENDING' } } } } } } satisfies Prisma.ListingCancellationWhereInput;
+
 @Injectable()
 export class RefundJob {
   private readonly logger = new Logger(RefundJob.name);
@@ -44,12 +46,13 @@ export class RefundJob {
   }
 
   /**
-   * Every running cancellation with nothing left pending is done, whichever run settled its last task (a run that died
+   * Every running cancellation with no refund left in flight on its listing is done (a merchant refund still running when
+   * the listing was cancelled included: it fails or succeeds on its own, with its own email), whichever run settled its last task (a run that died
    * just after it leaves the cancellation for the next one); the merchant hears how it went.
    */
   private async finishCancellations(): Promise<void> {
     const done = await this.prisma.listingCancellation.findMany({
-      where: { status: 'RUNNING', tasks: { none: { status: 'PENDING' } } },
+      where: { status: 'RUNNING', ...NOTHING_IN_FLIGHT },
       select: { id: true },
     });
     for (const { id } of done) {
@@ -60,15 +63,14 @@ export class RefundJob {
         });
         // Conditional, so two instances finishing the same cancellation email once.
         const { count } = await tx.listingCancellation.updateMany({
-          where: { id, status: 'RUNNING', tasks: { none: { status: 'PENDING' } } },
+          where: { id, status: 'RUNNING', ...NOTHING_IN_FLIGHT },
           data: { status: c.failed ? 'COMPLETED_WITH_FAILURES' : 'COMPLETED', finishedAt: new Date() },
         });
         if (!count) return;
         await this.notifications.enqueue(tx, {
           type: 'CANCELLATION_FINISHED',
-          recipient: c.listing.merchant.contactEmail,
-          locale: DEFAULT_LOCALE, // merchants have no language setting yet
-          payload: { listingTitle: c.listing.title, succeeded: c.succeeded, failed: c.failed } satisfies CancellationFinishedPayload,
+          ...toMerchant(c.listing.merchant),
+          payload: { listingTitle: c.listing.title, succeeded: c.succeeded, failed: c.failed },
           dedupeKey: `CANCELLATION_FINISHED:${id}:${c.succeeded}:${c.failed}`,
         });
       });

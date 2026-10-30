@@ -5,7 +5,6 @@ import type { Listing, ListingOption, PickupPoint, Prisma } from '../../generate
 import { isForeignKeyViolation, isUniqueViolation } from '../../prisma/errors.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import type { PickupPointChangedPayload } from '../notifications/templates.js';
 import { type AuthUser, requireMerchantId } from '../auth/auth-user.js';
 import { ObjectStorage } from '../uploads/object-storage.js';
 import { formFieldIssues, readFormFields, sensitiveFieldKeys, toFormFieldsJson } from './form-fields.js';
@@ -13,6 +12,7 @@ import type {
   CreateListingDto,
   ListingDto,
   ListingSummaryDto,
+  PickupPointDto,
   ReplaceOptionsDto,
   ReplacePickupPointsDto,
   UpdateListingDto,
@@ -109,15 +109,12 @@ export function toListingDto(l: FullListing): ListingDto {
       sortOrder: o.sortOrder,
       active: o.active,
     })),
-    pickupPoints: l.pickupPoints.map((p) => ({
-      id: p.id,
-      label: p.label,
-      address: p.address,
-      windowStart: p.windowStart,
-      windowEnd: p.windowEnd,
-      notes: p.notes,
-    })),
+    pickupPoints: l.pickupPoints.map(toPickupPointDto),
   };
+}
+
+export function toPickupPointDto(p: PickupPoint): PickupPointDto {
+  return { id: p.id, label: p.label, address: p.address, windowStart: p.windowStart, windowEnd: p.windowEnd, notes: p.notes };
 }
 
 @Injectable()
@@ -274,10 +271,10 @@ export class ListingsService {
           ...orders.map((o) => {
             const point = moved.get(o.pickupPointId!)!;
             return {
-              type: 'PICKUP_POINT_CHANGED',
+              type: 'PICKUP_POINT_CHANGED' as const,
               recipient: o.buyerEmail,
               locale: o.locale,
-              payload: { label: point.label, address: point.address } satisfies PickupPointChangedPayload,
+              payload: { label: point.label, address: point.address },
               dedupeKey: `PICKUP_POINT_CHANGED:${o.id}:${point.address}`,
             };
           }),

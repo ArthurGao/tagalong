@@ -7,7 +7,7 @@ const REQUEST_ID_HEADER = 'x-request-id';
 const SECRET_QUERY_PARAMS = ['t'];
 const REDACTED = '[Redacted]';
 
-export function redactUrl(url: string): string {
+function redactUrl(url: string): string {
   const queryStart = url.indexOf('?');
   if (queryStart === -1) return url;
   const params = new URLSearchParams(url.slice(queryStart + 1));
@@ -25,8 +25,12 @@ export function httpLoggerOptions(nodeEnv: string): Options {
   return {
     level: nodeEnv === 'test' ? 'silent' : 'info',
     transport: nodeEnv === 'development' ? { target: 'pino-pretty' } : undefined,
-    // Session cookie and bearer token are credentials; never log them.
-    redact: { paths: ['req.headers.cookie', 'req.headers.authorization'], censor: REDACTED },
+    // Credentials never reach the log: the session cookie, bearer tokens, the order token (reads and cancels an order)
+    // and the idempotency key (a replay answers with the order's link).
+    redact: {
+      paths: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-order-token"]', 'req.headers["idempotency-key"]'],
+      censor: REDACTED,
+    },
     serializers: {
       req: (req: { url: string }) => {
         req.url = redactUrl(req.url);

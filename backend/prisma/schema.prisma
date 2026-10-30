@@ -297,6 +297,7 @@ model OrderItem {
   optionId        String   @map("option_id") @db.Uuid
   quantity        Int
   unitPriceCents  Int      @map("unit_price_cents")
+  checkoutName    String   @map("checkout_name") // "listing · option" as sent to Checkout; replays must match it
   attendeeName    String?  @map("attendee_name")
   attendeeAnswers Json     @default("[]") @map("attendee_answers")
   createdAt       DateTime @default(now()) @map("created_at")
@@ -380,6 +381,7 @@ model NotificationOutbox {
   nextAttemptAt DateTime           @default(now()) @map("next_attempt_at")
   lastError     String?            @map("last_error")
   sentAt        DateTime?          @map("sent_at")
+  leaseToken    String?            @map("lease_token") @db.Uuid // the worker holding it; stale workers' writes miss
   dedupeKey     String             @unique @map("dedupe_key")
   createdAt     DateTime           @default(now()) @map("created_at")
 

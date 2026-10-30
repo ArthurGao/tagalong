@@ -4,7 +4,6 @@ import { api } from './client';
 export type PublicListing = components['schemas']['PublicListingDto'];
 export type ParticipantPage = components['schemas']['ParticipantPageDto'];
 export type PublicOrder = components['schemas']['PublicOrderDto'];
-export type CreateOrderBody = components['schemas']['CreateOrderDto'];
 export type PublicMerchant = components['schemas']['MerchantPageDto'];
 
 /** 404 → null (unknown or hidden); any other failure throws, so SSR shows its error page and polling keeps the last data. */
@@ -14,12 +13,15 @@ function okOrNotFound<T>({ data, response }: { data?: T; response: Response }): 
   throw new Error(`Public API ${response.url} failed with ${response.status}`);
 }
 
+/** Cached for `revalidate` seconds (ISR pages), or never (client polling). */
+const freshness = (revalidate?: number) => (revalidate === undefined ? { cache: 'no-store' as const } : { next: { revalidate } });
+
 // Public reads: no cookies (buyers are guests and the page never loads Clerk). Works on server and client.
 export async function fetchPublicListing(shortCode: string, revalidate?: number): Promise<PublicListing | null> {
   return okOrNotFound(
     await api.GET('/api/v1/public/listings/{shortCode}', {
       params: { path: { shortCode } },
-      ...(revalidate === undefined ? { cache: 'no-store' } : { next: { revalidate } }),
+      ...freshness(revalidate),
     }),
   );
 }
@@ -32,7 +34,7 @@ export async function fetchParticipants(
   return okOrNotFound(
     await api.GET('/api/v1/public/listings/{shortCode}/participants', {
       params: { path: { shortCode }, query: { cursor } },
-      ...(revalidate === undefined ? { cache: 'no-store' } : { next: { revalidate } }),
+      ...freshness(revalidate),
     }),
   );
 }

@@ -86,8 +86,8 @@ export class MerchantOrdersService {
   /** A free registrant who did not come (DESIGN §6): only once the event has started; places are not released. */
   noShow(user: AuthUser, orderId: string): Promise<MerchantOrderDto> {
     return this.change(user, orderId, async (tx, order) => {
-      const detail = await tx.order.findUniqueOrThrow({ where: { id: order.id }, include: merchantDetail });
-      if (!started(detail, new Date())) {
+      const { closesAt } = await tx.listing.findUniqueOrThrow({ where: { id: order.listingId }, select: { closesAt: true } });
+      if (!eventStarted(order.items.map((i) => i.option.startsAt), closesAt, new Date())) {
         throw new AppError('INVALID_STATE_TRANSITION', 'The event has not started yet', { from: order.status, to: 'NO_SHOW' });
       }
       await transitionOrder(tx, order, 'NO_SHOW');
@@ -103,9 +103,8 @@ export class MerchantOrdersService {
   async refund(user: AuthUser, orderId: string, amountCents: number, reason: string): Promise<MerchantOrderDto> {
     const merchantId = requireMerchantId(user);
     const task = await this.prisma.$transaction(async (tx) => {
-      const order = await lockOrder(tx, { id: orderId });
-      if (!order || order.merchantId !== merchantId) throw new AppError('NOT_FOUND', 'Order not found');
-      if (order.isFree || !REFUNDABLE.includes(order.status) || !order.stripePaymentIntentId) {
+      const order = await lockOwnOrder(tx, merchantId, orderId);
+      if (!canTransition(order.isFree, order.status, 'REFUNDED') || !order.stripePaymentIntentId) {
         throw new AppError('INVALID_STATE_TRANSITION', 'Only paid orders can be refunded', { from: order.status, to: 'REFUNDED' });
       }
       const left = await refundableCents(tx, order);
@@ -136,18 +135,19 @@ export class MerchantOrdersService {
     apply: (tx: Prisma.TransactionClient, order: OrderDetail) => Promise<void>,
   ): Promise<MerchantOrderDto> {
     const merchantId = requireMerchantId(user);
-    await this.prisma.$transaction(async (tx) => {
-      const order = await lockOrder(tx, { id: orderId });
-      if (!order || order.merchantId !== merchantId) throw new AppError('NOT_FOUND', 'Order not found');
-      await apply(tx, order);
-    });
+    await this.prisma.$transaction(async (tx) => apply(tx, await lockOwnOrder(tx, merchantId, orderId)));
     return this.read(orderId);
   }
 }
 
-const started = (o: MerchantDetail, now: Date) => eventStarted(o.items.map((i) => i.option.startsAt), o.listing.closesAt, now);
+/** Locks one of the merchant's own orders; another merchant's is 404, the same as none. */
+async function lockOwnOrder(tx: Prisma.TransactionClient, merchantId: string, orderId: string): Promise<OrderDetail> {
+  const order = await lockOrder(tx, { id: orderId });
+  if (!order || order.merchantId !== merchantId) throw new AppError('NOT_FOUND', 'Order not found');
+  return order;
+}
 
-const REFUNDABLE: OrderStatus[] = ['PAID', 'PARTIALLY_REFUNDED', 'FULFILLED'];
+const started = (o: MerchantDetail, now: Date) => eventStarted(o.items.map((i) => i.option.startsAt), o.listing.closesAt, now);
 
 function toMerchantOrder(o: MerchantDetail, pendingRefundCents: number, lastRefundFailed: boolean, now = new Date()): MerchantOrderDto {
   const confirmed = o.isFree && o.status === 'CONFIRMED';
@@ -179,7 +179,7 @@ function toMerchantOrder(o: MerchantDetail, pendingRefundCents: number, lastRefu
     canFulfil: canTransition(o.isFree, o.status, 'FULFILLED'),
     canCancel: confirmed,
     canNoShow: confirmed && started(o, now),
-    refundableCents: !o.isFree && REFUNDABLE.includes(o.status) ? refundable(o, pendingRefundCents) : 0,
+    refundableCents: canTransition(o.isFree, o.status, 'REFUNDED') ? refundable(o, pendingRefundCents) : 0,
     pendingRefundCents,
     lastRefundFailed,
   };

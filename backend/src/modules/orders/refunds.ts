@@ -2,8 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Env } from '../../config/env.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { NotificationsService } from '../notifications/notifications.service.js';
-import type { OrderAutoRefundedPayload, OrderRefundedPayload } from '../notifications/templates.js';
-import { canTransition, transitionOrder } from './order-state-machine.js';
+import { canTransition, ENDED_UNPAID, transitionOrder } from './order-state-machine.js';
 import { merchantLine, type OrderDetail } from './order-ops.js';
 import { listingUrl, orderUrl } from './urls.js';
 
@@ -59,6 +58,9 @@ export interface ClaimedRefund {
   createdAt: Date;
   leaseToken: string;
 }
+
+/** A task this worker still holds: once its lease has passed to another worker, no write of this one applies. */
+export const stillHeld = (task: ClaimedRefund) => ({ id: task.id, status: 'PENDING' as const, leaseToken: task.leaseToken });
 
 /**
  * Decides refunds under the caller's order locks: per refund a PENDING Refund row and a RefundTask with the same id
@@ -148,7 +150,7 @@ export async function settleRefund(
   const to = refundedCents >= order.totalCents ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
   if (canTransition(order.isFree, order.status, to)) await transitionOrder(tx, order, to, { refundedCents });
   else await tx.order.update({ where: { id: order.id }, data: { refundedCents } }); // a second partial refund, or never paid
-  const neverPaid = order.status === 'EXPIRED' || order.status === 'CANCELLED';
+  const neverPaid = ENDED_UNPAID.includes(order.status);
   await deps.notifications.enqueue(
     tx,
     neverPaid
@@ -161,7 +163,7 @@ export async function settleRefund(
             listingTitle: order.listing.title,
             totalCents: amountCents,
             listingUrl: listingUrl(deps.env, order.locale, order.listing.shortCode),
-          } satisfies OrderAutoRefundedPayload,
+          },
           dedupeKey: `ORDER_AUTO_REFUNDED:${dedupeKey}`,
         }
       : {
@@ -177,7 +179,7 @@ export async function settleRefund(
             reason,
             orderUrl: orderUrl(deps.env, order.locale, order.publicCode, order.accessToken),
             merchant: merchantLine(order),
-          } satisfies OrderRefundedPayload,
+          },
           dedupeKey: `ORDER_REFUNDED:${dedupeKey}`,
         },
   );

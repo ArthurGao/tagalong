@@ -4,16 +4,13 @@ import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { NotificationsService } from '../notifications/notifications.service.js';
-import type { MerchantDisputePayload, OrderConfirmedPayload } from '../notifications/templates.js';
-import { DEFAULT_LOCALE } from '../../common/locale.js';
+import { NotificationsService, toMerchant } from '../notifications/notifications.service.js';
 import { RefundProcessor } from './refund-processor.js';
 import { type ClaimedRefund, markRefundSucceeded, queueRefund, settleRefund } from './refunds.js';
 import { StripeClient } from '../stripe/stripe-client.js';
-import { transitionOrder } from './order-state-machine.js';
-import { calendarEvents, endUnpaid, lockOrder, merchantLine, type OrderDetail, orderDetail, recoverCheckoutSession } from './order-ops.js';
+import { ENDED_UNPAID, transitionOrder } from './order-state-machine.js';
+import { confirmationBase, endUnpaid, lockOrder, type OrderDetail, orderDetail, recoverCheckoutSession } from './order-ops.js';
 import { sell, sellAfresh } from './reservation.js';
-import { orderUrl } from './urls.js';
 
 // DESIGN §8.3 / §7.5. Every handler is idempotent and tolerates events in any order: the order row is locked,
 // and only the transition that still applies is made.
@@ -66,7 +63,7 @@ export class CheckoutWebhooksService {
         await this.markPaid(tx, order, paid, await sell(tx, order.listingId, order.items));
         return null;
       }
-      if (order.status !== 'EXPIRED' && order.status !== 'CANCELLED') return null; // already paid: a replay
+      if (!ENDED_UNPAID.includes(order.status)) return null; // already paid: a replay
       // A refund was decided earlier (under this lock): the refund queue carries it out; never reconsider it.
       if (await tx.refund.findFirst({ where: { orderId: order.id }, select: { id: true } })) return null;
       // §7.5: paid just after the reservation ended. Take the places again if they are still there (never on a
@@ -148,9 +145,8 @@ export class CheckoutWebhooksService {
     this.logger.warn(`dispute ${dispute.id} on order ${order.id}: ${dispute.amount} cents, ${dispute.reason}`);
     await this.notifications.enqueue(this.prisma, {
       type: 'MERCHANT_DISPUTE',
-      recipient: order.merchant.contactEmail,
-      locale: DEFAULT_LOCALE, // merchants have no language setting yet
-      payload: { publicCode: order.publicCode, listingTitle: order.listing.title, amountCents: dispute.amount, reason: dispute.reason } satisfies MerchantDisputePayload,
+      ...toMerchant(order.merchant),
+      payload: { publicCode: order.publicCode, listingTitle: order.listing.title, amountCents: dispute.amount, reason: dispute.reason },
       dedupeKey: `MERCHANT_DISPUTE:${dispute.id}`,
     });
   }
@@ -160,8 +156,13 @@ export class CheckoutWebhooksService {
    * taken from the event), so a payment that lands meanwhile still finds its order.
    */
   private async recoverUnsavedSession(orderId: string): Promise<void> {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId }, include: orderDetail });
-    if (order?.status !== 'PENDING_PAYMENT' || order.stripeCheckoutSessionId || !order.merchant.stripeAccountId) return;
+    // Almost always already saved: check that before loading the whole order.
+    const saved = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true, stripeCheckoutSessionId: true, merchant: { select: { stripeAccountId: true } } },
+    });
+    if (saved?.status !== 'PENDING_PAYMENT' || saved.stripeCheckoutSessionId || !saved.merchant.stripeAccountId) return;
+    const order = await this.prisma.order.findUniqueOrThrow({ where: { id: orderId }, include: orderDetail });
     await recoverCheckoutSession(this.prisma, this.stripe, this.env, order);
   }
 
@@ -183,16 +184,10 @@ export class CheckoutWebhooksService {
       recipient: order.buyerEmail,
       locale: order.locale,
       payload: {
-        publicCode: order.publicCode,
-        listingTitle: order.listing.title,
-        seq,
+        ...confirmationBase(this.env, order, seq),
         items: order.items.map((i) => ({ name: i.option.name, quantity: i.quantity, unitPriceCents: i.unitPriceCents })),
         totalCents: order.totalCents,
-        orderUrl: orderUrl(this.env, order.locale, order.publicCode, order.accessToken),
-        pickup: order.pickupPoint && { label: order.pickupPoint.label, address: order.pickupPoint.address },
-        merchant: merchantLine(order),
-        events: calendarEvents(this.env, order),
-      } satisfies OrderConfirmedPayload,
+      },
       dedupeKey: `ORDER_CONFIRMED:${order.id}`,
     });
   }

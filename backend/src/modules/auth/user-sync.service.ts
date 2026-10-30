@@ -31,14 +31,20 @@ export class UserSyncService {
    * revived, an event older than the last applied one is ignored, and the role never changes.
    */
   async upsertFromClerk(clerkUserId: string, email: string, clerkUpdatedAt: Date): Promise<void> {
-    const existing = await this.prisma.user.findUnique({ where: { clerkUserId } });
-    if (!existing) return this.createMerchantUser(clerkUserId, email, clerkUpdatedAt);
-    if (existing.deletedAt) return;
-    if (existing.clerkUpdatedAt && clerkUpdatedAt <= existing.clerkUpdatedAt) return;
-    await this.prisma.user.update({
-      where: { id: existing.id },
+    if (await this.applyIfNewer(clerkUserId, email, clerkUpdatedAt)) return;
+    // Nothing applied: the row is deleted or already newer, or there is no row yet.
+    if (await this.prisma.user.findUnique({ where: { clerkUserId }, select: { id: true } })) return;
+    // A concurrent create of the same user won: apply this event to its row by the same rule.
+    if (!(await this.createMerchantUser(clerkUserId, email, clerkUpdatedAt))) await this.applyIfNewer(clerkUserId, email, clerkUpdatedAt);
+  }
+
+  /** One conditional write, so overlapping events cannot both pass the check: only a newer event, never on a deleted user. */
+  private async applyIfNewer(clerkUserId: string, email: string, clerkUpdatedAt: Date): Promise<boolean> {
+    const { count } = await this.prisma.user.updateMany({
+      where: { clerkUserId, deletedAt: null, OR: [{ clerkUpdatedAt: null }, { clerkUpdatedAt: { lt: clerkUpdatedAt } }] },
       data: { email: normalizeEmail(email), clerkUpdatedAt },
     });
+    return count > 0;
   }
 
   /**
@@ -63,7 +69,8 @@ export class UserSyncService {
     });
   }
 
-  private async createMerchantUser(clerkUserId: string, email: string, clerkUpdatedAt: Date | null): Promise<void> {
+  /** Creates the user as a MERCHANT; false when a concurrent create of the same Clerk user got there first. */
+  private async createMerchantUser(clerkUserId: string, email: string, clerkUpdatedAt: Date | null): Promise<boolean> {
     try {
       await this.prisma.user.create({
         data: { clerkUserId, email: normalizeEmail(email), role: 'MERCHANT', clerkUpdatedAt },
@@ -71,7 +78,7 @@ export class UserSyncService {
     } catch (e) {
       // Only a concurrent create of the same Clerk user is benign; an email held by another live
       // account is a real conflict and must surface (and make Svix retry) rather than be swallowed.
-      if (isUniqueViolation(e) && (await this.prisma.user.findUnique({ where: { clerkUserId } }))) return;
+      if (isUniqueViolation(e) && (await this.prisma.user.findUnique({ where: { clerkUserId } }))) return false;
       throw e;
     }
     try {
@@ -80,5 +87,6 @@ export class UserSyncService {
       // publicMetadata only drives frontend routing; the DB role stays authoritative.
       this.logger.warn(`Could not mirror role to Clerk for ${clerkUserId}: ${String(e)}`);
     }
+    return true;
   }
 }

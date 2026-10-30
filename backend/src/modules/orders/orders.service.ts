@@ -16,7 +16,6 @@ import { TurnstileVerifier } from '../../common/security/turnstile.js';
 import { answerIssues, readFormFields } from '../listings/form-fields.js';
 import { icsCalendar } from '../notifications/ics.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import type { RegistrationConfirmedPayload } from '../notifications/templates.js';
 import { assertOrderable, availabilityOf } from '../listings/availability.js';
 import { StripeClient, stripeErrorCode } from '../stripe/stripe-client.js';
 import type { CreateOrderDto, CreateOrderResultDto, PublicOrderDto, RecoverOrdersDto, RecoverOrdersResultDto } from './order.dto.js';
@@ -26,14 +25,15 @@ import {
   cancelFree,
   type CheckoutSessionRef,
   checkoutRequest,
+  confirmationBase,
   endUnpaid,
   expireSessions,
   hasCalendar,
   lockOrder,
-  merchantLine,
   type OrderDetail,
   orderDetail,
   recoverCheckoutSession,
+  saveCheckoutSession,
   selfCancelDeadline,
   sessionsToEnd,
 } from './order-ops.js';
@@ -42,9 +42,12 @@ import { orderUrl } from './urls.js';
 
 const ATTEMPTS = 3; // retries for a racing resubmit by the same email, a public-code collision or a deadlock
 
-type OrderListing = Prisma.ListingGetPayload<{
-  include: { options: true; pickupPoints: { select: { id: true } }; merchant: { select: { status: true; chargesEnabled: true; stripeAccountId: true } } };
-}>;
+const orderListing = {
+  options: true,
+  pickupPoints: { select: { id: true } },
+  merchant: { select: { status: true, chargesEnabled: true, stripeAccountId: true } },
+} satisfies Prisma.ListingInclude;
+type OrderListing = Prisma.ListingGetPayload<{ include: typeof orderListing }>;
 
 /** Checks the request against the listing; prices and quantities come only from the database. */
 function orderLines(listing: OrderListing, dto: CreateOrderDto) {
@@ -53,7 +56,8 @@ function orderLines(listing: OrderListing, dto: CreateOrderDto) {
   const lines = dto.items.map((i) => {
     const option = listing.options.find((o) => o.id === i.optionId && o.active);
     if (!option) throw new AppError('VALIDATION_FAILED', 'Unknown option', ['items']);
-    return { optionId: option.id, quantity: i.quantity, unitPriceCents: option.priceCents };
+    // The Checkout line name is fixed now: a recovered session must replay exactly this request (DESIGN §7.2).
+    return { optionId: option.id, quantity: i.quantity, unitPriceCents: option.priceCents, checkoutName: `${listing.title} · ${option.name}` };
   });
   const quantity = lines.reduce((sum, l) => sum + l.quantity, 0);
   if (quantity > listing.maxQtyPerOrder) {
@@ -71,7 +75,16 @@ function orderLines(listing: OrderListing, dto: CreateOrderDto) {
   return {
     lines: lines.map((l, n) => ({ ...l, attendeeAnswers: (dto.items[n].attendeeAnswers ?? []) as Prisma.InputJsonValue[] })),
     subtotalCents: lines.reduce((sum, l) => sum + l.unitPriceCents * l.quantity, 0),
+    onePerEmail: listing.onePerEmail,
   };
+}
+
+/**
+ * The order checked again on the listing as locked by reserve / registerFree: an edit committed after the first check
+ * (a new required field, a lower limit, a price) applies to this order too. Throwing rolls the reservation back.
+ */
+async function lockedOrderLines(tx: Prisma.TransactionClient, listingId: string, dto: CreateOrderDto) {
+  return orderLines(await tx.listing.findUniqueOrThrow({ where: { id: listingId }, include: orderListing }), dto);
 }
 
 @Injectable()
@@ -94,17 +107,12 @@ export class OrdersService {
     if (replay) return replay;
     await this.assertHuman(dto.turnstileToken, remoteIp);
 
-    const listing = await this.prisma.listing.findFirst({
-      where: { shortCode, status: { not: 'DRAFT' } },
-      include: {
-        options: true,
-        pickupPoints: { select: { id: true } },
-        merchant: { select: { status: true, chargesEnabled: true, stripeAccountId: true } },
-      },
-    });
+    const listing = await this.prisma.listing.findFirst({ where: { shortCode, status: { not: 'DRAFT' } }, include: orderListing });
     if (!listing) throw new AppError('NOT_FOUND', 'Listing not found');
     assertOrderable(availabilityOf(listing, new Date()));
-    const { lines, subtotalCents } = orderLines(listing, dto);
+    // Fails fast; the transaction checks again under the listing lock and stores that result.
+    orderLines(listing, dto);
+    const quantities: ItemQty[] = dto.items.map((i) => ({ optionId: i.optionId, quantity: i.quantity }));
     const buyer = { name: dto.buyer.name.trim(), email: dto.buyer.email.trim(), phone: dto.buyer.phone.trim() };
     const common = {
       accessToken: accessToken(),
@@ -117,46 +125,44 @@ export class OrdersService {
       buyerNote: dto.note?.trim() || null,
       displayAnonymous: dto.anonymous,
       formAnswers: (dto.formAnswers ?? {}) as Prisma.InputJsonValue,
-      onePerEmail: listing.onePerEmail,
       idempotencyKey: key,
       locale: dto.locale ?? DEFAULT_LOCALE,
-      items: { create: lines },
     };
-    if (listing.pricing === 'FREE') return this.register(listing.id, common, lines);
+    if (listing.pricing === 'FREE') return this.register(listing.id, common, listing.onePerEmail, dto, quantities);
     if (!listing.merchant.chargesEnabled || !listing.merchant.stripeAccountId) {
       throw new AppError('MERCHANT_NOT_CHARGEABLE', 'This seller cannot take payments right now');
     }
 
-    const data: Prisma.OrderUncheckedCreateInput = {
-      ...common,
-      publicCode: '',
-      isFree: false,
-      status: 'PENDING_PAYMENT',
-      subtotalCents,
-      platformFeeCents: platformFee(subtotalCents, this.env.PLATFORM_FEE_BPS, this.env.PLATFORM_FEE_FIXED_CENTS),
-      totalCents: subtotalCents,
-      reservationExpiresAt: new Date(Date.now() + this.env.RESERVATION_MINUTES * 60_000),
-    };
+    const reservationExpiresAt = new Date(Date.now() + this.env.RESERVATION_MINUTES * 60_000);
 
-    let created: { order: OrderDetail; ended: CheckoutSessionRef[] } | undefined;
-    for (let attempt = 1; !created; attempt++) {
-      try {
-        created = await this.prisma.$transaction(async (tx) => {
+    const created = await retryTransaction(
+      () =>
+        this.prisma.$transaction(async (tx) => {
           // One unpaid order per email per listing (§7.2): a resubmit ends the earlier one first.
           const ended = await this.endPendingFor(tx, listing.id, buyer.email);
-          await reserve(tx, listing.id, lines);
-          const order = await tx.order.create({ data: { ...data, publicCode: publicCode() }, include: orderDetail });
+          await reserve(tx, listing.id, quantities);
+          const { lines, subtotalCents, onePerEmail } = await lockedOrderLines(tx, listing.id, dto);
+          const order = await tx.order.create({
+            data: {
+              ...common,
+              onePerEmail,
+              items: { create: lines },
+              publicCode: publicCode(),
+              isFree: false,
+              status: 'PENDING_PAYMENT',
+              subtotalCents,
+              platformFeeCents: platformFee(subtotalCents, this.env.PLATFORM_FEE_BPS, this.env.PLATFORM_FEE_FIXED_CENTS),
+              totalCents: subtotalCents,
+              reservationExpiresAt,
+            },
+            include: orderDetail,
+          });
           return { order, ended };
-        });
-      } catch (e) {
-        if (isRetryableTransactionError(e) && attempt < ATTEMPTS) continue;
-        if (!isUniqueViolation(e)) throw e;
-        // The same key won a concurrent race: answer with that order (the index waited for its commit).
-        const raced = await this.replay(key);
-        if (raced) return raced;
-        if (attempt >= ATTEMPTS) throw e;
-      }
-    }
+        }),
+      // The same key won a concurrent race: answer with that order (the index waited for its commit).
+      () => this.replay(key),
+    );
+    if ('kind' in created) return created;
     await expireSessions(this.stripe, this.logger, created.ended);
 
     const { order } = created;
@@ -169,7 +175,7 @@ export class OrdersService {
       throw e;
     }
     // If this write is lost, a replay or the payment webhook recovers the session from Stripe.
-    await this.prisma.order.updateMany({ where: { id: order.id, stripeCheckoutSessionId: null }, data: { stripeCheckoutSessionId: session.id } });
+    await saveCheckoutSession(this.prisma, order.id, session.id);
     return { kind: 'checkout', checkoutUrl: session.url };
   }
 
@@ -182,43 +188,56 @@ export class OrdersService {
     listingId: string,
     common: Omit<Prisma.OrderUncheckedCreateInput, 'publicCode' | 'isFree' | 'status' | 'subtotalCents' | 'platformFeeCents' | 'totalCents'> & {
       idempotencyKey: string;
-      onePerEmail: boolean;
     },
-    lines: ItemQty[],
+    onePerEmail: boolean,
+    dto: CreateOrderDto,
+    quantities: ItemQty[],
   ): Promise<CreateOrderResultDto> {
-    const { onePerEmail } = common;
     if (onePerEmail) await this.refuseIfRegistered(listingId, common.buyerEmail);
-    for (let attempt = 1; ; attempt++) {
-      try {
+    return retryTransaction(
+      async (): Promise<CreateOrderResultDto> => {
         const order = await this.prisma.$transaction(async (tx) => {
-          const seq = await registerFree(tx, listingId, lines);
+          const seq = await registerFree(tx, listingId, quantities);
+          const locked = await lockedOrderLines(tx, listingId, dto);
           const order = await tx.order.create({
-            data: { ...common, publicCode: publicCode(), isFree: true, status: 'CONFIRMED', sequenceNo: seq, subtotalCents: 0, platformFeeCents: 0, totalCents: 0 },
+            data: {
+              ...common,
+              onePerEmail: locked.onePerEmail,
+              items: { create: locked.lines },
+              publicCode: publicCode(),
+              isFree: true,
+              status: 'CONFIRMED',
+              sequenceNo: seq,
+              subtotalCents: 0,
+              platformFeeCents: 0,
+              totalCents: 0,
+            },
             include: orderDetail,
           });
           await this.notifications.enqueue(tx, this.confirmation(order, `REGISTRATION_CONFIRMED:${order.id}`));
           return order;
         });
         return { kind: 'confirmed', publicCode: order.publicCode, accessToken: order.accessToken };
-      } catch (e) {
-        if (isRetryableTransactionError(e) && attempt < ATTEMPTS) continue;
-        if (!isUniqueViolation(e)) throw e;
+      },
+      async () => {
         const raced = await this.replay(common.idempotencyKey);
         if (raced) return raced;
         // A concurrent registration with the same email won (order_one_per_email_live_key).
         if (onePerEmail) await this.refuseIfRegistered(listingId, common.buyerEmail);
-        if (attempt >= ATTEMPTS) throw e;
-      }
-    }
+        return null;
+      },
+    );
   }
 
   private async refuseIfRegistered(listingId: string, email: string): Promise<void> {
-    // The same rows order_one_per_email_live_key guards (the index is the race backstop).
-    const order = await this.prisma.order.findFirst({
-      where: { listingId, onePerEmail: true, buyerEmail: { equals: email, mode: 'insensitive' }, status: { in: ['CONFIRMED', 'FULFILLED'] } },
-      include: orderDetail,
-    });
-    if (!order) return;
+    // The same rows order_one_per_email_live_key guards (the index is the race backstop), found through that index.
+    const [registered] = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "order"
+      WHERE listing_id = ${listingId}::uuid AND one_per_email AND lower(buyer_email) = lower(${email})
+        AND status IN ('CONFIRMED', 'FULFILLED')
+      LIMIT 1`;
+    if (!registered) return;
+    const order = await this.prisma.order.findUniqueOrThrow({ where: { id: registered.id }, include: orderDetail });
     // At most one re-send per hour, however often someone tries this email.
     await this.notifications.enqueue(this.prisma, this.confirmation(order, `REGISTRATION_CONFIRMED:${order.id}:resend:${utcHour(new Date()).key}`));
     throw new AppError('ALREADY_REGISTERED', 'This email is already registered');
@@ -226,21 +245,15 @@ export class OrdersService {
 
   private confirmation(order: OrderDetail, dedupeKey: string) {
     return {
-      type: 'REGISTRATION_CONFIRMED',
+      type: 'REGISTRATION_CONFIRMED' as const,
       recipient: order.buyerEmail,
       locale: order.locale,
       payload: {
-        publicCode: order.publicCode,
-        listingTitle: order.listing.title,
-        seq: order.sequenceNo!,
+        ...confirmationBase(this.env, order, order.sequenceNo!),
         items: order.items.map((i) => ({ name: i.option.name, quantity: i.quantity })),
-        orderUrl: orderUrl(this.env, order.locale, order.publicCode, order.accessToken),
-        pickup: order.pickupPoint && { label: order.pickupPoint.label, address: order.pickupPoint.address },
         selfCancelUntil: selfCancelDeadline(order)?.toISOString() ?? null,
         canSelfCancel: order.listing.allowSelfCancel,
-        merchant: merchantLine(order),
-        events: calendarEvents(this.env, order),
-      } satisfies RegistrationConfirmedPayload,
+      },
       dedupeKey,
     };
   }
@@ -285,7 +298,7 @@ export class OrdersService {
   /** GET /public/orders/:publicCode (X-Order-Token) — the buyer's own order; a wrong token looks exactly like no order. */
   async get(code: string, token: string): Promise<PublicOrderDto> {
     const order = await this.prisma.order.findUnique({ where: { publicCode: code }, include: orderDetail });
-    if (!order || !tokenMatches(order.accessToken, token)) throw new AppError('NOT_FOUND', 'Order not found');
+    assertOrderToken(order, token);
     return toPublicOrder(order);
   }
 
@@ -308,7 +321,8 @@ export class OrdersService {
   /** GET /public/orders/:publicCode/calendar.ics (X-Order-Token) — the .ics of a confirmed event or lesson order. */
   async calendar(code: string, token: string): Promise<string> {
     const order = await this.prisma.order.findUnique({ where: { publicCode: code }, include: orderDetail });
-    if (!order || !tokenMatches(order.accessToken, token) || !hasCalendar(order)) throw new AppError('NOT_FOUND', 'Order not found');
+    assertOrderToken(order, token);
+    if (!hasCalendar(order)) throw new AppError('NOT_FOUND', 'Order not found');
     return icsCalendar(calendarEvents(this.env, order));
   }
 
@@ -319,7 +333,7 @@ export class OrdersService {
   async cancel(code: string, token: string): Promise<PublicOrderDto> {
     const order = await this.prisma.$transaction(async (tx) => {
       const order = await lockOrder(tx, { publicCode: code });
-      if (!order || !tokenMatches(order.accessToken, token)) throw new AppError('NOT_FOUND', 'Order not found');
+      assertOrderToken(order, token);
       if (!order.isFree) await endUnpaid(tx, order, 'CANCELLED', { cancelledAt: new Date() });
       else {
         if (order.status === 'CONFIRMED' && !canSelfCancel(order, new Date())) {
@@ -354,6 +368,29 @@ function toPublicOrder(order: OrderDetail): PublicOrderDto {
     selfCancelUntil: selfCancelDeadline(order),
     hasCalendar: hasCalendar(order),
   };
+}
+
+/**
+ * Runs a write transaction, again on a deadlock or serialization failure. A unique violation (the same key or email won
+ * a concurrent race, or a public-code collision) asks `onConflict` for the answer, and runs again when it has none.
+ */
+async function retryTransaction<T, R>(run: () => Promise<T>, onConflict: () => Promise<R | null>): Promise<T | R> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (e) {
+      if (isRetryableTransactionError(e) && attempt < ATTEMPTS) continue;
+      if (!isUniqueViolation(e)) throw e;
+      const answer = await onConflict();
+      if (answer) return answer;
+      if (attempt >= ATTEMPTS) throw e;
+    }
+  }
+}
+
+/** A wrong token looks exactly like no order. */
+function assertOrderToken<T extends { accessToken: string }>(order: T | null, token: string): asserts order is T {
+  if (!order || !tokenMatches(order.accessToken, token)) throw new AppError('NOT_FOUND', 'Order not found');
 }
 
 function tokenMatches(expected: string, given: string): boolean {

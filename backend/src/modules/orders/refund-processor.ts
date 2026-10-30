@@ -1,14 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { errorText } from '../../common/errors/error-text.js';
-import { DEFAULT_LOCALE } from '../../common/locale.js';
 import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { NotificationsService } from '../notifications/notifications.service.js';
-import type { RefundFailedPayload } from '../notifications/templates.js';
+import { NotificationsService, toMerchant } from '../notifications/notifications.service.js';
 import { StripeClient, type StripeRefund } from '../stripe/stripe-client.js';
 import { lockOrder } from './order-ops.js';
-import { type ClaimedRefund, markRefundSucceeded } from './refunds.js';
+import { type ClaimedRefund, markRefundSucceeded, stillHeld } from './refunds.js';
 
 const MAX_ATTEMPTS = 5;
 const BASE_DELAY_MS = 30_000;
@@ -68,7 +66,7 @@ export class RefundProcessor {
     // pending / requires_action: Stripe has it; look again later, without counting an attempt.
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.refundTask.updateMany({
-        where: { id: task.id, status: 'PENDING', leaseToken: task.leaseToken },
+        where: stillHeld(task),
         data: { stripeRefundId: refund.id, nextAttemptAt: new Date(now.getTime() + PENDING_RECHECK_MS), leaseToken: null },
       });
       if (count) await tx.refund.update({ where: { id: task.id }, data: { stripeRefundId: refund.id } });
@@ -97,7 +95,7 @@ export class RefundProcessor {
   private async recordFailure(task: ClaimedRefund, lastError: string, now: Date): Promise<RefundOutcome> {
     if (task.stripeRefundId) {
       await this.prisma.refundTask.updateMany({
-        where: { id: task.id, status: 'PENDING', leaseToken: task.leaseToken },
+        where: stillHeld(task),
         data: { lastError, nextAttemptAt: new Date(now.getTime() + PENDING_RECHECK_MS), leaseToken: null },
       });
       return 'waiting';
@@ -105,7 +103,7 @@ export class RefundProcessor {
     const attempts = task.attempts + 1;
     if (attempts >= MAX_ATTEMPTS) return this.giveUp(task, attempts, lastError, null);
     await this.prisma.refundTask.updateMany({
-      where: { id: task.id, status: 'PENDING', leaseToken: task.leaseToken },
+      where: stillHeld(task),
       data: { attempts, lastError, nextAttemptAt: refundRetryAt(attempts, now), leaseToken: null },
     });
     return 'retrying';
@@ -118,7 +116,7 @@ export class RefundProcessor {
   private async giveUp(task: ClaimedRefund, attempts: number, lastError: string, stripeRefundId: string | null): Promise<RefundOutcome> {
     const done = await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.refundTask.updateMany({
-        where: { id: task.id, status: 'PENDING', leaseToken: task.leaseToken },
+        where: stillHeld(task),
         data: { status: 'FAILED', attempts, lastError, leaseToken: null, ...(stripeRefundId && { stripeRefundId }) },
       });
       if (!count) return false;
@@ -133,9 +131,8 @@ export class RefundProcessor {
       });
       await this.notifications.enqueue(tx, {
         type: 'REFUND_FAILED',
-        recipient: order.merchant.contactEmail,
-        locale: DEFAULT_LOCALE, // merchants have no language setting yet
-        payload: { publicCode: order.publicCode, listingTitle: order.listing.title, amountCents: task.amountCents, error: lastError } satisfies RefundFailedPayload,
+        ...toMerchant(order.merchant),
+        payload: { publicCode: order.publicCode, listingTitle: order.listing.title, amountCents: task.amountCents, error: lastError },
         dedupeKey: `REFUND_FAILED:${task.id}`,
       });
       return true;

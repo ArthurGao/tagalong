@@ -1,10 +1,11 @@
 import type { Logger } from '@nestjs/common';
+import { errorText } from '../../common/errors/error-text.js';
 import type { Env } from '../../config/env.js';
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
 import type { OrderStatus } from '../../generated/prisma/enums.js';
 import type { CalendarEvent } from '../notifications/ics.js';
 import type { NotificationsService } from '../notifications/notifications.service.js';
-import type { MerchantLine, RegistrationCancelledPayload } from '../notifications/templates.js';
+import type { MerchantLine } from '../notifications/templates.js';
 import type { CheckoutRequest, StripeClient } from '../stripe/stripe-client.js';
 import { transitionOrder } from './order-state-machine.js';
 import { release, releaseSold } from './reservation.js';
@@ -14,7 +15,7 @@ import { listingUrl, orderUrl } from './urls.js';
 // merchant's account and receipt details.
 export const orderDetail = {
   items: {
-    select: { optionId: true, quantity: true, unitPriceCents: true, option: { select: { name: true, startsAt: true, endsAt: true, location: true } } },
+    select: { optionId: true, quantity: true, unitPriceCents: true, checkoutName: true, option: { select: { name: true, startsAt: true, endsAt: true, location: true } } },
   },
   listing: { select: { title: true, shortCode: true, type: true, allowSelfCancel: true, selfCancelUntil: true } },
   pickupPoint: { select: { label: true, address: true, windowStart: true, windowEnd: true, notes: true } },
@@ -68,7 +69,7 @@ export async function cancelFreeWithEmail(
       listingTitle: order.listing.title,
       reason,
       listingUrl: listingUrl(deps.env, order.locale, order.listing.shortCode),
-    } satisfies RegistrationCancelledPayload,
+    },
     dedupeKey: `REGISTRATION_CANCELLED:${order.id}`,
   });
 }
@@ -100,7 +101,7 @@ export async function expireSessions(stripe: StripeClient, logger: Logger, sessi
     try {
       await stripe.expireCheckoutSession(s.accountId, s.sessionId);
     } catch (e) {
-      logger.warn(`could not expire Checkout ${s.sessionId}: ${e instanceof Error ? e.message : e}`);
+      logger.warn(`could not expire Checkout ${s.sessionId}: ${errorText(e, Infinity)}`);
     }
   }
 }
@@ -110,7 +111,7 @@ export async function expireSessions(stripe: StripeClient, logger: Logger, sessi
 const CHECKOUT_HEADROOM_MS = 2 * 60_000;
 
 /** Checkout's expires_at: the reservation deadline plus headroom, whole seconds (derived, so replays match). */
-export function checkoutDeadline(reservationExpiresAt: Date): Date {
+function checkoutDeadline(reservationExpiresAt: Date): Date {
   return new Date(Math.ceil((reservationExpiresAt.getTime() + CHECKOUT_HEADROOM_MS) / 1000) * 1000);
 }
 
@@ -125,8 +126,13 @@ export async function recoverCheckoutSession(
   order: OrderDetail,
 ): Promise<{ id: string; url: string }> {
   const session = await stripe.createCheckoutSession(checkoutRequest(env, order));
-  await prisma.order.updateMany({ where: { id: order.id, stripeCheckoutSessionId: null }, data: { stripeCheckoutSessionId: session.id } });
+  await saveCheckoutSession(prisma, order.id, session.id);
   return session;
+}
+
+/** Saves the order's Checkout session id; the first writer wins. */
+export async function saveCheckoutSession(prisma: Pick<PrismaClient, 'order'>, orderId: string, sessionId: string): Promise<void> {
+  await prisma.order.updateMany({ where: { id: orderId, stripeCheckoutSessionId: null }, data: { stripeCheckoutSessionId: sessionId } });
 }
 
 /**
@@ -137,7 +143,7 @@ export function checkoutRequest(env: Env, order: OrderDetail): CheckoutRequest {
   return {
     accountId: order.merchant.stripeAccountId!,
     orderId: order.id,
-    lines: order.items.map((i) => ({ name: `${order.listing.title} · ${i.option.name}`, unitAmountCents: i.unitPriceCents, quantity: i.quantity })),
+    lines: order.items.map((i) => ({ name: i.checkoutName, unitAmountCents: i.unitPriceCents, quantity: i.quantity })),
     applicationFeeCents: order.platformFeeCents,
     customerEmail: order.buyerEmail,
     expiresAt: checkoutDeadline(order.reservationExpiresAt!),
@@ -184,4 +190,17 @@ export function calendarEvents(env: Env, order: OrderDetail): CalendarEvent[] {
 /** The seller line on receipts: its name and GST number (DESIGN §12). */
 export function merchantLine(order: OrderDetail): MerchantLine {
   return { name: order.merchant.displayName, gstNumber: order.merchant.gstNumber };
+}
+
+/** What a paid order's and a free registration's confirmation emails share (DESIGN §12). */
+export function confirmationBase(env: Env, order: OrderDetail, seq: number) {
+  return {
+    publicCode: order.publicCode,
+    listingTitle: order.listing.title,
+    seq,
+    orderUrl: orderUrl(env, order.locale, order.publicCode, order.accessToken),
+    pickup: order.pickupPoint && { label: order.pickupPoint.label, address: order.pickupPoint.address },
+    merchant: merchantLine(order),
+    events: calendarEvents(env, order),
+  };
 }

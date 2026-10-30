@@ -12,6 +12,7 @@ import { useSave } from '@/lib/api/use-save';
 import { instantForInput, isoToNzInput } from '@/lib/time';
 import { SaveBar } from './SaveBar';
 import type { Listing, StepProps } from './types';
+import { DateTimeField } from './DateTimeField';
 
 const row = z.object({
   id: z.string().optional(),
@@ -91,25 +92,15 @@ export function PickupPointsEditor({ listing, onSaved }: StepProps) {
               <Label htmlFor={`pickupPoints.${i}.address`}>{t('address')}</Label>
               <Input id={`pickupPoints.${i}.address`} {...register(`pickupPoints.${i}.address`)} />
             </div>
-            {WINDOW.map((key) => {
-              const error = formState.errors.pickupPoints?.[i]?.[key]?.message;
-              return (
-                <div key={key} className="flex flex-col gap-1">
-                  <Label htmlFor={`pickupPoints.${i}.${key}`}>{t(key)}</Label>
-                  <Input
-                    id={`pickupPoints.${i}.${key}`}
-                    type="datetime-local"
-                    aria-invalid={Boolean(error)}
-                    {...register(`pickupPoints.${i}.${key}`)}
-                  />
-                  {error && (
-                    <p role="alert" className="text-sm text-destructive">
-                      {error}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
+            {WINDOW.map((key) => (
+              <DateTimeField
+                key={key}
+                id={`pickupPoints.${i}.${key}`}
+                label={t(key)}
+                error={formState.errors.pickupPoints?.[i]?.[key]?.message}
+                {...register(`pickupPoints.${i}.${key}`)}
+              />
+            ))}
             <div className="flex flex-col gap-1 sm:col-span-2">
               <Label htmlFor={`pickupPoints.${i}.notes`}>{t('notes')}</Label>
               <Input id={`pickupPoints.${i}.notes`} {...register(`pickupPoints.${i}.notes`)} />
