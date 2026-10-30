@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import { cache } from 'react';
 import { api } from './client';
+import type { paths } from './schema';
 
 // Server components call the backend directly and forward the browser's cookies (Clerk __session).
 // cache(): layouts and pages of one render share a single /me call.
@@ -58,3 +59,36 @@ export const getListingOrders = cache(async (id: string) => {
   });
   return data ?? null;
 });
+
+// Admin console reads (DESIGN §9 Admin). The backend checks the DB role on every one.
+type Query<P extends keyof paths> = paths[P]['get'] extends { parameters: { query?: infer Q } } ? NonNullable<Q> : never;
+
+export const getAdminStats = cache(async () => {
+  const { data } = await api.GET('/api/v1/admin/stats', await authed());
+  return data ?? null;
+});
+
+export async function getAdminMerchants(query: Query<'/api/v1/admin/merchants'>) {
+  const { data } = await api.GET('/api/v1/admin/merchants', { params: { query }, ...(await authed()) });
+  return data ?? null;
+}
+
+export async function getAdminMerchant(id: string) {
+  const { data } = await api.GET('/api/v1/admin/merchants/{id}', { params: { path: { id } }, ...(await authed()) });
+  return data ?? null;
+}
+
+export async function getAdminListings(query: Query<'/api/v1/admin/listings'>) {
+  const { data } = await api.GET('/api/v1/admin/listings', { params: { query }, ...(await authed()) });
+  return data ?? null;
+}
+
+export async function getAdminListing(id: string) {
+  const { data } = await api.GET('/api/v1/admin/listings/{id}', { params: { path: { id } }, ...(await authed()) });
+  return data ?? null;
+}
+
+export async function getAdminDisputes(query: Query<'/api/v1/admin/disputes'>) {
+  const { data } = await api.GET('/api/v1/admin/disputes', { params: { query }, ...(await authed()) });
+  return data ?? null;
+}

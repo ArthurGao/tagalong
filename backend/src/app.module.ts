@@ -7,6 +7,7 @@ import { httpLoggerOptions } from './common/logging/http-logger.options.js';
 import { OriginGuard } from './common/security/origin.guard.js';
 import { ConfigModule, ENV } from './config/config.module.js';
 import type { Env } from './config/env.js';
+import { AdminModule } from './modules/admin/admin.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { ListingsModule } from './modules/listings/listings.module.js';
@@ -41,6 +42,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
     PublicModule,
     OrdersModule,
     NotificationsModule,
+    AdminModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: OriginGuard }],
 })

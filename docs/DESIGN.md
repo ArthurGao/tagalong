@@ -189,6 +189,9 @@ Merchant 1──* MerchantNote (admin 内部备注)
 - `id`, `merchantId`, `authorUserId`, `note`, `createdAt`
 **Listing 补充字段**：`takenDownReason?`, `takenDownAt?`（被下架的接龙状态为 `CANCELLED`，公开页显示「已下架」）
 
+**Dispute**（Stripe 争议，由 `charge.dispute.*` webhook 维护，供 admin 后台和风险标记使用）
+- `id`（Stripe `dp_…`）, `orderId`, `merchantId`, `amountCents`, `reason`, `status`（Stripe 的状态原文）, `open`（`needs_response` / `under_review` 及其 `warning_` 版本为未结）, `lastEventAt`, `closedAt?`, `createdAt`
+
 ## 5b. 接龙状态机与发布后的修改规则
 
 ```
@@ -325,7 +328,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - `checkout.session.async_payment_succeeded`：与已付款的 completed 相同；`completed` 但 `payment_status` 未付时不做任何事
   - `checkout.session.expired` / `checkout.session.async_payment_failed`：订单转为 EXPIRED
   - `charge.refunded`：同步退款状态（用于商家在 Stripe Dashboard 里直接退款的情况）
-  - `charge.dispute.created`：记录日志并邮件通知商家
+  - `charge.dispute.created` / `updated` / `closed`：写入或更新 `Dispute`（按事件的 `created` 时间只接受更新的事件，已结束的争议不会重新打开）；`created` 时邮件通知商家
   - `account.updated`：同步商家的 Stripe 状态
 - **签名只证明事件来自 Stripe，不证明这笔钱付给了这个订单**（任何入驻商家都能在自己账户的 Checkout 里写别人的 `metadata.orderId`）。所以 checkout 事件只有在 `event.account` 是该订单商家的账户、`session.id` 等于订单记录的 `stripeCheckoutSessionId`、`amount_total` 等于 `totalCents` 且币种为 NZD 时才生效，否则记录警告并忽略。订单还没来得及保存 session id 时（请求在 Stripe 返回后崩溃），先用同一个幂等键向 Stripe 找回平台为该订单创建的会话并补存 id，再严格比对；事件里的 session id 本身从不被信任。
 - 业务处理必须幂等，并能容忍事件乱序到达。`account.updated` 与 `GET …/stripe/status` 共用的同步逻辑按账户加 Postgres advisory 锁（跨实例），持锁读取 Stripe 并写库，避免慢请求用旧结果覆盖新结果。
@@ -438,14 +441,14 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - `GET /admin/stats`：今日新商家数、GMV（7 天 / 30 天）、待处理争议数
 - `GET /admin/merchants?status=&risk=&q=&cursor=`
 - `GET /admin/merchants/:id`：商家详情、Stripe 状态、接龙列表、订单汇总、退款率、争议数
-- `POST /admin/merchants/:id/suspend` {reason}：停用商家，其进行中的接龙全部不可下单
-- `POST /admin/merchants/:id/reinstate` {reason}
+- `POST /admin/merchants/:id/suspend` {reason}：停用商家，其进行中的接龙全部不可下单（下单在接龙锁内校验，立即生效；公开页最多 10 秒后显示「暂停销售」），并邮件通知商家
+- `POST /admin/merchants/:id/reinstate` {reason}：恢复并邮件通知商家；店主已删除账号的店铺不能恢复
 - `POST /admin/merchants/:id/notes` {note}：内部备注，仅管理员可见
 - `GET /admin/listings?merchantId=&status=&pricing=&q=&cursor=`：浏览所有商家发起的接龙
 - `GET /admin/listings/:id`：接龙详情，包括 options、报名或订单汇总、商家信息
 - `POST /admin/listings/:id/close` {reason}：提前截止，已有订单保留
-- `POST /admin/listings/:id/takedown` {reason, refundAll: bool}：下架，公开页显示「已下架」；可以选择一并全额退款（付费接龙）或取消所有报名（免费接龙）
-- `POST /admin/listings/:id/restore` {reason}：恢复被下架的接龙，仅限下架时没有执行退款或取消的情况
+- `POST /admin/listings/:id/takedown` {reason, refundAll: bool}：下架，公开页显示「已下架」；可以选择一并全额退款（付费接龙）或取消所有报名（免费接龙）。不选时已有订单保持原状，只结束未付款的结账。与商家取消走同一条路径（同样写 `ListingCancellation`），并邮件通知商家
+- `POST /admin/listings/:id/restore` {reason}：恢复被下架的接龙，仅限下架时没有执行退款或取消的情况；恢复后为 `CLOSED`（商家可以自己重新开放），删除这次下架的 `ListingCancellation`（历史在 AuditLog 里）
 - **admin 不能修改商家接龙的内容**（标题、价格、描述）。内容有问题时，只能下架并联系商家修改，以免平台对商家内容承担编辑责任
 - `GET /admin/orders?q=`：可按 publicCode、邮箱、手机号查询，返回的 PII 默认遮罩
 - `POST /admin/orders/:id/reveal-pii`：返回明文 PII，并记录 `PII_REVEAL`
@@ -460,6 +463,10 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - 退款率超过 10%
 - 存在未结的争议
 - 单日 GMV 超过该商家过去 30 天日均值的 5 倍
+
+口径：退款率 = 最近 90 天已付款订单的退款额 ÷ 付款额；GMV = 买家实付金额（不扣退款）；「单日」= 奥克兰时间今天零点至今，对比之前 30 个奥克兰日的日均值（之前没有销售时，今天有任何销售都算突增，只是提醒管理员看一眼）。列表和详情返回 `riskFlags`：`NEW_MERCHANT`、`HIGH_REFUND_RATE`、`OPEN_DISPUTE`、`GMV_SPIKE`。
+
+**审计**：每个 admin 写操作与它的 AuditLog 记录在同一个事务里写入（管理员、目标、原因、IP）；被拒绝的操作不留记录。动作：`MERCHANT_SUSPEND`、`MERCHANT_REINSTATE`、`MERCHANT_NOTE`、`LISTING_CLOSE`、`LISTING_TAKEDOWN`、`LISTING_RESTORE`（M8b 加上订单、退款与匿名化的动作）。
 
 **Webhooks**
 - `POST /webhooks/stripe/connect`
@@ -592,7 +599,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - 免费报名：报名成功确认（附取消链接和 .ics 文件）、商家取消报名的通知
   - 活动提醒：SESSION / EVENT 类订单在开始前 `remindBeforeHours` 小时发送（付费和免费都发），由 `reminder.job.ts` 每 15 分钟扫描一次，按最早场次先处理、一次运行内分批处理到没有为止（订单再多也不会拖过开场），`Order.reminderSentAt` 用来保证幂等
   - 买家：找回订单的链接汇总邮件；取货点变更通知；接龙被取消的通知
-  - 商家：入驻完成、出现争议、批量退款完成（含失败数）、单笔退款最终失败（`REFUND_FAILED`）、每日订单汇总（Phase 2）
+  - 商家：入驻完成、出现争议、批量退款完成（含失败数）、单笔退款最终失败（`REFUND_FAILED`）、接龙被平台下架（`LISTING_TAKEN_DOWN`，含原因）、店铺被停用 / 恢复（`MERCHANT_SUSPENDED` / `MERCHANT_REINSTATED`）、每日订单汇总（Phase 2）
   - 确认邮件和收据中带上商家的 GST 号（如有）。税务发票由商家自行负责，平台不开具
 
 ## 13. 非功能需求

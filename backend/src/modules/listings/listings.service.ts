@@ -17,7 +17,7 @@ import type {
   ReplacePickupPointsDto,
   UpdateListingDto,
 } from './listing.dto.js';
-import { assertListingTransition } from './listing-state-machine.js';
+import { assertListingRestorable, assertListingTransition } from './listing-state-machine.js';
 import { shareInfo } from './share-info.js';
 import {
   applyListingDefaults,
@@ -116,6 +116,13 @@ export function toListingDto(l: FullListing): ListingDto {
 export function toPickupPointDto(p: PickupPoint): PickupPointDto {
   return { id: p.id, label: p.label, address: p.address, windowStart: p.windowStart, windowEnd: p.windowEnd, notes: p.notes };
 }
+
+type ListingChange = (tx: Prisma.TransactionClient, listing: FullListing) => Promise<Prisma.ListingUpdateInput | void>;
+
+const closeNow = async (_tx: Prisma.TransactionClient, listing: FullListing): Promise<Prisma.ListingUpdateInput> => {
+  assertListingTransition(listing.status, 'CLOSED');
+  return { status: 'CLOSED', closedAt: new Date() };
+};
 
 @Injectable()
 export class ListingsService {
@@ -300,9 +307,29 @@ export class ListingsService {
   }
 
   close(user: AuthUser, id: string): Promise<FullListing> {
-    return this.mutate(user, id, undefined, async (_tx, listing) => {
-      assertListingTransition(listing.status, 'CLOSED');
-      return { status: 'CLOSED', closedAt: new Date() };
+    return this.mutate(user, id, undefined, closeNow);
+  }
+
+  /** An admin's early close (DESIGN §9): orders stay; `audit` writes the admin's record in the same transaction. */
+  async closeAsAdmin(id: string, audit: (tx: Prisma.TransactionClient) => Promise<void>): Promise<void> {
+    await this.mutateIn(null, id, undefined, async (tx, listing) => {
+      const data = await closeNow(tx, listing);
+      await audit(tx);
+      return data;
+    });
+  }
+
+  /**
+   * An admin's restore of a takedown without refunds (DESIGN §9): back to CLOSED, the merchant may reopen it. Its
+   * cancellation record goes, so the listing can be cancelled again; the audit log keeps the history.
+   */
+  async restoreAsAdmin(id: string, audit: (tx: Prisma.TransactionClient) => Promise<void>): Promise<void> {
+    await this.mutateIn(null, id, undefined, async (tx, listing) => {
+      const cancellation = await tx.listingCancellation.findUnique({ where: { listingId: id }, select: { refundAll: true } });
+      assertListingRestorable({ ...listing, cancellation });
+      await tx.listingCancellation.delete({ where: { listingId: id } });
+      await audit(tx);
+      return { status: 'CLOSED', closedAt: new Date(), takenDownAt: null, takenDownReason: null };
     });
   }
 
@@ -325,16 +352,20 @@ export class ListingsService {
    * listing run one at a time), rejects an edit based on an older revision, validates against the locked
    * state, then applies the change and bumps the revision.
    */
-  private async mutate(
-    user: AuthUser,
+  private mutate(user: AuthUser, id: string, expectedRevision: number | undefined, change: ListingChange): Promise<FullListing> {
+    return this.mutateIn(requireMerchantId(user), id, expectedRevision, change);
+  }
+
+  /** `mutate` for one merchant's listing, or for any listing (merchantId null: the admin console). */
+  private async mutateIn(
+    merchantId: string | null,
     id: string,
     expectedRevision: number | undefined,
-    change: (tx: Prisma.TransactionClient, listing: FullListing) => Promise<Prisma.ListingUpdateInput | void>,
+    change: ListingChange,
   ): Promise<FullListing> {
-    const merchantId = requireMerchantId(user);
     return this.prisma.$transaction(async (tx) => {
       const locked = await tx.$queryRaw<{ id: string }[]>`
-        SELECT id FROM listing WHERE id = ${id}::uuid AND merchant_id = ${merchantId}::uuid FOR UPDATE`;
+        SELECT id FROM listing WHERE id = ${id}::uuid AND (${merchantId}::uuid IS NULL OR merchant_id = ${merchantId}::uuid) FOR UPDATE`;
       if (!locked.length) throw new AppError('NOT_FOUND', 'Listing not found');
       const listing = await tx.listing.findUniqueOrThrow({ where: { id }, include: withChildren });
       if (expectedRevision !== undefined && expectedRevision !== listing.revision) {

@@ -1589,6 +1589,677 @@
           "public"
         ]
       }
+    },
+    "/api/v1/admin/stats": {
+      "get": {
+        "operationId": "AdminController_stats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminStatsDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/disputes": {
+      "get": {
+        "operationId": "AdminController_disputes",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "closed"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "At most this many, newest first (default and maximum 200)",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminDisputeDto"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants": {
+      "get": {
+        "operationId": "AdminController_listMerchants",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/MerchantStatus"
+            }
+          },
+          {
+            "name": "risk",
+            "required": false,
+            "in": "query",
+            "description": "Only merchants with a risk flag",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Name, slug or contact email",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "The nextCursor of the previous page",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMerchantPageDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants/{id}": {
+      "get": {
+        "operationId": "AdminController_merchant",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMerchantDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants/{id}/suspend": {
+      "post": {
+        "operationId": "AdminController_suspend",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMerchantDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants/{id}/reinstate": {
+      "post": {
+        "operationId": "AdminController_reinstate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMerchantDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants/{id}/notes": {
+      "post": {
+        "operationId": "AdminController_addNote",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MerchantNoteInputDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantNoteDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/listings": {
+      "get": {
+        "operationId": "AdminController_listListings",
+        "parameters": [
+          {
+            "name": "merchantId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ListingStatus"
+            }
+          },
+          {
+            "name": "pricing",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Pricing"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Title or short code",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "The nextCursor of the previous page",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminListingPageDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/listings/{id}": {
+      "get": {
+        "operationId": "AdminController_listing",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminListingDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/listings/{id}/close": {
+      "post": {
+        "operationId": "AdminController_close",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminListingDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/listings/{id}/takedown": {
+      "post": {
+        "operationId": "AdminController_takedown",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TakedownDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminListingDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/listings/{id}/restore": {
+      "post": {
+        "operationId": "AdminController_restore",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminListingDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
     }
   },
   "info": {
@@ -3641,6 +4312,737 @@
           "logoUrl",
           "suspended",
           "listings"
+        ]
+      },
+      "AdminStatsDto": {
+        "type": "object",
+        "properties": {
+          "newMerchantsToday": {
+            "type": "number",
+            "description": "Merchants created since Auckland midnight"
+          },
+          "gmv7dCents": {
+            "type": "number",
+            "description": "Paid in the last 7 days, cents"
+          },
+          "gmv30dCents": {
+            "type": "number",
+            "description": "Paid in the last 30 days, cents"
+          },
+          "openDisputes": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "newMerchantsToday",
+          "gmv7dCents",
+          "gmv30dCents",
+          "openDisputes"
+        ]
+      },
+      "AdminListingMerchantDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MerchantStatus"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "displayName",
+          "status"
+        ]
+      },
+      "AdminDisputeDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stripe dispute id (dp_…)"
+          },
+          "status": {
+            "type": "string",
+            "description": "Stripe's status"
+          },
+          "open": {
+            "type": "boolean"
+          },
+          "amountCents": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "orderPublicCode": {
+            "type": "string"
+          },
+          "listingTitle": {
+            "type": "string"
+          },
+          "merchant": {
+            "$ref": "#/components/schemas/AdminListingMerchantDto"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "open",
+          "amountCents",
+          "reason",
+          "createdAt",
+          "closedAt",
+          "orderPublicCode",
+          "listingTitle",
+          "merchant"
+        ]
+      },
+      "RiskFlag": {
+        "type": "string",
+        "enum": [
+          "NEW_MERCHANT",
+          "HIGH_REFUND_RATE",
+          "OPEN_DISPUTE",
+          "GMV_SPIKE"
+        ]
+      },
+      "AdminMerchantRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "contactEmail": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MerchantStatus"
+              }
+            ]
+          },
+          "chargesEnabled": {
+            "type": "boolean"
+          },
+          "riskFlags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RiskFlag"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "displayName",
+          "contactEmail",
+          "status",
+          "chargesEnabled",
+          "riskFlags",
+          "createdAt"
+        ]
+      },
+      "AdminMerchantPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminMerchantRowDto"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "RiskFiguresDto": {
+        "type": "object",
+        "properties": {
+          "paidCents90d": {
+            "type": "number",
+            "description": "Paid in the last 90 days, cents"
+          },
+          "refundedCents90d": {
+            "type": "number",
+            "description": "Of which refunded, cents"
+          },
+          "openDisputes": {
+            "type": "number"
+          },
+          "todayCents": {
+            "type": "number",
+            "description": "Paid since Auckland midnight, cents"
+          },
+          "previous30dCents": {
+            "type": "number",
+            "description": "Paid in the 30 Auckland days before today, cents"
+          }
+        },
+        "required": [
+          "paidCents90d",
+          "refundedCents90d",
+          "openDisputes",
+          "todayCents",
+          "previous30dCents"
+        ]
+      },
+      "AdminListingBriefDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "shortCode": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingStatus"
+              }
+            ]
+          },
+          "pricing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Pricing"
+              }
+            ]
+          },
+          "soldCount": {
+            "type": "number"
+          },
+          "takenDown": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "shortCode",
+          "title",
+          "status",
+          "pricing",
+          "soldCount",
+          "takenDown",
+          "createdAt"
+        ]
+      },
+      "MerchantNoteDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "authorEmail": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "note",
+          "authorEmail",
+          "createdAt"
+        ]
+      },
+      "AdminMerchantDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "contactEmail": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MerchantStatus"
+              }
+            ]
+          },
+          "chargesEnabled": {
+            "type": "boolean"
+          },
+          "riskFlags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RiskFlag"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "contactPhone": {
+            "type": "string"
+          },
+          "gstNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "suspendedReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "suspendedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "ownerDeleted": {
+            "type": "boolean",
+            "description": "The owner deleted their account: the shop cannot be reinstated"
+          },
+          "stripeAccountId": {
+            "type": "string",
+            "nullable": true
+          },
+          "payoutsEnabled": {
+            "type": "boolean"
+          },
+          "detailsSubmitted": {
+            "type": "boolean"
+          },
+          "figures": {
+            "$ref": "#/components/schemas/RiskFiguresDto"
+          },
+          "orderCount": {
+            "type": "number"
+          },
+          "disputeCount": {
+            "type": "number"
+          },
+          "listings": {
+            "description": "Newest 50",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminListingBriefDto"
+            }
+          },
+          "notes": {
+            "description": "Newest first",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MerchantNoteDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "displayName",
+          "contactEmail",
+          "status",
+          "chargesEnabled",
+          "riskFlags",
+          "createdAt",
+          "description",
+          "contactPhone",
+          "gstNumber",
+          "suspendedReason",
+          "suspendedAt",
+          "ownerDeleted",
+          "stripeAccountId",
+          "payoutsEnabled",
+          "detailsSubmitted",
+          "figures",
+          "orderCount",
+          "disputeCount",
+          "listings",
+          "notes"
+        ]
+      },
+      "AdminReasonDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why; kept in the audit log"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "MerchantNoteInputDto": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ]
+      },
+      "AdminListingRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "shortCode": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingStatus"
+              }
+            ]
+          },
+          "pricing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Pricing"
+              }
+            ]
+          },
+          "soldCount": {
+            "type": "number"
+          },
+          "takenDown": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closesAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "merchant": {
+            "$ref": "#/components/schemas/AdminListingMerchantDto"
+          }
+        },
+        "required": [
+          "id",
+          "shortCode",
+          "title",
+          "status",
+          "pricing",
+          "soldCount",
+          "takenDown",
+          "createdAt",
+          "closesAt",
+          "merchant"
+        ]
+      },
+      "AdminListingPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminListingRowDto"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "AdminOptionDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "priceCents": {
+            "type": "number"
+          },
+          "capacity": {
+            "type": "number",
+            "nullable": true
+          },
+          "soldCount": {
+            "type": "number"
+          },
+          "reservedCount": {
+            "type": "number"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "priceCents",
+          "capacity",
+          "soldCount",
+          "reservedCount",
+          "active"
+        ]
+      },
+      "OrderCountDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderStatus"
+              }
+            ]
+          },
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "status",
+          "count"
+        ]
+      },
+      "AdminCancellationDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CancellationStatus"
+              }
+            ]
+          },
+          "totalOrders": {
+            "type": "number"
+          },
+          "succeeded": {
+            "type": "number"
+          },
+          "failed": {
+            "type": "number"
+          },
+          "pending": {
+            "type": "number"
+          },
+          "finishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string"
+          },
+          "refundAll": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "status",
+          "totalOrders",
+          "succeeded",
+          "failed",
+          "pending",
+          "finishedAt",
+          "reason",
+          "refundAll",
+          "createdAt"
+        ]
+      },
+      "AdminListingDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "shortCode": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListingStatus"
+              }
+            ]
+          },
+          "pricing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Pricing"
+              }
+            ]
+          },
+          "soldCount": {
+            "type": "number"
+          },
+          "takenDown": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closesAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "merchant": {
+            "$ref": "#/components/schemas/AdminListingMerchantDto"
+          },
+          "description": {
+            "type": "string"
+          },
+          "takenDownReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "takenDownAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminOptionDto"
+            }
+          },
+          "orderCounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderCountDto"
+            }
+          },
+          "cancellation": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AdminCancellationDto"
+              }
+            ]
+          },
+          "canClose": {
+            "type": "boolean",
+            "description": "PUBLISHED: can be closed early"
+          },
+          "canTakedown": {
+            "type": "boolean",
+            "description": "PUBLISHED or CLOSED: can be taken down"
+          },
+          "canRestore": {
+            "type": "boolean",
+            "description": "Taken down without refunds or cancellations: can be restored (to CLOSED)"
+          }
+        },
+        "required": [
+          "id",
+          "shortCode",
+          "title",
+          "status",
+          "pricing",
+          "soldCount",
+          "takenDown",
+          "createdAt",
+          "closesAt",
+          "merchant",
+          "description",
+          "takenDownReason",
+          "takenDownAt",
+          "options",
+          "orderCounts",
+          "cancellation",
+          "canClose",
+          "canTakedown",
+          "canRestore"
+        ]
+      },
+      "TakedownDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why; kept in the audit log"
+          },
+          "refundAll": {
+            "type": "boolean",
+            "description": "Refund every paid order in full (paid) or cancel every registration (free); otherwise orders stay and the takedown can be restored"
+          }
+        },
+        "required": [
+          "reason",
+          "refundAll"
         ]
       }
     }

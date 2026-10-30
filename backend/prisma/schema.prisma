@@ -135,7 +135,9 @@ model Merchant {
   listings Listing[]
   orders   Order[]
   notes    MerchantNote[]
+  disputes Dispute[]
 
+  @@index([createdAt, id]) // admin merchant list, newest first; new merchants today
   @@map("merchant")
 }
 
@@ -195,7 +197,8 @@ model Listing {
   orders       Order[]
   cancellation ListingCancellation?
 
-  @@index([merchantId])
+  @@index([merchantId, createdAt]) // a merchant's listings, newest first (dashboard, admin)
+  @@index([createdAt, id]) // admin listing list, newest first
   @@index([status, closesAt]) // listing-close.job
   @@map("listing")
 }
@@ -282,12 +285,15 @@ model Order {
   items       OrderItem[]
   refunds     Refund[]
   refundTasks RefundTask[]
+  disputes    Dispute[]
 
   @@unique([listingId, sequenceNo])
   @@index([listingId, status])
   @@index([status, reservationExpiresAt]) // expiry.job
   @@index([buyerEmail])
   @@index([pickupPointId]) // pickup point edits look up the orders that use it
+  @@index([merchantId, paidAt]) // admin risk flags: a merchant's paid amounts over time
+  @@index([paidAt]) // admin overview: platform GMV over 7 and 30 days
   @@map("order")
 }
 
@@ -400,6 +406,29 @@ model OrderRecoveryRequest {
 
   @@index([createdAt]) // recovery.job, oldest first
   @@map("order_recovery_request")
+}
+
+// A Stripe dispute (chargeback) on an order, kept in step by the charge.dispute.* webhooks (DESIGN §8.3): the admin
+// console lists them, open ones flag the merchant as risky and block anonymising the buyer.
+model Dispute {
+  id          String    @id // Stripe dp_...
+  orderId     String    @map("order_id") @db.Uuid
+  merchantId  String    @map("merchant_id") @db.Uuid
+  amountCents Int       @map("amount_cents")
+  reason      String
+  status      String // Stripe's status: needs_response, under_review, won, lost, warning_* ...
+  open        Boolean // still to be answered or decided
+  lastEventAt DateTime  @map("last_event_at") // the newest event applied; an older one arriving later is ignored
+  closedAt    DateTime? @map("closed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  order    Order    @relation(fields: [orderId], references: [id])
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+
+  @@index([merchantId, open])
+  @@index([open, createdAt])
+  @@map("dispute")
 }
 
 model StripeEvent {

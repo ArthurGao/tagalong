@@ -161,7 +161,141 @@
   "admin": {
     "home": {
       "title": "概览",
-      "placeholder": "管理后台。商家、接龙、订单和审计日志将在 M8 实现。"
+      "newMerchantsToday": "今日新商家",
+      "gmv7d": "7 天成交额",
+      "gmv30d": "30 天成交额",
+      "openDisputes": "未结争议",
+      "todo": "待处理",
+      "riskyMerchants": "有风险标记的商家",
+      "openDisputeList": "未结争议",
+      "nothing": "暂无待处理事项。",
+      "disputeLine": "{code} · {merchant} · {amount} · {status}"
+    },
+    "nav": {
+      "label": "后台导航",
+      "overview": "概览",
+      "merchants": "商家",
+      "listings": "接龙"
+    },
+    "env": {
+      "production": "生产环境：所有操作都作用于真实数据",
+      "staging": "Staging 测试环境",
+      "development": "本地开发环境"
+    },
+    "risk": {
+      "NEW_MERCHANT": "新商家",
+      "HIGH_REFUND_RATE": "退款率高",
+      "OPEN_DISPUTE": "有未结争议",
+      "GMV_SPIKE": "销售额突增"
+    },
+    "merchantStatus": {
+      "ACTIVE": "正常",
+      "SUSPENDED": "已停用"
+    },
+    "listingStatus": {
+      "DRAFT": "草稿",
+      "PUBLISHED": "进行中",
+      "CLOSED": "已截止",
+      "CANCELLED": "已取消",
+      "TAKEN_DOWN": "已下架"
+    },
+    "filters": {
+      "status": "状态",
+      "pricing": "付费/免费",
+      "all": "全部",
+      "riskOnly": "只看有风险标记的",
+      "search": "搜索",
+      "apply": "筛选",
+      "next": "下一页",
+      "first": "第一页"
+    },
+    "merchants": {
+      "title": "商家",
+      "slug": "Slug",
+      "name": "名称",
+      "email": "邮箱",
+      "status": "状态",
+      "risk": "风险",
+      "created": "创建时间",
+      "empty": "没有符合条件的商家。",
+      "searchHint": "名称、slug 或邮箱",
+      "contact": "联系方式",
+      "gst": "GST",
+      "stripe": "Stripe",
+      "charges": "可收款",
+      "payouts": "可打款",
+      "yes": "是",
+      "no": "否",
+      "figures": "最近 90 天",
+      "paid90": "已付款",
+      "refunded90": "已退款",
+      "today": "今日",
+      "previous30": "之前 30 天",
+      "orders": "订单",
+      "disputes": "争议（未结）",
+      "listings": "接龙",
+      "allListings": "查看该商家的全部接龙",
+      "notes": "内部备注",
+      "notePlaceholder": "只有管理员能看到",
+      "addNote": "添加备注",
+      "noNotes": "还没有备注。",
+      "suspend": "停用",
+      "reinstate": "恢复",
+      "suspendTitle": "停用 {name}？",
+      "suspendBody": "所有接龙立即暂停销售，也不能发布新接龙。已有订单保持不变。商家会收到包含原因的邮件。",
+      "reinstateTitle": "恢复 {name}？",
+      "reinstateBody": "进行中的接龙可以重新接受下单。商家会收到邮件。",
+      "suspendedBecause": "{when} 停用：{reason}",
+      "ownerDeleted": "店主已删除账号，这个店铺不能恢复。"
+    },
+    "listings": {
+      "title": "接龙",
+      "listing": "接龙",
+      "merchant": "商家",
+      "status": "状态",
+      "pricing": "付费/免费",
+      "sold": "已售",
+      "created": "创建时间",
+      "closes": "截止时间",
+      "empty": "没有符合条件的接龙。",
+      "searchHint": "标题或短码",
+      "options": "选项",
+      "option": "选项",
+      "price": "价格",
+      "capacity": "名额",
+      "unlimited": "不限",
+      "inactive": "已停用",
+      "orders": "各状态订单数",
+      "noOrders": "还没有订单。",
+      "close": "提前截止",
+      "closeTitle": "提前截止「{title}」？",
+      "closeBody": "不再接受新订单，已有订单保留。",
+      "takedown": "下架",
+      "takedownTitle": "下架「{title}」？",
+      "takedownBody": "公开页会显示「已下架」，任何人都不能下单。管理员不能修改商家的内容：先下架，再联系商家修改。",
+      "refundAllPaid": "同时为所有已付款订单全额退款（之后不能恢复）",
+      "refundAllFree": "同时取消所有报名（之后不能恢复）",
+      "restore": "恢复上架",
+      "restoreTitle": "恢复「{title}」？",
+      "restoreBody": "恢复后为「已截止」状态，商家可以自己重新开放。",
+      "takenDownBecause": "{when} 下架：{reason}",
+      "cancellation": "取消进度",
+      "progress": "共 {total} 笔：已退款 {succeeded}，失败 {failed}，处理中 {pending}",
+      "cancellationStatus": {
+        "PENDING": "等待中",
+        "RUNNING": "退款中",
+        "COMPLETED": "已完成",
+        "COMPLETED_WITH_FAILURES": "已完成（有失败）"
+      }
+    },
+    "confirm": {
+      "reason": "原因（会记入审计日志）",
+      "typeToConfirm": "输入 {text} 确认",
+      "confirm": "确认",
+      "cancel": "取消"
+    },
+    "drawer": {
+      "close": "关闭"
     }
   },
   "errors": {

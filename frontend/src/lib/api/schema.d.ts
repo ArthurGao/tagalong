@@ -500,6 +500,198 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminController_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/disputes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminController_disputes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/merchants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminController_listMerchants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/merchants/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminController_merchant"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/merchants/{id}/suspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminController_suspend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/merchants/{id}/reinstate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminController_reinstate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/merchants/{id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminController_addNote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/listings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminController_listListings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/listings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminController_listing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/listings/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminController_close"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/listings/{id}/takedown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminController_takedown"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/listings/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminController_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1054,6 +1246,195 @@ export interface components {
             /** @description Suspended by the platform: no listings are shown */
             suspended: boolean;
             listings: components["schemas"]["MerchantPageListingDto"][];
+        };
+        AdminStatsDto: {
+            /** @description Merchants created since Auckland midnight */
+            newMerchantsToday: number;
+            /** @description Paid in the last 7 days, cents */
+            gmv7dCents: number;
+            /** @description Paid in the last 30 days, cents */
+            gmv30dCents: number;
+            openDisputes: number;
+        };
+        AdminListingMerchantDto: {
+            id: string;
+            slug: string;
+            displayName: string;
+            status: components["schemas"]["MerchantStatus"];
+        };
+        AdminDisputeDto: {
+            /** @description Stripe dispute id (dp_…) */
+            id: string;
+            /** @description Stripe's status */
+            status: string;
+            open: boolean;
+            amountCents: number;
+            reason: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            closedAt: string | null;
+            orderPublicCode: string;
+            listingTitle: string;
+            merchant: components["schemas"]["AdminListingMerchantDto"];
+        };
+        /** @enum {string} */
+        RiskFlag: "NEW_MERCHANT" | "HIGH_REFUND_RATE" | "OPEN_DISPUTE" | "GMV_SPIKE";
+        AdminMerchantRowDto: {
+            id: string;
+            slug: string;
+            displayName: string;
+            contactEmail: string;
+            status: components["schemas"]["MerchantStatus"];
+            chargesEnabled: boolean;
+            riskFlags: components["schemas"]["RiskFlag"][];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AdminMerchantPageDto: {
+            items: components["schemas"]["AdminMerchantRowDto"][];
+            nextCursor: string | null;
+        };
+        RiskFiguresDto: {
+            /** @description Paid in the last 90 days, cents */
+            paidCents90d: number;
+            /** @description Of which refunded, cents */
+            refundedCents90d: number;
+            openDisputes: number;
+            /** @description Paid since Auckland midnight, cents */
+            todayCents: number;
+            /** @description Paid in the 30 Auckland days before today, cents */
+            previous30dCents: number;
+        };
+        AdminListingBriefDto: {
+            id: string;
+            shortCode: string;
+            title: string;
+            status: components["schemas"]["ListingStatus"];
+            pricing: components["schemas"]["Pricing"];
+            soldCount: number;
+            takenDown: boolean;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        MerchantNoteDto: {
+            id: string;
+            note: string;
+            authorEmail: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AdminMerchantDto: {
+            id: string;
+            slug: string;
+            displayName: string;
+            contactEmail: string;
+            status: components["schemas"]["MerchantStatus"];
+            chargesEnabled: boolean;
+            riskFlags: components["schemas"]["RiskFlag"][];
+            /** Format: date-time */
+            createdAt: string;
+            description: string | null;
+            contactPhone: string;
+            gstNumber: string | null;
+            suspendedReason: string | null;
+            /** Format: date-time */
+            suspendedAt: string | null;
+            /** @description The owner deleted their account: the shop cannot be reinstated */
+            ownerDeleted: boolean;
+            stripeAccountId: string | null;
+            payoutsEnabled: boolean;
+            detailsSubmitted: boolean;
+            figures: components["schemas"]["RiskFiguresDto"];
+            orderCount: number;
+            disputeCount: number;
+            /** @description Newest 50 */
+            listings: components["schemas"]["AdminListingBriefDto"][];
+            /** @description Newest first */
+            notes: components["schemas"]["MerchantNoteDto"][];
+        };
+        AdminReasonDto: {
+            /** @description Why; kept in the audit log */
+            reason: string;
+        };
+        MerchantNoteInputDto: {
+            note: string;
+        };
+        AdminListingRowDto: {
+            id: string;
+            shortCode: string;
+            title: string;
+            status: components["schemas"]["ListingStatus"];
+            pricing: components["schemas"]["Pricing"];
+            soldCount: number;
+            takenDown: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            closesAt: string | null;
+            merchant: components["schemas"]["AdminListingMerchantDto"];
+        };
+        AdminListingPageDto: {
+            items: components["schemas"]["AdminListingRowDto"][];
+            nextCursor: string | null;
+        };
+        AdminOptionDto: {
+            name: string;
+            priceCents: number;
+            capacity: number | null;
+            soldCount: number;
+            reservedCount: number;
+            active: boolean;
+        };
+        OrderCountDto: {
+            status: components["schemas"]["OrderStatus"];
+            count: number;
+        };
+        AdminCancellationDto: {
+            status: components["schemas"]["CancellationStatus"];
+            totalOrders: number;
+            succeeded: number;
+            failed: number;
+            pending: number;
+            /** Format: date-time */
+            finishedAt: string | null;
+            reason: string;
+            refundAll: boolean;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AdminListingDto: {
+            id: string;
+            shortCode: string;
+            title: string;
+            status: components["schemas"]["ListingStatus"];
+            pricing: components["schemas"]["Pricing"];
+            soldCount: number;
+            takenDown: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            closesAt: string | null;
+            merchant: components["schemas"]["AdminListingMerchantDto"];
+            description: string;
+            takenDownReason: string | null;
+            /** Format: date-time */
+            takenDownAt: string | null;
+            options: components["schemas"]["AdminOptionDto"][];
+            orderCounts: components["schemas"]["OrderCountDto"][];
+            cancellation: components["schemas"]["AdminCancellationDto"] | null;
+            /** @description PUBLISHED: can be closed early */
+            canClose: boolean;
+            /** @description PUBLISHED or CLOSED: can be taken down */
+            canTakedown: boolean;
+            /** @description Taken down without refunds or cancellations: can be restored (to CLOSED) */
+            canRestore: boolean;
+        };
+        TakedownDto: {
+            /** @description Why; kept in the audit log */
+            reason: string;
+            /** @description Refund every paid order in full (paid) or cancel every registration (free); otherwise orders stay and the takedown can be restored */
+            refundAll: boolean;
         };
     };
     responses: never;
@@ -2129,6 +2510,402 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MerchantPageDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_stats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminStatsDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_disputes: {
+        parameters: {
+            query?: {
+                status?: "open" | "closed";
+                /** @description At most this many, newest first (default and maximum 200) */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminDisputeDto"][];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_listMerchants: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["MerchantStatus"];
+                /** @description Only merchants with a risk flag */
+                risk?: "true";
+                /** @description Name, slug or contact email */
+                q?: string;
+                /** @description The nextCursor of the previous page */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminMerchantPageDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_merchant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminMerchantDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_suspend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminReasonDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminMerchantDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_reinstate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminReasonDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminMerchantDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_addNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MerchantNoteInputDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantNoteDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_listListings: {
+        parameters: {
+            query?: {
+                merchantId?: string;
+                status?: components["schemas"]["ListingStatus"];
+                pricing?: components["schemas"]["Pricing"];
+                /** @description Title or short code */
+                q?: string;
+                /** @description The nextCursor of the previous page */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminListingPageDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_listing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminListingDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_close: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminReasonDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminListingDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_takedown: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TakedownDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminListingDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_restore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminReasonDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminListingDto"];
                 };
             };
             /** @description Error (code from DESIGN §17) */

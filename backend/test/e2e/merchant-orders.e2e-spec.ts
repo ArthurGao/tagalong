@@ -93,7 +93,14 @@ describe('merchant order management: refunds, CSV, listing cancellation (DESIGN 
     const { body, signature } = signStripeEvent(event, 'whsec_test_connect');
     return http().post('/api/v1/webhooks/stripe/connect').set('content-type', 'application/json').set('stripe-signature', signature).send(body);
   }
-  const chargeEvent = (type: string, object: object, account = ACCOUNT) => ({ id: `evt_${randomUUID()}`, object: 'event', type, account, data: { object } });
+  const chargeEvent = (type: string, object: object, account = ACCOUNT, created = Math.floor(Date.now() / 1000)) => ({
+    id: `evt_${randomUUID()}`,
+    object: 'event',
+    type,
+    account,
+    created,
+    data: { object },
+  });
 
   beforeAll(async () => {
     t = await createTestApp();
@@ -314,12 +321,88 @@ describe('merchant order management: refunds, CSV, listing cancellation (DESIGN 
     it('a dispute is logged and the merchant emailed', async () => {
       const l = await paidListing();
       const o = await paidOrder(l, 1);
-      const dispute = { id: 'dp_1', object: 'dispute', payment_intent: o.stripePaymentIntentId, amount: 3900, reason: 'fraudulent' };
+      const dispute = { id: 'dp_1', object: 'dispute', payment_intent: o.stripePaymentIntentId, amount: 3900, reason: 'fraudulent', status: 'needs_response' };
       expect((await deliver(chargeEvent('charge.dispute.created', dispute))).status).toBe(200);
       expect(await prisma.notificationOutbox.findFirstOrThrow({ where: { type: 'MERCHANT_DISPUTE' } })).toMatchObject({
         recipient: 'shop@example.test',
         payload: expect.objectContaining({ reason: 'fraudulent', publicCode: o.publicCode }),
       });
+    });
+  });
+
+  describe('dispute records (admin console, DESIGN §8.3)', () => {
+    const disputeOf = (o: { stripePaymentIntentId: string | null }, status: string) => ({
+      id: 'dp_9',
+      object: 'dispute',
+      payment_intent: o.stripePaymentIntentId,
+      amount: 3900,
+      reason: 'product_not_received',
+      status,
+    });
+    const row = () => prisma.dispute.findUniqueOrThrow({ where: { id: 'dp_9' } });
+
+    it('follows created → updated → closed, ignores an older event, and never reopens', async () => {
+      const l = await paidListing();
+      const o = await paidOrder(l, 1);
+      await deliver(chargeEvent('charge.dispute.created', disputeOf(o, 'needs_response'), ACCOUNT, 1_000));
+      expect(await row()).toMatchObject({ orderId: o.id, merchantId: l.merchantId, status: 'needs_response', open: true, closedAt: null, amountCents: 3900 });
+      await deliver(chargeEvent('charge.dispute.updated', disputeOf(o, 'under_review'), ACCOUNT, 2_000));
+      expect(await row()).toMatchObject({ status: 'under_review', open: true });
+      await deliver(chargeEvent('charge.dispute.closed', disputeOf(o, 'won'), ACCOUNT, 3_000));
+      expect(await row()).toMatchObject({ status: 'won', open: false, closedAt: new Date(3_000_000) });
+      await deliver(chargeEvent('charge.dispute.updated', disputeOf(o, 'under_review'), ACCOUNT, 2_500)); // late, older
+      await deliver(chargeEvent('charge.dispute.updated', disputeOf(o, 'needs_response'), ACCOUNT, 4_000)); // never reopens
+      expect(await row()).toMatchObject({ status: 'won', open: false });
+      expect(await prisma.notificationOutbox.count({ where: { type: 'MERCHANT_DISPUTE' } })).toBe(1);
+    });
+
+    it('a closing event that arrives first is kept; the late creation still emails the merchant', async () => {
+      const l = await paidListing();
+      const o = await paidOrder(l, 1);
+      await deliver(chargeEvent('charge.dispute.closed', disputeOf(o, 'lost'), ACCOUNT, 3_000));
+      await deliver(chargeEvent('charge.dispute.created', disputeOf(o, 'needs_response'), ACCOUNT, 1_000));
+      expect(await row()).toMatchObject({ status: 'lost', open: false });
+      expect(await prisma.notificationOutbox.count({ where: { type: 'MERCHANT_DISPUTE' } })).toBe(1);
+    });
+
+    it('a newer event waiting on a concurrent first insert still wins', async () => {
+      const l = await paidListing();
+      const o = await paidOrder(l, 1);
+      // The created event's insert is in flight (uncommitted) when the closed event arrives.
+      let commit!: () => void;
+      const committed = new Promise<void>((r) => (commit = r));
+      let inserted = false;
+      const creating = prisma.$transaction(
+        async (tx) => {
+          await tx.dispute.create({
+            data: { id: 'dp_9', orderId: o.id, merchantId: l.merchantId, amountCents: 3900, reason: 'product_not_received', status: 'needs_response', open: true, lastEventAt: new Date(1_000_000) },
+          });
+          inserted = true;
+          await committed;
+        },
+        { timeout: 20_000 },
+      );
+      await vi.waitFor(() => expect(inserted).toBe(true));
+      const closing = deliver(chargeEvent('charge.dispute.closed', disputeOf(o, 'lost'), ACCOUNT, 3_000)).then((r) => r); // supertest sends on then
+      await vi.waitFor(
+        async () => {
+          const [{ waiting }] = await prisma.$queryRaw<{ waiting: number }[]>`
+            SELECT count(*)::int AS waiting FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND datname = current_database()`;
+          expect(waiting).toBeGreaterThan(0);
+        },
+        { timeout: 10_000 },
+      );
+      commit();
+      await creating;
+      expect((await closing).status).toBe(200);
+      expect(await row()).toMatchObject({ status: 'lost', open: false, closedAt: new Date(3_000_000) });
+    }, 30_000);
+
+    it('a dispute of another account is ignored', async () => {
+      const l = await paidListing();
+      const o = await paidOrder(l, 1);
+      await deliver(chargeEvent('charge.dispute.created', disputeOf(o, 'needs_response'), 'acct_someone_else'));
+      expect(await prisma.dispute.count()).toBe(0);
     });
   });
 

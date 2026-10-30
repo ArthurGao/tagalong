@@ -9,5 +9,6 @@ import { ListingsService } from './listings.service.js';
   imports: [UploadsModule, NotificationsModule],
   controllers: [ListingsController],
   providers: [ListingsService, ListingCloseJob],
+  exports: [ListingsService],
 })
 export class ListingsModule {}

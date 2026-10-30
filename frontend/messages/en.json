@@ -161,7 +161,141 @@
   "admin": {
     "home": {
       "title": "Overview",
-      "placeholder": "Admin console. Merchants, listings, orders and the audit log arrive in M8."
+      "newMerchantsToday": "New merchants today",
+      "gmv7d": "GMV, 7 days",
+      "gmv30d": "GMV, 30 days",
+      "openDisputes": "Open disputes",
+      "todo": "To do",
+      "riskyMerchants": "Merchants with a risk flag",
+      "openDisputeList": "Open disputes",
+      "nothing": "Nothing waiting.",
+      "disputeLine": "{code} · {merchant} · {amount} · {status}"
+    },
+    "nav": {
+      "label": "Admin sections",
+      "overview": "Overview",
+      "merchants": "Merchants",
+      "listings": "Listings"
+    },
+    "env": {
+      "production": "PRODUCTION — every action changes live data",
+      "staging": "STAGING — test data",
+      "development": "LOCAL DEVELOPMENT"
+    },
+    "risk": {
+      "NEW_MERCHANT": "New",
+      "HIGH_REFUND_RATE": "High refunds",
+      "OPEN_DISPUTE": "Open dispute",
+      "GMV_SPIKE": "Sales spike"
+    },
+    "merchantStatus": {
+      "ACTIVE": "Active",
+      "SUSPENDED": "Suspended"
+    },
+    "listingStatus": {
+      "DRAFT": "Draft",
+      "PUBLISHED": "Published",
+      "CLOSED": "Closed",
+      "CANCELLED": "Cancelled",
+      "TAKEN_DOWN": "Taken down"
+    },
+    "filters": {
+      "status": "Status",
+      "pricing": "Pricing",
+      "all": "All",
+      "riskOnly": "Risk flags only",
+      "search": "Search",
+      "apply": "Filter",
+      "next": "Next page",
+      "first": "First page"
+    },
+    "merchants": {
+      "title": "Merchants",
+      "slug": "Slug",
+      "name": "Name",
+      "email": "Email",
+      "status": "Status",
+      "risk": "Risk",
+      "created": "Created",
+      "empty": "No merchants match.",
+      "searchHint": "Name, slug or email",
+      "contact": "Contact",
+      "gst": "GST",
+      "stripe": "Stripe",
+      "charges": "Charges",
+      "payouts": "Payouts",
+      "yes": "yes",
+      "no": "no",
+      "figures": "Last 90 days",
+      "paid90": "Paid",
+      "refunded90": "Refunded",
+      "today": "Today",
+      "previous30": "Previous 30 days",
+      "orders": "Orders",
+      "disputes": "Disputes (open)",
+      "listings": "Listings",
+      "allListings": "All listings of this merchant",
+      "notes": "Internal notes",
+      "notePlaceholder": "Only admins see this",
+      "addNote": "Add note",
+      "noNotes": "No notes yet.",
+      "suspend": "Suspend",
+      "reinstate": "Reinstate",
+      "suspendTitle": "Suspend {name}?",
+      "suspendBody": "Every listing stops selling at once and nothing new can be published. Existing orders stay. The merchant is emailed the reason.",
+      "reinstateTitle": "Reinstate {name}?",
+      "reinstateBody": "Open listings take orders again. The merchant is emailed.",
+      "suspendedBecause": "Suspended {when}: {reason}",
+      "ownerDeleted": "The owner deleted their account; this shop cannot be reinstated."
+    },
+    "listings": {
+      "title": "Listings",
+      "listing": "Listing",
+      "merchant": "Merchant",
+      "status": "Status",
+      "pricing": "Pricing",
+      "sold": "Sold",
+      "created": "Created",
+      "closes": "Closes",
+      "empty": "No listings match.",
+      "searchHint": "Title or short code",
+      "options": "Options",
+      "option": "Option",
+      "price": "Price",
+      "capacity": "Places",
+      "unlimited": "unlimited",
+      "inactive": "inactive",
+      "orders": "Orders by status",
+      "noOrders": "No orders yet.",
+      "close": "Close early",
+      "closeTitle": "Close {title} early?",
+      "closeBody": "No new orders; existing orders stay.",
+      "takedown": "Take down",
+      "takedownTitle": "Take down {title}?",
+      "takedownBody": "The public page says it was taken down and nobody can order. Admins cannot edit a merchant's content: take it down and ask the merchant to fix it.",
+      "refundAllPaid": "Also refund every paid order in full (cannot be restored afterwards)",
+      "refundAllFree": "Also cancel every registration (cannot be restored afterwards)",
+      "restore": "Restore",
+      "restoreTitle": "Restore {title}?",
+      "restoreBody": "It comes back closed; the merchant can reopen it.",
+      "takenDownBecause": "Taken down {when}: {reason}",
+      "cancellation": "Cancellation",
+      "progress": "{succeeded} refunded, {failed} failed, {pending} pending of {total}",
+      "cancellationStatus": {
+        "PENDING": "Waiting",
+        "RUNNING": "Refunding",
+        "COMPLETED": "Done",
+        "COMPLETED_WITH_FAILURES": "Done with failures"
+      }
+    },
+    "confirm": {
+      "reason": "Reason (kept in the audit log)",
+      "typeToConfirm": "Type {text} to confirm",
+      "confirm": "Confirm",
+      "cancel": "Cancel"
+    },
+    "drawer": {
+      "close": "Close"
     }
   },
   "errors": {

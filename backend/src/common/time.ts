@@ -22,3 +22,38 @@ export function formatNzDateTime(value: Date | string, locale: string): string {
   }
   return formatter.format(typeof value === 'string' ? new Date(value) : value);
 }
+
+const wallClock = new Intl.DateTimeFormat('en-NZ', {
+  timeZone: 'Pacific/Auckland',
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: 'numeric',
+  second: 'numeric',
+  hourCycle: 'h23',
+});
+
+/** Auckland wall-clock fields of an instant. */
+function aucklandParts(at: Date): Record<'year' | 'month' | 'day' | 'hour' | 'minute' | 'second', number> {
+  const parts = Object.fromEntries(wallClock.formatToParts(at).map((p) => [p.type, Number(p.value)]));
+  return { year: parts.year, month: parts.month, day: parts.day, hour: parts.hour, minute: parts.minute, second: parts.second };
+}
+
+/** How far Auckland's clock is ahead of UTC at an instant (12 or 13 hours). */
+function aucklandOffsetMs(at: Date): number {
+  const p = aucklandParts(at);
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(at.getTime() / 1000) * 1000;
+}
+
+/**
+ * When the Auckland calendar day containing `at` began (local midnight), for "today" figures; with `daysBack`, the
+ * midnight that many calendar days earlier (not 24-hour steps: a clock change in between moves it by an hour).
+ */
+export function aucklandDayStart(at: Date, daysBack = 0): Date {
+  const { year, month, day } = aucklandParts(at);
+  const midnightAsUtc = Date.UTC(year, month - 1, day - daysBack);
+  // Clocks change at 02:00/03:00, never at midnight: the offset found near midnight is the one at midnight.
+  const near = midnightAsUtc - aucklandOffsetMs(at);
+  return new Date(midnightAsUtc - aucklandOffsetMs(new Date(near)));
+}

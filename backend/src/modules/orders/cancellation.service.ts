@@ -13,6 +13,14 @@ import type { CancelListingDto, CancellationPreviewDto, CancellationProgressDto 
 import { cancelFreeWithEmail, type CheckoutSessionRef, endUnpaid, expireSessions, orderDetail, sessionsToEnd } from './order-ops.js';
 import { pendingByOrder, queueRefunds, refundable } from './refunds.js';
 
+interface EndRequest {
+  listingId: string;
+  actorUserId: string;
+  reason: string;
+  refundAll: boolean;
+  onEnded?: (tx: Prisma.TransactionClient, cancellationId: string) => Promise<void>;
+}
+
 // Paid orders refunded when a listing is cancelled (DESIGN §8.5). FULFILLED orders keep their money: the goods were
 // handed over, and the merchant can still refund one by one.
 const TO_REFUND: OrderStatus[] = ['PAID', 'PARTIALLY_REFUNDED'];
@@ -67,20 +75,41 @@ export class CancellationService {
     if (dto.confirmTitle.trim() !== listing.title.trim()) {
       throw new AppError('VALIDATION_FAILED', 'Type the listing title to confirm', ['confirmTitle']);
     }
-    // Orders created while the scan below ran (their transaction held the listing) appear once we hold the listing:
-    // then everything starts again, so no order escapes the cancellation. Order creation is brief; a few rounds do.
+    await this.end({ listingId, actorUserId: user.id, reason: dto.reason, refundAll: true });
+    return this.progressOf(listingId);
+  }
+
+  /**
+   * Ends a listing for the admin console (a takedown, DESIGN §9). With `refundAll` it ends like a merchant cancellation
+   * (paid orders refunded, registrations cancelled); without, orders keep their state and only unpaid checkouts end.
+   * `onEnded` runs in the same transaction once the listing is CANCELLED (the caller's own fields, email and audit).
+   */
+  async endAsAdmin(
+    actorUserId: string,
+    listingId: string,
+    request: { reason: string; refundAll: boolean },
+    onEnded: (tx: Prisma.TransactionClient, cancellationId: string) => Promise<void>,
+  ): Promise<void> {
+    await this.end({ listingId, actorUserId, ...request, onEnded });
+  }
+
+  /**
+   * Orders created while the scan below ran (their transaction held the listing) appear once we hold the listing:
+   * then everything starts again, so no order escapes the cancellation. Order creation is brief; a few rounds do.
+   */
+  private async end(request: EndRequest): Promise<void> {
     for (let round = 0; round < CANCEL_ROUNDS; round++) {
-      const ended = await this.cancelOnce(user, listingId, dto);
+      const ended = await this.endOnce(request);
       if (ended) {
         await expireSessions(this.stripe, this.logger, ended);
-        return this.progress(user, listingId);
+        return;
       }
     }
     throw new AppError('ORDER_IN_PROGRESS', 'Orders are still arriving; try again');
   }
 
   /** One attempt; null when an order appeared that it had not locked (nothing was written). */
-  private async cancelOnce(user: AuthUser, listingId: string, dto: CancelListingDto): Promise<CheckoutSessionRef[] | null> {
+  private async endOnce({ listingId, actorUserId, reason, refundAll, onEnded }: EndRequest): Promise<CheckoutSessionRef[] | null> {
     const ended: CheckoutSessionRef[] = [];
     // Not through ListingsService.mutate(): that path locks the listing first, and this one must lock the listing's
     // orders before it (order → listing, as every order path does). No revision check either: cancelling wins.
@@ -92,6 +121,7 @@ export class CancellationService {
           ORDER BY id FOR UPDATE`;
         const [locked] = await tx.$queryRaw<{ status: ListingStatus }[]>`
           SELECT status FROM listing WHERE id = ${listingId}::uuid FOR UPDATE`;
+        if (!locked) throw new AppError('NOT_FOUND', 'Listing not found');
         assertListingTransition(locked.status, 'CANCELLED');
         // New orders need the listing lock, so from here none can appear; one committed before we got it was not locked.
         const missed = await tx.order.count({
@@ -100,8 +130,9 @@ export class CancellationService {
         if (missed) return false;
         await tx.listing.update({ where: { id: listingId }, data: { status: 'CANCELLED', revision: { increment: 1 } } });
         const cancellation = await tx.listingCancellation.create({
-          data: { listingId, initiatedByUserId: user.id, reason: dto.reason, refundAll: true, status: 'RUNNING', startedAt: new Date() },
+          data: { listingId, initiatedByUserId: actorUserId, reason, refundAll, status: 'RUNNING', startedAt: new Date() },
         });
+        await onEnded?.(tx, cancellation.id);
 
         const orders = await tx.order.findMany({ where: { id: { in: lockedIds.map((o) => o.id) } }, include: orderDetail });
         const paid = orders.filter((o) => TO_REFUND.includes(o.status));
@@ -110,16 +141,16 @@ export class CancellationService {
           if (order.status === 'PENDING_PAYMENT') {
             await endUnpaid(tx, order, 'EXPIRED');
             ended.push(...sessionsToEnd(order));
-          } else if (order.status === 'CONFIRMED') {
-            await cancelFreeWithEmail(tx, this.deps, order, dto.reason);
+          } else if (order.status === 'CONFIRMED' && refundAll) {
+            await cancelFreeWithEmail(tx, this.deps, order, reason);
           }
         }
         const toRefund = paid
-          .map((o) => ({ orderId: o.id, amountCents: refundable(o, pending.get(o.id) ?? 0), reason: dto.reason }))
-          .filter((r) => r.amountCents > 0);
+          .map((o) => ({ orderId: o.id, amountCents: refundable(o, pending.get(o.id) ?? 0), reason }))
+          .filter((r) => refundAll && r.amountCents > 0);
         const tasks = await queueRefunds(tx, toRefund, cancellation.id);
         // A refund already in flight (a merchant refund) keeps it running too: refund.job finishes it once that settles.
-        const inFlight = tasks.length > 0 || [...pending.values()].some((cents) => cents > 0);
+        const inFlight = tasks.length > 0 || (refundAll && [...pending.values()].some((cents) => cents > 0));
         await tx.listingCancellation.update({
           where: { id: cancellation.id },
           data: inFlight ? { totalOrders: tasks.length } : { totalOrders: 0, status: 'COMPLETED', finishedAt: new Date() },
@@ -134,6 +165,11 @@ export class CancellationService {
   /** GET /merchants/me/listings/:id/cancellation — the batch refund's progress, for polling. */
   async progress(user: AuthUser, listingId: string): Promise<CancellationProgressDto> {
     await this.ownListing(user, listingId);
+    return this.progressOf(listingId);
+  }
+
+  /** A listing's cancellation progress, whoever asks (the owner above, or the admin console). */
+  async progressOf(listingId: string): Promise<CancellationProgressDto> {
     const c = await this.prisma.listingCancellation.findUnique({ where: { listingId } });
     if (!c) throw new AppError('NOT_FOUND', 'This listing was not cancelled');
     // Every refund still in flight on the listing: the cancellation's, and any queued before it, which it waits for.

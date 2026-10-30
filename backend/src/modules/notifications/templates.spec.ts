@@ -110,6 +110,21 @@ describe('layout, receipts and calendar files (M7)', () => {
     expect(renderEmail('ORDER_REFUNDED', 'en', 'a@example.test', refund, CTX).text).toContain('Sold by Kiwi Fruit Co · GST 123-456-789');
   });
 
+  it('tells the merchant about a takedown, a suspension and a reinstatement, with the reason escaped', () => {
+    const kept = renderEmail('LISTING_TAKEN_DOWN', 'en', 'shop@example.test', { listingTitle: 'Cherries', reason: 'Fake <b>brand</b>', refundAll: false }, CTX);
+    expect(kept.subject).toBe('Listing taken down: Cherries');
+    expect(kept.text).toContain('Reason: Fake <b>brand</b>');
+    expect(kept.text).toContain('Existing orders are unchanged.');
+    expect(kept.html).toContain('Fake &lt;b&gt;brand&lt;/b&gt;');
+    expect(kept.text).not.toContain('find-order');
+    const refunded = renderEmail('LISTING_TAKEN_DOWN', 'zh-CN', 'shop@example.test', { listingTitle: '车厘子', reason: '假货', refundAll: true }, CTX);
+    expect(refunded.text).toContain('已付款的订单会全额退款');
+    const suspended = renderEmail('MERCHANT_SUSPENDED', 'zh-CN', 'shop@example.test', { merchantName: 'Kiwi', reason: '多次投诉' }, CTX);
+    expect(suspended.subject).toBe('你的 TagAlong 店铺已被暂停：Kiwi');
+    expect(suspended.text).toContain('原因：多次投诉');
+    expect(renderEmail('MERCHANT_REINSTATED', 'en', 'shop@example.test', { merchantName: 'Kiwi' }, CTX).subject).toBe('Your TagAlong shop is active again: Kiwi');
+  });
+
   it('attaches the .ics only when the order has sessions', () => {
     const withEvents = renderEmail('ORDER_CONFIRMED', 'en', 'a@example.test', { ...confirmed, events: [event] }, CTX);
     expect(withEvents.attachments).toEqual([

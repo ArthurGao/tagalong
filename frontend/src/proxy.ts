@@ -22,7 +22,11 @@ function respond(req: NextRequest, decision: HostDecision, session: Session | nu
     return NextResponse.redirect(new URL(`/${decision.locale ?? routing.defaultLocale}/login`, req.url));
   }
   if (decision.guard === 'admin' && session?.role !== 'admin') return new NextResponse(null, { status: 404 });
-  return decision.kind === 'rewrite' ? NextResponse.rewrite(new URL(decision.pathname, req.url)) : intl(req);
+  if (decision.kind !== 'rewrite') return intl(req);
+  // Only the path changes: the query (filters, ?id= drawers, cursors, redirect_url) goes along.
+  const target = req.nextUrl.clone();
+  target.pathname = decision.pathname;
+  return NextResponse.rewrite(target);
 }
 
 const decide = (req: NextRequest) => routeHost(req.headers.get('host'), req.nextUrl.pathname, hosts);

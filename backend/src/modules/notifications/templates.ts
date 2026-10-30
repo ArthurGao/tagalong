@@ -81,6 +81,9 @@ export type AdminSignInPayload = {
   signedInAt: string;
 };
 
+export type ListingTakenDownPayload = { listingTitle: string; reason: string; refundAll: boolean };
+export type MerchantSuspendedPayload = { merchantName: string; reason: string };
+export type MerchantReinstatedPayload = { merchantName: string };
 export type MerchantLine = { name: string; gstNumber: string | null };
 export type EventReminderPayload = {
   publicCode: string;
@@ -110,6 +113,9 @@ export interface PayloadByType {
   CANCELLATION_FINISHED: CancellationFinishedPayload;
   PICKUP_POINT_CHANGED: PickupPointChangedPayload;
   ADMIN_SIGN_IN: AdminSignInPayload;
+  LISTING_TAKEN_DOWN: ListingTakenDownPayload;
+  MERCHANT_SUSPENDED: MerchantSuspendedPayload;
+  MERCHANT_REINSTATED: MerchantReinstatedPayload;
 }
 
 export interface RenderContext {
@@ -306,6 +312,34 @@ export function renderEmail(type: string, locale: string, to: string, payload: u
       const p = payload as PickupPointChangedPayload;
       return toBuyer(zh ? '取货地点已变更' : 'Your pickup point changed', [
         zh ? `新的取货地点：${p.label}，${p.address}` : `New pickup point: ${p.label}, ${p.address}`,
+      ]);
+    }
+    case 'LISTING_TAKEN_DOWN': {
+      const p = payload as ListingTakenDownPayload;
+      return toStaff(zh ? `接龙已被平台下架：${p.listingTitle}` : `Listing taken down: ${p.listingTitle}`, [
+        zh ? `TagAlong 平台下架了你的接龙「${p.listingTitle}」，买家已无法下单。` : `TagAlong took down your listing "${p.listingTitle}"; buyers can no longer order.`,
+        zh ? `原因：${p.reason}` : `Reason: ${p.reason}`,
+        p.refundAll
+          ? zh
+            ? '已付款的订单会全额退款，报名会被取消，买家会收到通知。'
+            : 'Paid orders are being refunded in full and registrations cancelled; buyers are told.'
+          : zh
+            ? '已有订单保持不变。如有疑问，请回复这封邮件联系平台。'
+            : 'Existing orders are unchanged. Reply to this email if you have questions.',
+      ]);
+    }
+    case 'MERCHANT_SUSPENDED': {
+      const p = payload as MerchantSuspendedPayload;
+      return toStaff(zh ? `你的 TagAlong 店铺已被暂停：${p.merchantName}` : `Your TagAlong shop is suspended: ${p.merchantName}`, [
+        zh ? '平台暂停了你的店铺，所有接龙暂停销售，也不能发布新接龙。已有订单不受影响。' : 'The platform suspended your shop: every listing has stopped selling and new ones cannot be published. Existing orders are unaffected.',
+        zh ? `原因：${p.reason}` : `Reason: ${p.reason}`,
+        zh ? '如有疑问，请回复这封邮件联系平台。' : 'Reply to this email if you have questions.',
+      ]);
+    }
+    case 'MERCHANT_REINSTATED': {
+      const p = payload as MerchantReinstatedPayload;
+      return toStaff(zh ? `你的 TagAlong 店铺已恢复：${p.merchantName}` : `Your TagAlong shop is active again: ${p.merchantName}`, [
+        zh ? '平台已恢复你的店铺，进行中的接龙可以继续接受下单。' : 'The platform reinstated your shop; your open listings take orders again.',
       ]);
     }
     case 'ADMIN_SIGN_IN': {

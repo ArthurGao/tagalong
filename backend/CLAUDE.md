@@ -40,7 +40,7 @@ backend/
 │       ├── cancellations/      # ListingCancellation + RefundTask, refund.job.ts (DESIGN §8.5)
 │       ├── notifications/      # enqueue() → NotificationOutbox, outbox.job.ts, EmailService impls, templates, ics
 │       ├── uploads/            # S3/R2 presign
-│       └── admin/              # suspend merchant, take down listing
+│       └── admin/              # admin console API (M8a): merchants (suspend/reinstate/notes), listings (close/takedown/restore), stats, disputes, risk flags, audit
 └── test/
     ├── e2e/                    # supertest + Testcontainers Postgres (support/global-setup.ts runs migrate deploy), *.e2e-spec.ts; files run serially and truncate between tests
     └── fixtures/
@@ -126,7 +126,13 @@ backend/
   - The listing becomes CANCELLED, unpaid checkouts EXPIRED, free registrations CANCELLED (with an email).
   - Each PAID / PARTIALLY_REFUNDED order gets one `RefundTask` plus a Refund with the **same id**.
   - `refund.job.ts`: every 30 s, 20 tasks, lease token plus SKIP LOCKED; retries after 1/2/4/8 min; FAILED after 5 attempts. Every run finishes any RUNNING cancellation once no refund on its listing is pending, including a merchant refund already in flight when it was cancelled (COMPLETED(_WITH_FAILURES), merchant emailed).
+  - An admin takedown (`endAsAdmin()`) is the same path with `refundAll` chosen: without it, orders keep their state (only unpaid checkouts end) and the listing can be restored. Its `onEnded(tx, cancellationId)` hook runs in the same transaction: the admin module sets `takenDownAt/Reason`, writes the audit row and emails the merchant there.
   - `retryFailed()` is for the admin console (M8): a refund Stripe refused gets a new id (its key would replay the refusal); one that only met errors keeps its id.
+- **Admin module** (`modules/admin/`, M8a): one `AdminController` under `@Auth('ADMIN')`. Every write takes a `reason` (notes excepted) and calls `recordAudit(tx, actor, …)` inside its own transaction, with the admin and `req.ip`, so a write and its audit row commit together; a refused write leaves none (e2e `admin.e2e-spec.ts` sweeps every write route).
+  - Merchants: suspend / reinstate are conditional `updateMany` on the expected status (a deleted owner's shop cannot be reinstated); the merchant is emailed. Listings: close and restore go through `ListingsService.closeAsAdmin` / `restoreAsAdmin` (the same locked `mutate`, any merchant); takedown through `CancellationService.endAsAdmin`. Which actions apply comes from `listing-state-machine.ts` (`canListingTransition`, `canRestoreListing`: a takedown without refunds back to CLOSED, deleting its `ListingCancellation`).
+  - Risk flags (`risk.ts`): a pure `riskFlags(metrics, now)` plus one SQL aggregate per page of merchants (`order(merchant_id, paid_at)` index). `?risk=true` computes flags only for candidates (new, an open dispute, or paid orders in 90 days). "Today" is Auckland (`common/time.ts` `aucklandDayStart`).
+  - Disputes: `charge.dispute.created/updated/closed` upsert a `Dispute` row in one `INSERT … ON CONFLICT DO UPDATE … WHERE` (newer events only, never reopening a closed one), so concurrent first deliveries cannot lose the newer state.
+  - Reinstating a merchant locks the owner's user row first (user → merchant, as account deletion), so a deletion in flight is seen.
 - `orders-csv.ts` builds the merchant CSV (pure, one column table; BOM, CRLF, formula-safe cells).
 - **Find my orders** (`OrdersService.recover`): Turnstile + per-IP throttler, then only an `order_recovery_request` row and `202 { ok: true }`: every request does the same work, so neither answer nor timing reveals the address. `recovery.job.ts` (every 10 s, SKIP LOCKED, rows deleted as claimed) looks the orders up and queues at most 3 ORDER_RECOVERY emails per address per clock hour of the request: the n-th has dedupe key `ORDER_RECOVERY:{email}:{hour}:{n}`, so the unique key holds the limit under races.
 - `GET /public/orders/:code/calendar.ics`: the order's `.ics` for attending event/lesson orders (`hasCalendar` on the DTO).

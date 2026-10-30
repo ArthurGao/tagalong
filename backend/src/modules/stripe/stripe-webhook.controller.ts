@@ -71,7 +71,9 @@ export class StripeWebhookController {
       case 'charge.refunded':
         return this.checkout.chargeRefunded(event.data.object, event.account);
       case 'charge.dispute.created':
-        return this.checkout.disputeCreated(event.data.object, event.account);
+      case 'charge.dispute.updated':
+      case 'charge.dispute.closed':
+        return this.checkout.dispute(event.data.object, event.account, event.created, event.type === 'charge.dispute.created');
       default:
         return; // recorded only
     }

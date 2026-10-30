@@ -129,8 +129,12 @@ export class CheckoutWebhooksService {
     });
   }
 
-  /** charge.dispute.created (DESIGN §8.3): logged, and the merchant is told to respond in Stripe. */
-  async disputeCreated(dispute: Stripe.Dispute, account: string | undefined): Promise<void> {
+  /**
+   * charge.dispute.created / updated / closed (DESIGN §8.3): the dispute is recorded for the admin console (an open one
+   * flags the merchant), and on creation the merchant is told to respond in Stripe. Events may arrive in any order: an
+   * event older than the last one applied changes nothing, and a closed dispute never reopens.
+   */
+  async dispute(dispute: Stripe.Dispute, account: string | undefined, eventCreated: number, created: boolean): Promise<void> {
     const paymentIntentId = paymentIntentIdOf(dispute);
     const order = paymentIntentId
       ? await this.prisma.order.findUnique({
@@ -139,15 +143,30 @@ export class CheckoutWebhooksService {
         })
       : null;
     if (!order || !account || account !== order.merchant.stripeAccountId) {
-      this.logger.warn(`charge.dispute.created ${dispute.id} matches no order of account ${account}`);
+      this.logger.warn(`dispute ${dispute.id} matches no order of account ${account}`);
       return;
     }
-    this.logger.warn(`dispute ${dispute.id} on order ${order.id}: ${dispute.amount} cents, ${dispute.reason}`);
-    await this.notifications.enqueue(this.prisma, {
-      type: 'MERCHANT_DISPUTE',
-      ...toMerchant(order.merchant),
-      payload: { publicCode: order.publicCode, listingTitle: order.listing.title, amountCents: dispute.amount, reason: dispute.reason },
-      dedupeKey: `MERCHANT_DISPUTE:${dispute.id}`,
+    const at = new Date(eventCreated * 1000);
+    const open = OPEN_DISPUTE.includes(dispute.status);
+    await this.prisma.$transaction(async (tx) => {
+      // One atomic upsert, so two first deliveries cannot both miss the row: a concurrent insert is waited for, then
+      // this event applies only if it is not older and would not reopen a closed dispute.
+      await tx.$executeRaw`
+        INSERT INTO dispute (id, order_id, merchant_id, amount_cents, reason, status, open, last_event_at, closed_at, updated_at)
+        VALUES (${dispute.id}, ${order.id}::uuid, ${order.merchantId}::uuid, ${dispute.amount}, ${dispute.reason}, ${dispute.status}, ${open}, ${at},
+                ${open ? null : at}, now())
+        ON CONFLICT (id) DO UPDATE SET
+          amount_cents = EXCLUDED.amount_cents, reason = EXCLUDED.reason, status = EXCLUDED.status, open = EXCLUDED.open,
+          last_event_at = EXCLUDED.last_event_at, closed_at = EXCLUDED.closed_at, updated_at = now()
+        WHERE dispute.last_event_at <= EXCLUDED.last_event_at AND (dispute.open OR NOT EXCLUDED.open)`;
+      if (!created) return;
+      this.logger.warn(`dispute ${dispute.id} on order ${order.id}: ${dispute.amount} cents, ${dispute.reason}`);
+      await this.notifications.enqueue(tx, {
+        type: 'MERCHANT_DISPUTE',
+        ...toMerchant(order.merchant),
+        payload: { publicCode: order.publicCode, listingTitle: order.listing.title, amountCents: dispute.amount, reason: dispute.reason },
+        dedupeKey: `MERCHANT_DISPUTE:${dispute.id}`,
+      });
     });
   }
 
@@ -192,6 +211,9 @@ export class CheckoutWebhooksService {
     });
   }
 }
+
+// Stripe's dispute statuses that still need an answer or a decision; won, lost, prevented and warning_closed are over.
+const OPEN_DISPUTE: Stripe.Dispute.Status[] = ['needs_response', 'under_review', 'warning_needs_response', 'warning_under_review'];
 
 const paymentIntentIdOf = (o: { payment_intent: string | { id: string } | null }) =>
   typeof o.payment_intent === 'string' ? o.payment_intent : o.payment_intent?.id;
