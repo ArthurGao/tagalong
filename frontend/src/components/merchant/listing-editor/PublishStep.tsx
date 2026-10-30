@@ -11,6 +11,7 @@ import type { Listing, StepProps } from './types';
 import { useSave } from '@/lib/api/use-save';
 import { CancelListing, CancellationProgress, type Progress } from '../CancelListing';
 import { DateTimeField } from './DateTimeField';
+import { listingShareUrl } from '@/lib/share-text';
 
 // Backend publish-check details → listings.missing.* keys (next-intl keys cannot contain dots).
 const MISSING_KEYS: Record<string, string> = {
@@ -34,7 +35,7 @@ export function PublishStep({ listing, onSaved }: StepProps) {
   const reopenAt = reopenUntil ? nzInputToIso(reopenUntil) : null;
   const reopenInvalid = Boolean(reopenUntil) && reopenAt === null; // a time skipped by daylight saving
   const path = { params: { path: { id: listing.id } } };
-  const shareUrl = `${typeof window === 'undefined' ? '' : window.location.origin}/l/${listing.shortCode}`;
+  const shareUrl = listingShareUrl(typeof window === 'undefined' ? '' : window.location.origin, listing.shortCode);
   const missing = save.details.flatMap((d) => MISSING_KEYS[d] ?? []);
 
   const act = async (call: () => Promise<{ data?: Listing }>) => {

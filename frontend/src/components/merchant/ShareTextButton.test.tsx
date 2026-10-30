@@ -26,7 +26,7 @@ describe('ShareTextButton', () => {
     renderWithIntl(<ShareTextButton listing={listing} />);
     fireEvent.click(screen.getByRole('button', { name: messages.listings.share.button }));
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe(messages.listings.share.copied));
-    expect(writeText).toHaveBeenCalledWith(`[Group buy] Cherries $39.00 | Albany\n23 joined, 7 left 👉 ${window.location.origin}/en/l/abc12345`);
+    expect(writeText).toHaveBeenCalledWith(`[Group buy] Cherries $39.00 | Albany\n23 joined, 7 left 👉 ${window.location.origin}/l/abc12345`);
   });
 });
 

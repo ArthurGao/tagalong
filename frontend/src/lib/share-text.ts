@@ -19,3 +19,9 @@ export function shareText(l: Summary, url: string, locale: string, t: Translate)
   const count = t(`joined${l.pricing}`, { count: l.soldCount }) + (remaining === null ? '' : t('left', { count: remaining }));
   return `${head}\n${count} ${t('link', { url })}`;
 }
+
+/**
+ * A listing's public link for sharing, without a language: each person who opens it gets their own browser's language
+ * (the next-intl proxy redirects), whatever the merchant's.
+ */
+export const listingShareUrl = (origin: string, shortCode: string) => `${origin}/l/${shortCode}`;
