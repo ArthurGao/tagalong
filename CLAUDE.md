@@ -64,6 +64,12 @@ Keep these scripts working. If you add or change one, update this section.
 ## Working style for Claude Code
 
 - Work milestone by milestone, following DESIGN §14. Finish one milestone (with its tests) before starting the next.
+- Close every milestone in this order, before its commit:
+  1. Run `/simplify` on the milestone's full diff, then re-run the checks.
+  2. Get a read-only Codex review (`/codex:rescue`) of the uncommitted diff against DESIGN.md and the CLAUDE.md files.
+  3. Fix the findings. Each fix gets a regression test that was seen failing. Re-run lint, typecheck, unit, e2e and the frontend build.
+  4. Commit and push once, wait for CI to pass, then update the KB.
+  5. Only then plan the next milestone.
 - Before writing code for a non-trivial task, briefly state your plan: which files you'll touch and the approach.
 - Keep changes small and focused. Don't refactor code unrelated to the task.
 - A task is done only when `pnpm lint`, `pnpm typecheck` and the relevant tests all pass. Run them yourself.
