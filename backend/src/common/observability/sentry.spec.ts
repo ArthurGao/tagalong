@@ -42,6 +42,12 @@ describe('Sentry scrubbing (DESIGN §10: no credentials or buyer data in error r
     expect(event.message).toBe('refund for [email] failed');
     expect(event.request!.headers).toEqual({ 'x-tagalong-edge': '[Redacted]', 'x-tagalong-client-ip': '[Redacted]' });
     expect(scrubBreadcrumb({ category: 'console', message: 'sent to ben@example.test' }).message).toBe('sent to [email]');
+    // Console breadcrumbs also keep their raw arguments; other data and extra context are text-redacted too.
+    expect(scrubBreadcrumb({ category: 'console', message: 'x', data: { arguments: ['ben@example.test', { phone: '021 555 0101' }], logger: 'console', note: 'to ben@example.test' } }).data).toEqual({
+      logger: 'console',
+      note: 'to [email]',
+    });
+    expect(scrubEvent({ type: undefined, extra: { notificationId: 'n1', detail: 'for ben@example.test' } } as ErrorEvent).extra).toEqual({ notificationId: 'n1', detail: 'for [email]' });
   });
 
   it('collects no user, cookies or bodies, and no traces', () => {

@@ -42,6 +42,8 @@ describe('sentry-scrub (DESIGN §10: no order tokens or buyer data in error repo
     } as ErrorEvent);
     expect([event.message, event.exception!.values![0].value]).toEqual(['checkout for [email] failed', 'buyer [number] at /en/o/TA-1?t=%5BRedacted%5D']);
     expect(scrubBreadcrumb({ category: 'console', message: 'Amy.Lee@Example.test signed up' }).message).toBe('[email] signed up');
+    expect(scrubBreadcrumb({ category: 'console', message: 'x', data: { arguments: ['amy@example.test'], note: 'by amy@example.test' } }).data).toEqual({ note: 'by [email]' });
+    expect(scrubEvent({ type: undefined, extra: { step: 'checkout', who: 'amy@example.test' } } as ErrorEvent).extra).toEqual({ step: 'checkout', who: '[email]' });
   });
 
   it('is off without a DSN and never traces', () => {

@@ -50,11 +50,23 @@ export function scrubEvent(event: ErrorEvent): ErrorEvent {
   // Messages can quote values (Postgres: "Key (buyer_email)=(…) already exists"): the error type and stack stay.
   if (event.message) event.message = redactText(event.message);
   for (const value of event.exception?.values ?? []) if (value.value) value.value = redactText(value.value);
+  if (event.extra) event.extra = redactValues(event.extra);
   return event;
 }
 
+/** String values of a context object text-redacted; others kept. */
+const redactValues = (data: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(data).map(([k, v]) => [k, typeof v === 'string' ? redactText(v) : v]));
+
+
 export function scrubBreadcrumb(crumb: Breadcrumb): Breadcrumb {
-  if (typeof crumb.data?.url === 'string') crumb.data.url = redactUrl(crumb.data.url);
+  if (crumb.data) {
+    // A console breadcrumb's raw arguments repeat its message, which is redacted below.
+    const data = { ...crumb.data };
+    delete data.arguments;
+    crumb.data = redactValues(data);
+    if (typeof crumb.data.url === 'string') crumb.data.url = redactUrl(crumb.data.url);
+  }
   if (crumb.message) crumb.message = redactText(crumb.message);
   return crumb;
 }
