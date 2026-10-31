@@ -136,7 +136,7 @@ export class CancellationService {
           where: { listingId, status: { in: ENDED }, id: { notIn: lockedIds.map((o) => o.id) } },
         });
         if (missed) return false;
-        await tx.listing.update({ where: { id: listingId }, data: { status: 'CANCELLED', revision: { increment: 1 } } });
+        await tx.listing.update({ where: { id: listingId }, data: { status: 'CANCELLED', cancelledAt: new Date(), revision: { increment: 1 } } });
         const cancellation = await tx.listingCancellation.create({
           data: { listingId, initiatedByUserId: actorUserId, reason, refundAll, status: 'RUNNING', startedAt: new Date() },
         });

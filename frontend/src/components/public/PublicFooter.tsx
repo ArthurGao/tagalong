@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { LocaleSwitch } from './LocaleSwitch';
 
-// Every public page: find-my-orders (DESIGN §11) and the language switch. Bottom padding clears the sticky buy bar.
+// Every public page: find-my-orders and the legal pages (DESIGN §11) and the language switch. Bottom padding clears the sticky buy bar.
 export function PublicFooter() {
   const t = useTranslations('public.footer');
   const locale = useLocale();
@@ -12,6 +12,12 @@ export function PublicFooter() {
       <span className="flex items-center gap-4">
         <Link href={`/${locale}/find-order`} className="inline-flex min-h-11 items-center underline">
           {t('findOrder')}
+        </Link>
+        <Link href={`/${locale}/legal/terms`} className="inline-flex min-h-11 items-center underline">
+          {t('terms')}
+        </Link>
+        <Link href={`/${locale}/legal/privacy`} className="inline-flex min-h-11 items-center underline">
+          {t('privacy')}
         </Link>
         <LocaleSwitch />
       </span>

@@ -1,4 +1,5 @@
 import './load-env.js';
+import './instrument.js';
 import 'reflect-metadata';
 import { SwaggerModule } from '@nestjs/swagger';
 import { buildOpenApiDocument, createApp } from './app.setup.js';

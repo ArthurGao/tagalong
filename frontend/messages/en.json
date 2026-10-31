@@ -135,7 +135,9 @@
     },
     "footer": {
       "findOrder": "Find my orders",
-      "about": "TagAlong · group buys in New Zealand"
+      "about": "TagAlong · group buys in New Zealand",
+      "terms": "Terms",
+      "privacy": "Privacy"
     },
     "wechat": {
       "text": "Apple Pay doesn't work inside WeChat. Tap “…” at the top right and choose “Open in Browser”.",
@@ -156,6 +158,94 @@
       "suspended": "This seller is paused.",
       "open": "Open",
       "closes": "Closes {date}"
+    },
+    "legal": {
+      "draft": "Draft, pending legal review. This text is not yet final and may change before TagAlong launches.",
+      "updated": "Last updated {date, date, long}",
+      "contact": "Questions: privacy@tagalong.nz",
+      "terms": {
+        "title": "Terms of use",
+        "sections": [
+          {
+            "heading": "Who we are",
+            "paragraphs": [
+              "TagAlong is an online marketplace in New Zealand where merchants run group buys, lessons and events, and buyers order or register through a shared link. TagAlong is not the seller: each listing is offered by the merchant named on it, who is responsible for the goods, lesson or event."
+            ]
+          },
+          {
+            "heading": "Buying and registering",
+            "paragraphs": [
+              "Prices are in New Zealand dollars and include GST where the merchant is GST-registered. Payment is taken when you order, by Stripe on the merchant's behalf. Free registrations need no payment.",
+              "Your order or registration is a contract between you and the merchant. To change a quantity, cancel and order again; paid orders are refunded by the merchant."
+            ]
+          },
+          {
+            "heading": "Refunds and cancellations",
+            "paragraphs": [
+              "The merchant's refund policy is shown on each listing and is the merchant's responsibility. Card processing fees are not returned on refunds. If a merchant cancels a listing, or TagAlong takes it down, paid orders may be refunded in full.",
+              "Your rights under the Consumer Guarantees Act 1993 are not affected."
+            ]
+          },
+          {
+            "heading": "Merchants",
+            "paragraphs": [
+              "Merchants must describe their offers accurately, keep the promises they make on a listing, and hold any registration their business needs (for example under the Food Act 2014).",
+              "Alcohol, prescription medicines, weapons and anything unlawful to sell in New Zealand may not be listed."
+            ]
+          },
+          {
+            "heading": "What TagAlong may do",
+            "paragraphs": [
+              "We may take down a listing or suspend a merchant that breaks these terms or puts buyers at risk, and we may refund buyers when we do. We do not edit merchants' content."
+            ]
+          },
+          {
+            "heading": "Liability and law",
+            "paragraphs": [
+              "To the extent the law allows, TagAlong is not liable for the merchant's goods, lessons or events. These terms are governed by New Zealand law, and New Zealand courts decide any dispute."
+            ]
+          }
+        ],
+        "updated": "2026-11-01"
+      },
+      "privacy": {
+        "title": "Privacy policy",
+        "sections": [
+          {
+            "heading": "What we collect",
+            "paragraphs": [
+              "Buyers: your name, email, phone number, any note or answers the merchant asks for, and your order details. You do not need an account.",
+              "Merchants: your account (email and name, held by our sign-in provider Clerk), your shop details and your Stripe account status."
+            ]
+          },
+          {
+            "heading": "Why we use it",
+            "paragraphs": [
+              "To take and fulfil your order or registration, to send you its confirmation, reminders and refund notices, to let you find your orders again, and to prevent abuse. The merchant you order from sees your details to fulfil the order. Other buyers only ever see a shortened name such as \"Amy L.\", or \"Anonymous\" if you ask."
+            ]
+          },
+          {
+            "heading": "Who we share it with",
+            "paragraphs": [
+              "We use these providers, some outside New Zealand: Stripe (payments), Clerk (merchant sign-in, United States), Resend (email), Render and Neon (our servers and database, Singapore), Vercel (the website), Cloudflare (images and bot protection) and Sentry (error reports, with no buyer details). They protect personal information to standards comparable to the Privacy Act 2020, and we only share what each needs."
+            ]
+          },
+          {
+            "heading": "How long we keep it",
+            "paragraphs": [
+              "Buyer details on an order are anonymised 12 months after the listing ended; amounts and status stay for the merchant's and our accounts. Records of what our administrators did are kept for 7 years."
+            ]
+          },
+          {
+            "heading": "Your rights",
+            "paragraphs": [
+              "You can ask to see, correct or delete your information by emailing privacy@tagalong.nz. We answer within 20 working days. Deleting removes your details from all your orders; an order still awaiting payment or under a payment dispute is handled once that is settled.",
+              "If you are not satisfied, you can complain to the Office of the Privacy Commissioner (privacy.org.nz)."
+            ]
+          }
+        ],
+        "updated": "2026-11-01"
+      }
     }
   },
   "admin": {
@@ -423,7 +513,8 @@
     "signUpTitle": "Create a seller account",
     "intro": "Publish a group buy in three minutes. Buyers pay online, no transfer screenshots to check.",
     "notConfigured": "Sign-in is not configured yet. Set the Clerk keys in frontend/.env.local.",
-    "adminSignInTitle": "Admin sign in"
+    "adminSignInTitle": "Admin sign in",
+    "crossBorder": "Your account is held by Clerk, our sign-in provider, on servers in the United States. See our privacy policy."
   },
   "onboarding": {
     "title": "Set up your seller profile",

@@ -22,6 +22,9 @@ const clerk = {
   EMAIL_FROM: 'TagAlong <orders@tagalong.nz>',
   RESEND_API_KEY: 're_x',
   TURNSTILE_SECRET_KEY: '0x4AAA',
+  APP_ENV: 'staging',
+  SENTRY_DSN: 'https://key@o1.ingest.sentry.io/1',
+  EDGE_SECRET: 'edge-secret',
 };
 
 describe('parseEnv', () => {
@@ -49,7 +52,7 @@ describe('parseEnv', () => {
 
   it('requires every Clerk, Stripe and storage variable in production', () => {
     expect(() => parseEnv({ ...valid, NODE_ENV: 'production' })).toThrow(
-      'Invalid environment configuration: EMAIL_PROVIDER, CLERK_SECRET_KEY, CLERK_JWT_KEY, CLERK_AUTHORIZED_PARTIES, CLERK_WEBHOOK_SIGNING_SECRET, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET_CONNECT, STRIPE_WEBHOOK_SECRET_PLATFORM, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_PUBLIC_BASE_URL, EMAIL_FROM, TURNSTILE_SECRET_KEY',
+      'Invalid environment configuration: APP_ENV, EMAIL_PROVIDER, CLERK_SECRET_KEY, CLERK_JWT_KEY, CLERK_AUTHORIZED_PARTIES, CLERK_WEBHOOK_SIGNING_SECRET, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET_CONNECT, STRIPE_WEBHOOK_SECRET_PLATFORM, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_PUBLIC_BASE_URL, EMAIL_FROM, TURNSTILE_SECRET_KEY, SENTRY_DSN, EDGE_SECRET',
     );
     expect(() => parseEnv({ ...valid, ...clerk, NODE_ENV: 'production' })).not.toThrow();
   });
@@ -59,6 +62,21 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...prod, RESEND_API_KEY: '' })).toThrow('Invalid environment configuration: RESEND_API_KEY');
     expect(() => parseEnv({ ...prod, EMAIL_PROVIDER: 'mailpit' })).toThrow('Invalid environment configuration: EMAIL_PROVIDER');
     expect(parseEnv({ ...valid })).toMatchObject({ EMAIL_PROVIDER: 'mailpit', SMTP_PORT: 1026, RESERVATION_MINUTES: 30 });
+  });
+
+  it('takes live Stripe keys in production only, and only live keys there (CLAUDE.md rule 9)', () => {
+    const prod = { ...valid, ...clerk, NODE_ENV: 'production' };
+    expect(() => parseEnv({ ...prod, APP_ENV: 'production', STRIPE_SECRET_KEY: 'sk_live_x' })).not.toThrow();
+    expect(() => parseEnv({ ...prod, APP_ENV: 'production', STRIPE_SECRET_KEY: 'sk_test_x' })).toThrow('Invalid environment configuration: STRIPE_SECRET_KEY');
+    expect(() => parseEnv({ ...prod, APP_ENV: 'staging', STRIPE_SECRET_KEY: 'sk_live_x' })).toThrow('Invalid environment configuration: STRIPE_SECRET_KEY');
+    expect(() => parseEnv({ ...valid, STRIPE_SECRET_KEY: 'sk_live_x' })).toThrow('Invalid environment configuration: STRIPE_SECRET_KEY');
+    expect(parseEnv({ ...valid, STRIPE_SECRET_KEY: 'sk_test_x' }).APP_ENV).toBe('development');
+    // Restricted keys too (rk_), and nothing that is neither a test nor a live key.
+    expect(() => parseEnv({ ...prod, APP_ENV: 'staging', STRIPE_SECRET_KEY: 'rk_live_x' })).toThrow('Invalid environment configuration: STRIPE_SECRET_KEY');
+    expect(() => parseEnv({ ...prod, APP_ENV: 'production', STRIPE_SECRET_KEY: 'rk_live_x' })).not.toThrow();
+    expect(() => parseEnv({ ...prod, APP_ENV: 'production', STRIPE_SECRET_KEY: 'rk_test_x' })).toThrow('Invalid environment configuration: STRIPE_SECRET_KEY');
+    expect(parseEnv({ ...valid, STRIPE_SECRET_KEY: 'rk_test_x' }).STRIPE_SECRET_KEY).toBe('rk_test_x');
+    expect(() => parseEnv({ ...valid, STRIPE_SECRET_KEY: 'pk_test_x' })).toThrow('Invalid environment configuration: STRIPE_SECRET_KEY');
   });
 
   it('keeps Checkout reservations at Stripe\'s 30-minute minimum or longer', () => {

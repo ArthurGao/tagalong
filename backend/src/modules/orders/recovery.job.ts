@@ -5,7 +5,7 @@ import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import { lockBuyerEmail } from './anonymize.js';
+import { lockBuyerEmails } from './anonymize.js';
 import { ATTENDING } from './order-ops.js';
 import { orderUrl } from './urls.js';
 
@@ -37,7 +37,7 @@ export class RecoveryJob {
         RETURNING email, locale, created_at`;
       // Not while an address is being anonymized (anonymize.ts). All at once, in one order, so two instances holding
       // requests for the same addresses cannot deadlock.
-      for (const email of [...new Set(requests.map((r) => r.email))].sort()) await lockBuyerEmail(tx, email);
+      await lockBuyerEmails(tx, requests.map((r) => r.email));
       let emails = 0;
       for (const { email, locale, created_at: at } of requests.sort((a, b) => a.created_at.getTime() - b.created_at.getTime())) {
         const hour = utcHour(at);

@@ -2,6 +2,7 @@ import { clerkMiddleware } from '@clerk/nextjs/server';
 import { type NextRequest, NextResponse } from 'next/server';
 import createMiddleware from 'next-intl/middleware';
 import { clerkEnabled } from './lib/clerk';
+import { edgeHeaders } from './lib/edge-forward';
 import { type HostDecision, routeHost } from './lib/host-routing';
 import { routing } from './i18n/routing';
 
@@ -17,7 +18,8 @@ interface Session {
 
 function respond(req: NextRequest, decision: HostDecision, session: Session | null) {
   if (decision.kind === 'notFound') return new NextResponse(null, { status: 404 });
-  if (decision.kind === 'pass') return NextResponse.next();
+  // The API: our headers replaced, the buyer's IP passed with the shared secret (lib/edge-forward.ts).
+  if (decision.kind === 'pass') return NextResponse.next({ request: { headers: edgeHeaders(req.headers, process.env.EDGE_SECRET) } });
   if (decision.guard && !session?.userId) {
     return NextResponse.redirect(new URL(`/${decision.locale ?? routing.defaultLocale}/login`, req.url));
   }

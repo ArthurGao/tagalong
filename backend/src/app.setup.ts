@@ -9,6 +9,7 @@ import { AppModule } from './app.module.js';
 import { API_PREFIX } from './common/api-prefix.js';
 import { AllExceptionsFilter } from './common/errors/all-exceptions.filter.js';
 import { ErrorBodyDto } from './common/errors/error-body.dto.js';
+import { edgeClientIp } from './common/security/edge-client-ip.js';
 
 
 // rawBody: Stripe and Clerk webhooks verify signatures against the raw request body.
@@ -22,9 +23,11 @@ export async function createApp(): Promise<INestApplication> {
 // Shared by every entrypoint so they all see the same prefix, pipes and error filter.
 export function configureApp<T extends INestApplication>(app: T): T {
   app.useLogger(app.get(Logger));
-  // req.ip from X-Forwarded-For only through trusted hops (rate limits key on it).
-  const trust = app.get<Env>(ENV).TRUST_PROXY;
+  // req.ip from X-Forwarded-For only through trusted hops (rate limits key on it), or from our web app (edge-client-ip.ts).
+  const env = app.get<Env>(ENV);
+  const trust = env.TRUST_PROXY;
   app.getHttpAdapter().getInstance().set('trust proxy', /^\d+$/.test(trust) ? Number(trust) : trust);
+  app.use(edgeClientIp(env.EDGE_SECRET));
   app.setGlobalPrefix(API_PREFIX);
   app.use(cookieParser());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));

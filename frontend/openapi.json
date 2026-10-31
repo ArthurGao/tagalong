@@ -2751,10 +2751,25 @@
             "enum": [
               "ok"
             ]
+          },
+          "env": {
+            "type": "string",
+            "enum": [
+              "development",
+              "staging",
+              "production"
+            ],
+            "description": "Which deployment answered"
+          },
+          "release": {
+            "type": "string",
+            "description": "The deployed commit; empty when not deployed by Render"
           }
         },
         "required": [
-          "status"
+          "status",
+          "env",
+          "release"
         ]
       },
       "CreateMerchantDto": {

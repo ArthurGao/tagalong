@@ -19,4 +19,19 @@ describe('proxy (admin host rewrite)', () => {
     expect(target.pathname).toBe('/en/admin/login');
     expect(target.search).toBe('?redirect_url=%2Fen%2Fmerchants&x=1');
   });
+
+  it('forwards /api with the buyer IP and the edge secret, never the browser\'s own versions', async () => {
+    process.env.EDGE_SECRET = 'edge-secret';
+    try {
+      const req = new NextRequest('http://localhost:3800/api/v1/public/listings/abc/orders', { method: 'POST' });
+      req.headers.set('x-real-ip', '203.0.113.7');
+      req.headers.set('x-tagalong-client-ip', '1.2.3.4');
+      const res = await proxy(req, {} as never);
+      expect(res!.headers.get('x-middleware-override-headers')?.split(',')).toEqual(expect.arrayContaining(['x-tagalong-edge', 'x-tagalong-client-ip']));
+      expect(res!.headers.get('x-middleware-request-x-tagalong-client-ip')).toBe('203.0.113.7');
+      expect(res!.headers.get('x-middleware-request-x-tagalong-edge')).toBe('edge-secret');
+    } finally {
+      delete process.env.EDGE_SECRET;
+    }
+  });
 });

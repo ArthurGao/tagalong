@@ -5,8 +5,12 @@ import {
   PayloadTooLargeException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { AllExceptionsFilter } from './all-exceptions.filter.js';
 import { AppError } from './app-error.js';
+
+// Third-party boundary: the error reporter.
+vi.mock('@sentry/nestjs', () => ({ captureException: vi.fn() }));
 
 function hostFor(res: { status: ReturnType<typeof vi.fn>; json: ReturnType<typeof vi.fn> }): ArgumentsHost {
   return {
@@ -78,5 +82,18 @@ describe('AllExceptionsFilter', () => {
     const { status, body } = run(new Error('db password is hunter2'));
     expect(status).toBe(500);
     expect(body).toEqual({ code: 'INTERNAL', message: 'Internal server error' });
+  });
+
+  it('reports to Sentry only what nobody answered on purpose: unexpected 5xx, never business codes or 4xx', () => {
+    const capture = vi.mocked(Sentry.captureException);
+    capture.mockClear();
+    run(new AppError('SOLD_OUT', 'Sold out'));
+    run(new NotFoundException());
+    run(new BadRequestException(['name must be a string']));
+    expect(capture).not.toHaveBeenCalled();
+    const crash = new Error('db down');
+    run(crash);
+    run(new ServiceUnavailableException());
+    expect(capture.mock.calls.map((c) => c[0])).toEqual([crash, expect.any(ServiceUnavailableException)]);
   });
 });

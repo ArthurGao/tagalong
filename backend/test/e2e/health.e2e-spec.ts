@@ -17,10 +17,10 @@ describe('GET /api/v1/health', () => {
     await app.close();
   });
 
-  it('returns ok under the /api/v1 prefix', async () => {
+  it('returns ok under the /api/v1 prefix, naming the deployment and its commit', async () => {
     const res = await request(app.getHttpServer()).get('/api/v1/health');
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: 'ok' });
+    expect(res.body).toEqual({ status: 'ok', env: 'development', release: '' });
   });
 
   it('echoes a request id header', async () => {

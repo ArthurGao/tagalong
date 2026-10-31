@@ -6,6 +6,7 @@ import { CheckoutWebhooksService } from './checkout-webhooks.service.js';
 import { CancellationService } from './cancellation.service.js';
 import { ExpiryJob } from './expiry.job.js';
 import { RefundProcessor } from './refund-processor.js';
+import { PiiRetentionJob } from './pii-retention.job.js';
 import { RecoveryJob } from './recovery.job.js';
 import { RefundJob } from './refund.job.js';
 import { ReminderJob } from './reminder.job.js';
@@ -17,7 +18,7 @@ import { PublicOrdersController } from './public-orders.controller.js';
 @Module({
   imports: [NotificationsModule, StripeClientModule],
   controllers: [PublicOrdersController, MerchantOrdersController],
-  providers: [OrdersService, MerchantOrdersService, CancellationService, RefundProcessor, RefundJob, ReminderJob, RecoveryJob, CheckoutWebhooksService, ExpiryJob, { provide: TurnstileVerifier, useClass: CloudflareTurnstileVerifier }],
+  providers: [OrdersService, MerchantOrdersService, CancellationService, RefundProcessor, RefundJob, ReminderJob, RecoveryJob, PiiRetentionJob, CheckoutWebhooksService, ExpiryJob, { provide: TurnstileVerifier, useClass: CloudflareTurnstileVerifier }],
   exports: [CheckoutWebhooksService, CancellationService, RefundProcessor],
 })
 export class OrdersModule {}

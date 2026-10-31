@@ -3,6 +3,7 @@ import { errorText } from '../../common/errors/error-text.js';
 import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { reportError } from '../../common/observability/sentry.js';
 import { NotificationsService, toMerchant } from '../notifications/notifications.service.js';
 import { StripeClient, type StripeRefund } from '../stripe/stripe-client.js';
 import { lockOrder } from './order-ops.js';
@@ -139,6 +140,7 @@ export class RefundProcessor {
     });
     if (!done) return 'retrying';
     this.logger.error(`refund: task ${task.id} FAILED after ${attempts} attempts: ${lastError}`);
+    reportError(new Error('Refund FAILED'), { refundTaskId: task.id, attempts });
     return 'failed';
   }
 }

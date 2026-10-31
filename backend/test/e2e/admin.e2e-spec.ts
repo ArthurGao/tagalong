@@ -329,6 +329,8 @@ describe('admin console API: merchants, listings, disputes, risk, audit (DESIGN 
       expect((await prisma.order.findUniqueOrThrow({ where: { id: unpaid.id } })).status).toBe('EXPIRED');
       expect(t.stripe.expired.map((e) => e.sessionId)).toEqual([unpaid.stripeCheckoutSessionId]);
       expect(await prisma.refundTask.count()).toBe(0);
+      // When it ended, for PII retention (DESIGN §10).
+      expect((await prisma.listing.findUniqueOrThrow({ where: { id: l.id } })).cancelledAt).toEqual(expect.any(Date));
       expect(await prisma.notificationOutbox.findFirstOrThrow({ where: { type: 'LISTING_TAKEN_DOWN' } })).toMatchObject({
         recipient: m.contactEmail,
         payload: { listingTitle: 'Cherries', reason: 'Counterfeit brand', refundAll: false },
@@ -337,6 +339,7 @@ describe('admin console API: merchants, listings, disputes, risk, audit (DESIGN 
       const back = await post(`listings/${l.id}/restore`, { reason: 'Merchant proved authenticity' });
       expect(back.body).toMatchObject({ status: 'CLOSED', takenDown: false, takenDownReason: null, cancellation: null, canRestore: false });
       expect((await publicListing(l)).body.availability).toBe('CLOSED');
+      expect(await prisma.listing.findUniqueOrThrow({ where: { id: l.id } })).toMatchObject({ cancelledAt: null, closedAt: expect.any(Date) });
       expect((await post(`listings/${l.id}/restore`, { reason: 'again' })).body.code).toBe('INVALID_STATE_TRANSITION');
       // Taken down again later: the earlier record is gone, so this works.
       expect((await post(`listings/${l.id}/takedown`, { reason: 'Again', refundAll: false })).status).toBe(200);

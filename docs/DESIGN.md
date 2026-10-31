@@ -491,7 +491,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - 登录相关的限流和暴力破解防护由 Clerk 负责
   - 公开下单：同一 IP 每分钟最多 10 次
 - **防刷（主要针对免费报名）**：免费报名没有付款这道门槛，很容易被脚本刷满或被恶意占位，因此：
-  - 所有公开下单接口都要求通过 **Cloudflare Turnstile** 人机验证，后端校验 token；Cloudflare 不可达时按未通过处理（fail closed）。同一 `Idempotency-Key` 的重放不再校验（token 只能用一次）。公开下单另有每 IP 每分钟 `ORDER_RATE_LIMIT_PER_MINUTE`（默认 10）次的限流，超出返回 `429 RATE_LIMITED`
+  - 所有公开下单接口都要求通过 **Cloudflare Turnstile** 人机验证，后端校验 token；Cloudflare 不可达时按未通过处理（fail closed）。同一 `Idempotency-Key` 的重放不再校验（token 只能用一次）。公开下单另有每 IP 每分钟 `ORDER_RATE_LIMIT_PER_MINUTE`（默认 10）次的限流，超出返回 `429 RATE_LIMITED`。买家 IP：后端也能被直接访问（webhook），按代理跳数取 IP 无法同时适用两条路，所以经网站转发的请求由前端 proxy 带上 Vercel 确认的客户端 IP 和共享密钥 `EDGE_SECRET`，后端只在密钥正确时采用；否则只信任 Render 负载均衡器（`TRUST_PROXY=1`），直接访问者无法伪造 IP
   - 免费接龙默认开启 `onePerEmail`
   - `maxQtyPerOrder` 对免费接龙默认为 1，最高可设为 10
   - Phase 2 视情况增加邮箱确认链接后才生效的报名模式
@@ -517,6 +517,10 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - 需要隐私政策页面，并且只收集履约必需的数据
   - **访问与删除请求**：买家可以邮件联系平台，admin 用「买家匿名化」工具处理（第 9 节）；商家可以通过导出 CSV 获取自己的数据，删除账号时由 `user.deleted` 流程处理。隐私政策要写明处理时限（Privacy Act 要求 20 个工作日内回应）
   - **数据保留**：订单的 PII 在接龙结束 12 个月后由定时任务自动匿名化（金额和状态保留）；AuditLog 保留 7 年
+    - `pii-retention.job.ts` 每天奥克兰时间 3:30 运行，每批 200 单、各自一个事务。「接龙结束」= 接龙已是 CLOSED 或 CANCELLED，结束时间取 `closedAt` / `cancelledAt`、`closesAt`、各场次开始/结束时间中最晚的一个（不用最后修改时间：之后的退款释放库存也会改它）。取消现在写 `cancelledAt`，恢复下架时清空，旧数据由 migration 回填
+    - 仍在进行中的订单留到以后：等待付款、有未结争议、有在途退款
+    - 和隐私删除请求用同一套替换（`anonymizeOrders`），先按排序锁住这批买家的邮箱，再 `SKIP LOCKED` 锁订单，所以两者不会死锁，找回订单邮件也不会带上正在被抹掉的链接；每批写一条 AuditLog（`SYSTEM`，`PII_RETENTION`，订单数和订单 id）
+    - 超过 12 个月、已发送或已失败的邮件记录按时间抹掉收件人、内容、错误信息和去重键（同一邮箱可能还有新订单，所以按时间而不是按邮箱）
   - 商家的账号数据（邮箱、姓名）存放在 Clerk，Clerk 的服务器在境外，属于跨境披露（IPP 12）。隐私政策中必须写明，商家注册页也要提示
   - 买家数据不经过 Clerk
 - **平台条款**：要求商家声明自己的经营合规（例如销售食品需要按 Food Act 注册），并禁止酒类、处方药、武器等商品。
@@ -540,7 +544,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - **微信内置浏览器**：检测到 WeChat UA 时，在页面顶部显示常驻横幅「微信内无法使用 Apple Pay，建议点右上角在浏览器中打开」；Android 微信提供「复制链接」按钮
 - **搜索引擎**：接龙页和商家主页默认输出 `<meta name="robots" content="noindex">`，仅当 `listing.indexable=true` 时去掉；首页和法律页面正常收录
 - `/m/[slug]` 商家公开主页，展示进行中的接龙
-- `/legal/terms`、`/legal/privacy`
+- `/legal/terms`、`/legal/privacy`：M9 先上中英双语草稿，页面顶部标明「草稿，待律师审定」（第 16 节第 7 条），正文在 `messages/*.json`；公开页脚链接这两页，商家注册页提示账号数据存放在境外的 Clerk
 
 **商家登录与后台（merchant 风格）**
 - `/login`：商家登录页，使用 merchant 风格，内嵌 Clerk 的 `<SignIn />` 组件：
@@ -616,8 +620,9 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - 目标规模：MVP 支持 1000 个商家、单个接龙峰值每分钟 200 单。
 - 部署：
   - 前端部署在 Vercel，绑定两个域名：`tagalong.nz`（主站）和 `admin.tagalong.nz`（admin），对应同一个项目
-  - 后端使用 Docker 部署在 Render / Railway / AWS ECS，选择离新西兰最近的区域（ap-southeast-2）
-  - 数据库使用托管 Postgres（Neon / RDS）
+  - 后端使用 Docker 部署在 **Render 新加坡**（`render.yaml`，staging 和生产各一个服务）。原计划离新西兰最近的悉尼（ap-southeast-2），但 Render 在亚太只有新加坡（M9 决定）
+  - 数据库使用 **Neon，同样放新加坡**（aws-ap-southeast-1）：下单一次事务约 10 次查询、持有库存行锁，后端和数据库跨区（约 90 ms 一次往返）会让锁持有约 1 秒，所以两者必须同区；新西兰用户到新加坡只多每个请求一次约 130 ms 的往返。数据存放在境外，隐私政策写明
+  - 部署、环境变量、上线检查（`scripts/smoke.sh`）和恢复演练见 `docs/RUNBOOK.md`
   - 文件存储使用 S3 或 Cloudflare R2
 - **环境清单**：
 
@@ -628,14 +633,15 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 | 后端 | localhost:3810 | api-staging.tagalong.nz | api.tagalong.nz |
 | Clerk | Development 实例 | Development 实例（第二个） | Production 实例 |
 | Stripe | test mode + Stripe CLI 转发 | test mode + 固定 webhook | live mode |
-| 数据库 | docker compose | 托管 Postgres（独立实例） | 托管 Postgres（PITR 开启） |
+| 数据库 | docker compose | Neon 新加坡（独立项目） | Neon 新加坡（history retention ≥ 7 天，即 PITR） |
 | 邮件 | Mailpit | Resend 测试域名 | Resend 正式域名 |
 | Turnstile | 测试 site key（总是通过） | 正式 | 正式 |
 
   - 本地端口刻意避开默认值（同一台开发机上 3000 / 4000 / 5432 / 8025 已被其他项目占用）：前端 3800（Playwright e2e 用 3801）、后端 3810、Postgres 5442、Mailpit UI 8026 / SMTP 1026。
   - Clerk 的 Development 实例不支持自定义域名，staging 的 admin 子域名共享会话需要实际验证；如果不行，staging 可以先把 admin 路径放在主域名下。
-- **备份与恢复**：生产数据库开启 PITR（至少 7 天），每周做一次恢复演练；S3 / R2 开启版本控制；Clerk 用户数据每月导出一次存档。
-- 可观测性：结构化日志（pino），每个请求带 requestId；Sentry 接入前后端。
+- **备份与恢复**：生产数据库开启 PITR（至少 7 天），每周做一次恢复演练（从某个时间点建 Neon 分支，用 `scripts/restore-check.sql` 和生产对比，记录在 RUNBOOK）；S3 / R2 开启版本控制；Clerk 用户数据每月导出一次存档。
+- 可观测性：结构化日志（pino），每个请求带 requestId；Sentry 接入前后端，只在配置了 DSN 时启用（测试和本地不发送）。不采集用户、cookie、请求体，不做 tracing 和 session replay；cookie、Authorization、`X-Order-Token`、`Idempotency-Key` 和 URL 里的 `t=` 与日志一样遮蔽。后端只上报没有被业务处理的错误（500），业务错误码和 4xx 不上报；邮件和退款最终失败时也上报（只带 id，错误信息可能含邮箱）。`/api/v1/health` 返回 `{status, env, release}`，上线检查据此确认是哪个版本在应答。
+- **生产环境的保护**：`APP_ENV=production` 时只接受 Stripe live key，其它环境只接受 test key；`NODE_ENV=production` 时 `APP_ENV` 必须是 staging 或 production，`SENTRY_DSN` 必填。
 - 测试：
   - 后端：服务层用 Vitest 单元测试（NestJS 12 只发布 ESM 包，Jest 无法加载，Nest 官方 ESM 模板默认即 Vitest + SWC）；e2e 测试用 Testcontainers Postgres；Stripe 调用通过注入的 `StripeClient` 进行 mock；必须包含第 7 节的超卖并发测试
   - 前端：组件测试；用 Playwright 覆盖「打开接龙页 → 下单 → 返回成功页」的主流程（Stripe 部分 mock）

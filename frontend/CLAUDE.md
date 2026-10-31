@@ -177,5 +177,9 @@ NEXT_PUBLIC_CLERK_SIGN_IN_URL=/login
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 NEXT_PUBLIC_SENTRY_DSN=
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=
-NEXT_PUBLIC_APP_ENV=development   # production | staging | development: admin environment banner
+NEXT_PUBLIC_APP_ENV=development   # production | staging | development: admin environment banner, Sentry environment
+EDGE_SECRET=                      # shared with the API: proxy.ts sends the buyer IP with it on /api (lib/edge-forward.ts)
+SENTRY_AUTH_TOKEN=                # Vercel builds only: source maps to Sentry (SENTRY_ORG, SENTRY_PROJECT)
+SENTRY_ORG=
+SENTRY_PROJECT=
 ```

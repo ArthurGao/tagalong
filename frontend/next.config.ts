@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { withSentryConfig } from '@sentry/nextjs/config';
 import createNextIntlPlugin from 'next-intl/plugin';
 import { BACKEND_URL } from './src/lib/backend-url';
 
@@ -13,4 +14,9 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default createNextIntlPlugin('./src/i18n/request.ts')(nextConfig);
+const config = createNextIntlPlugin('./src/i18n/request.ts')(nextConfig);
+
+// Source maps go to Sentry only from a build that has the upload token (Vercel production / staging).
+export default process.env.SENTRY_AUTH_TOKEN
+  ? withSentryConfig(config, { org: process.env.SENTRY_ORG, project: process.env.SENTRY_PROJECT, silent: !process.env.CI, sourcemaps: { deleteSourcemapsAfterUpload: true } })
+  : config;

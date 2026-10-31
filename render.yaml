@@ -1,0 +1,119 @@
+# Render Blueprint (DESIGN §13): the API in Singapore, next to its Neon database. Secrets are entered in the
+# dashboard (sync: false), never here. Staging deploys every main commit that passes CI; production by hand.
+# Jobs (outbox, refunds, expiry, retention, …) run inside the API: every one is safe on several instances.
+services:
+  - type: web
+    name: tagalong-api-staging
+    runtime: docker
+    region: singapore
+    plan: starter
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    preDeployCommand: node_modules/.bin/prisma migrate deploy
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: APP_ENV
+        value: staging
+      - key: APP_URL
+        value: https://staging.tagalong.nz
+      - key: CLERK_AUTHORIZED_PARTIES
+        value: https://staging.tagalong.nz,https://admin-staging.tagalong.nz
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: EMAIL_FROM
+        value: TagAlong Staging <orders@staging.tagalong.nz>
+      - key: TRUST_PROXY
+        value: '1' # Render's load balancer only; the buyer IP behind the web app comes with EDGE_SECRET (RUNBOOK §2)
+      - key: DATABASE_URL
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_JWT_KEY
+        sync: false
+      - key: CLERK_WEBHOOK_SIGNING_SECRET
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET_CONNECT
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET_PLATFORM
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_PUBLIC_BASE_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: TURNSTILE_SECRET_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: ADMIN_EMAIL_ALLOWLIST
+        sync: false
+      - key: EDGE_SECRET
+        sync: false
+
+  - type: web
+    name: tagalong-api
+    runtime: docker
+    region: singapore
+    plan: starter
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    preDeployCommand: node_modules/.bin/prisma migrate deploy
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_URL
+        value: https://tagalong.nz
+      - key: CLERK_AUTHORIZED_PARTIES
+        value: https://tagalong.nz,https://admin.tagalong.nz
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: EMAIL_FROM
+        value: TagAlong <orders@tagalong.nz>
+      - key: TRUST_PROXY
+        value: '1' # Render's load balancer only; the buyer IP behind the web app comes with EDGE_SECRET (RUNBOOK §2)
+      - key: DATABASE_URL
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_JWT_KEY
+        sync: false
+      - key: CLERK_WEBHOOK_SIGNING_SECRET
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET_CONNECT
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET_PLATFORM
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_PUBLIC_BASE_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: TURNSTILE_SECRET_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: ADMIN_EMAIL_ALLOWLIST
+        sync: false
+      - key: EDGE_SECRET
+        sync: false

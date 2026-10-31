@@ -14,6 +14,8 @@ TagAlong is a New Zealand group-buy / 接龙 platform. Any merchant can self-reg
 ├── backend/             ← NestJS + Prisma + PostgreSQL (see backend/CLAUDE.md)
 ├── frontend/            ← Next.js App Router + Tailwind + shadcn/ui (see frontend/CLAUDE.md)
 ├── docker-compose.yml   ← postgres, mailpit (local dev)
+├── render.yaml          ← API on Render (staging + production); docs/RUNBOOK.md: deploys, smoke, restore drill
+├── scripts/             ← smoke.sh (post-deploy checks), restore-check.sql (restore drill)
 ├── pnpm-workspace.yaml
 └── .github/workflows/   ← CI: lint, typecheck, test, build
 ```

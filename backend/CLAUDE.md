@@ -12,6 +12,7 @@ backend/
 │   └── seed.ts                 # demo merchant + listings for local dev
 ├── src/
 │   ├── main.ts                 # rawBody: true, global prefix /api/v1, ValidationPipe, Swagger, cookie-parser
+│   ├── instrument.ts           # Sentry init (only with SENTRY_DSN); imported right after load-env.ts
 │   ├── app.module.ts
 │   ├── config/                 # env schema (zod), typed ConfigService wrapper; fail fast on missing vars
 │   ├── prisma/                 # PrismaService, transaction helper
@@ -20,6 +21,8 @@ backend/
 │   │   ├── money.ts            # cents helpers, fee calc (bps)
 │   │   ├── ids.ts              # shortCode, publicCode, accessToken generators (crypto)
 │   │   ├── mask.ts             # name masking (DESIGN §10); email / phone masks for the admin console
+│   │   ├── logging/redact.ts   # secret headers + `t=` redaction, shared by pino and Sentry
+│   │   ├── observability/sentry.ts # sentryOptions, scrubEvent, reportError (500s from the filter; FAILED emails/refunds, ids only)
 │   │   └── rate-limit/         # @nestjs/throttler config
 │   └── modules/
 │       ├── health/
@@ -110,7 +113,7 @@ backend/
 - **Abuse controls:**
   - `common/security/turnstile.ts` `TurnstileVerifier` checks the token on every new order, after the idempotency replay; it fails closed. e2e tests use `test/e2e/support/turnstile-fake.ts`.
   - `ThrottlerGuard` on order creation limits each IP (`ORDER_RATE_LIMIT_PER_MINUTE`).
-  - `TRUST_PROXY` decides which hops may set X-Forwarded-For.
+  - `TRUST_PROXY` decides which hops may set X-Forwarded-For (1 on Render). Requests through our web app carry the buyer's IP in `x-tagalong-client-ip` with the shared `EDGE_SECRET` (`common/security/edge-client-ip.ts`, constant-time compare); only then is it `req.ip`. The API is also reached directly (webhooks), so no hop count can be right for both paths.
 - **Refunds (M6):**
   - **One queue for every platform refund** (merchant, late payment, cancellation): a `PENDING` Refund row and a `RefundTask` with the same id, written under the order lock (`refunds.refundable` = total − refunded − pending).
   - `RefundProcessor.process(task)` carries one out (inline first try for merchant/late refunds, then `refund.job.ts`). Stripe gets idempotency key `refund:{id}` and `metadata.refundId`.
@@ -215,7 +218,7 @@ Merchants and admins share **one Clerk application** and are distinguished by ro
 - `listing-close.job.ts` runs every minute and closes PUBLISHED listings whose `closesAt` has passed.
 - `outbox.job.ts` runs every 10 seconds (DESIGN §12 backoff schedule).
 - `refund.job.ts` runs every 30 seconds, 20 tasks per batch (every queued refund: merchant, late payment, cancellation), with `refund:{RefundTask.id}` as the Stripe idempotency key and a per-run lease token.
-- `pii-retention.job.ts` runs daily and anonymizes buyer PII on orders whose listing ended more than 12 months ago.
+- `pii-retention.job.ts` (orders module) runs daily at 03:30 Auckland and drains batches of 200, one transaction each. It anonymizes orders whose listing is CLOSED/CANCELLED and ended (latest of `closed_at` / `cancelled_at`, `closes_at`, session times) over 12 calendar months ago (`retentionCutoff`). It skips orders still in motion: PENDING_PAYMENT, an open dispute, a refund in flight. It shares `anonymizeOrders` with the privacy request and takes `lockBuyerEmail` for the batch (sorted) before `FOR UPDATE SKIP LOCKED` on the orders, the privacy request's lock order. One `PII_RETENTION` audit row (actor SYSTEM) per batch. It then erases outbox rows older than the period, by age.
 - `reminder.job.ts` (orders module) runs every 15 minutes and drains the due orders in batches of 100 (each its own transaction, soonest session first). Each UPDATE … SKIP LOCKED claims PAID/CONFIRMED SESSION/EVENT orders with a session starting within `remindBeforeHours` (default 24; candidates found through the `listing_option.starts_at` index) and sets `reminderSentAt`; the EVENT_REMINDER emails are queued in the same transaction. Past sessions are never reminded. `order-ops.hasCalendar` / `calendarEvents` are the TS side of the same rule.
 - `recovery.job.ts` (orders module) runs every 10 seconds and turns find-my-orders requests into ORDER_RECOVERY emails (see Find my orders).
 - `expiry.job.ts` runs every minute. It only applies to paid orders. It processes in batches, uses `FOR UPDATE SKIP LOCKED` so that multiple instances are safe, expires the Stripe session, then transitions the order to EXPIRED.
@@ -247,6 +250,13 @@ Merchants and admins share **one Clerk application** and are distinguished by ro
   - Recover-order returns an identical response for known and unknown emails.
   - Anonymize: PII columns replaced, `accessToken` invalid, amounts unchanged (`admin-orders.e2e-spec.ts`).
 
+## Deployment
+
+- `Dockerfile` (build from the repo root: `docker build -f backend/Dockerfile .`): one stage that keeps the Prisma CLI,
+  because Render's pre-deploy step runs `pnpm prisma:deploy` in the image before the new version takes traffic.
+- `render.yaml` (repo root) defines staging and production in Singapore, next to Neon. `/api/v1/health` reports
+  `{ status, env: APP_ENV, release: RENDER_GIT_COMMIT }`; `scripts/smoke.sh` checks it. Details: `docs/RUNBOOK.md`.
+
 ## Commands
 
 ```bash
@@ -274,7 +284,8 @@ ADMIN_EMAIL_ALLOWLIST=           # comma-separated
 STRIPE_SECRET_KEY=
 TURNSTILE_SECRET_KEY=
 ORDER_RATE_LIMIT_PER_MINUTE=10
-TRUST_PROXY=loopback
+TRUST_PROXY=loopback          # 1 on Render (its load balancer)
+EDGE_SECRET=                  # shared with the web app: buyer IP behind it (common/security/edge-client-ip.ts)
 STRIPE_WEBHOOK_SECRET_CONNECT=
 STRIPE_WEBHOOK_SECRET_PLATFORM=
 PLATFORM_FEE_BPS=300
@@ -290,5 +301,7 @@ S3_BUCKET=
 S3_ACCESS_KEY_ID=
 S3_SECRET_ACCESS_KEY=
 S3_PUBLIC_BASE_URL=
-SENTRY_DSN=
+APP_ENV=development           # development | staging | production
+SENTRY_DSN=                   # required in production
+RENDER_GIT_COMMIT=            # set by Render
 ```

@@ -835,6 +835,13 @@ export interface components {
         HealthDto: {
             /** @enum {string} */
             status: "ok";
+            /**
+             * @description Which deployment answered
+             * @enum {string}
+             */
+            env: "development" | "staging" | "production";
+            /** @description The deployed commit; empty when not deployed by Render */
+            release: string;
         };
         CreateMerchantDto: {
             /** @example xiaolin-farm */

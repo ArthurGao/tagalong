@@ -329,7 +329,7 @@ export class ListingsService {
       assertListingRestorable({ ...listing, cancellation });
       await tx.listingCancellation.delete({ where: { listingId: id } });
       await audit(tx);
-      return { status: 'CLOSED', closedAt: new Date(), takenDownAt: null, takenDownReason: null };
+      return { status: 'CLOSED', closedAt: new Date(), cancelledAt: null, takenDownAt: null, takenDownReason: null };
     });
   }
 

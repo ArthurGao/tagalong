@@ -16,6 +16,12 @@ export const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().positive().default(3810),
+    // Which deployment this is (DESIGN §13): staging and production both run NODE_ENV=production.
+    APP_ENV: z.enum(['development', 'staging', 'production']).default('development'),
+    // Error reporting (DESIGN §13); off without a DSN, so tests and local runs send nothing.
+    SENTRY_DSN: z.string().default(''),
+    // The deployed commit, set by Render; reported by /health and to Sentry as the release.
+    RENDER_GIT_COMMIT: z.string().default(''),
     APP_URL: z.url(),
     DATABASE_URL: z.url(),
     // Clerk (DESIGN D13, §9). Optional outside production so the app boots before keys exist;
@@ -51,9 +57,17 @@ export const envSchema = z
     ORDER_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(10),
     // Express "trust proxy": which hops may set X-Forwarded-For (the Next rewrite runs on the same host locally).
     TRUST_PROXY: z.string().default('loopback'),
+    // Shared with the web app: its proxy passes the buyer's IP with it (common/security/edge-client-ip.ts).
+    EDGE_SECRET: z.string().default(''),
   })
   .superRefine((env, ctx) => {
+    // CLAUDE.md rule 9: live Stripe keys in production only, and only live keys there; secret or restricted keys only.
+    const mode = env.APP_ENV === 'production' ? 'live' : 'test';
+    if (env.STRIPE_SECRET_KEY && !new RegExp(`^(sk|rk)_${mode}_`).test(env.STRIPE_SECRET_KEY)) {
+      ctx.addIssue({ code: 'custom', path: ['STRIPE_SECRET_KEY'], message: `must be a ${mode} secret or restricted key` });
+    }
     if (env.NODE_ENV !== 'production') return;
+    if (env.APP_ENV === 'development') ctx.addIssue({ code: 'custom', path: ['APP_ENV'], message: 'must be staging or production' });
     const required = {
       CLERK_SECRET_KEY: env.CLERK_SECRET_KEY,
       CLERK_JWT_KEY: env.CLERK_JWT_KEY,
@@ -69,6 +83,8 @@ export const envSchema = z
       EMAIL_FROM: env.EMAIL_FROM,
       TURNSTILE_SECRET_KEY: env.TURNSTILE_SECRET_KEY,
       RESEND_API_KEY: env.EMAIL_PROVIDER === 'resend' ? env.RESEND_API_KEY : 'not used',
+      SENTRY_DSN: env.SENTRY_DSN,
+      EDGE_SECRET: env.EDGE_SECRET,
     };
     if (env.EMAIL_PROVIDER !== 'resend') {
       ctx.addIssue({ code: 'custom', path: ['EMAIL_PROVIDER'], message: 'must be resend in production' });

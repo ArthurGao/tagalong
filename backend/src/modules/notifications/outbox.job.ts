@@ -6,6 +6,7 @@ import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import type { NotificationOutbox } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { reportError } from '../../common/observability/sentry.js';
 import { EmailService } from './email.service.js';
 import { renderEmail, UnknownTemplateError } from './templates.js';
 
@@ -70,8 +71,9 @@ export class OutboxJob {
         if (retryAt) result.retrying++;
         else {
           result.failed++;
-          // Sentry arrives in M9; until then FAILED rows are logged at error level.
           this.logger.error(`outbox: ${row.type} ${row.id} FAILED after ${attempts} attempt(s): ${lastError}`);
+          // DESIGN §12: a FAILED email is reported. Ids only: a provider's error can quote the recipient.
+          reportError(new Error(`Email ${row.type} FAILED`), { notificationId: row.id, attempts });
         }
       }
     }
