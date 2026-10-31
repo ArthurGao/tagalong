@@ -26,6 +26,16 @@ export function redactUrl(url: string): string {
   return `${url.slice(0, queryStart)}?${params.toString()}${hashStart === -1 ? '' : url.slice(hashStart)}`;
 }
 
+const EMAIL = /[^\s@()<>,;:"'=]+@[^\s@()<>,;:"']+\.[^\s@()<>,;:"']+/g;
+// Phone numbers as buyers type them: +64 or a trunk 0, then at least 7 more digits (dates and ids do not start so).
+const PHONE = /(?:\+\d{1,3}[\s-]?|\b0)\d[\d\s-]{5,}\d/g;
+const TOKEN_PARAM = new RegExp(`([?&](?:${SECRET_QUERY_PARAMS.join('|')})=)[^&\\s#]+`, 'g');
+
+/** Free text (an error message, a console breadcrumb) with emails, phone numbers and order tokens taken out. */
+export function redactText(text: string): string {
+  return text.replace(EMAIL, '[email]').replace(TOKEN_PARAM, '$1%5BRedacted%5D').replace(PHONE, '[number]');
+}
+
 export function scrubEvent(event: ErrorEvent): ErrorEvent {
   if (event.request) {
     delete event.request.data;
@@ -42,6 +52,8 @@ export function scrubEvent(event: ErrorEvent): ErrorEvent {
     }
   }
   delete event.user;
+  if (event.message) event.message = redactText(event.message);
+  for (const value of event.exception?.values ?? []) if (value.value) value.value = redactText(value.value);
   return event;
 }
 
@@ -50,6 +62,7 @@ export function scrubBreadcrumb(crumb: Breadcrumb): Breadcrumb {
     const value = crumb.data?.[key];
     if (typeof value === 'string') crumb.data![key] = redactUrl(value);
   }
+  if (crumb.message) crumb.message = redactText(crumb.message);
   return crumb;
 }
 

@@ -34,6 +34,16 @@ describe('sentry-scrub (DESIGN §10: no order tokens or buyer data in error repo
     expect(sentryOptions('dsn', 'production').dataCollection.httpHeaders).toEqual({ deny: ['cookie', 'authorization', 'x-order-token', 'idempotency-key'] });
   });
 
+  it('redacts emails, phone numbers and order tokens quoted in error messages and console breadcrumbs', () => {
+    const event = scrubEvent({
+      type: undefined,
+      message: 'checkout for amy@example.test failed',
+      exception: { values: [{ type: 'Error', value: 'buyer 021 555 0101 at /en/o/TA-1?t=secret' }] },
+    } as ErrorEvent);
+    expect([event.message, event.exception!.values![0].value]).toEqual(['checkout for [email] failed', 'buyer [number] at /en/o/TA-1?t=%5BRedacted%5D']);
+    expect(scrubBreadcrumb({ category: 'console', message: 'Amy.Lee@Example.test signed up' }).message).toBe('[email] signed up');
+  });
+
   it('is off without a DSN and never traces', () => {
     expect(sentryOptions(undefined, undefined)).toMatchObject({ enabled: false, environment: 'development' });
     expect(sentryOptions('dsn', 'production')).not.toHaveProperty('tracesSampleRate'); // setting it, even to 0, turns tracing on

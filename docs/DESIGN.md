@@ -640,7 +640,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - 本地端口刻意避开默认值（同一台开发机上 3000 / 4000 / 5432 / 8025 已被其他项目占用）：前端 3800（Playwright e2e 用 3801）、后端 3810、Postgres 5442、Mailpit UI 8026 / SMTP 1026。
   - Clerk 的 Development 实例不支持自定义域名，staging 的 admin 子域名共享会话需要实际验证；如果不行，staging 可以先把 admin 路径放在主域名下。
 - **备份与恢复**：生产数据库开启 PITR（至少 7 天），每周做一次恢复演练（从某个时间点建 Neon 分支，用 `scripts/restore-check.sql` 和生产对比，记录在 RUNBOOK）；S3 / R2 开启版本控制；Clerk 用户数据每月导出一次存档。
-- 可观测性：结构化日志（pino），每个请求带 requestId；Sentry 接入前后端，只在配置了 DSN 时启用（测试和本地不发送）。不采集用户、cookie、请求体，不做 tracing 和 session replay；cookie、Authorization、`X-Order-Token`、`Idempotency-Key` 和 URL 里的 `t=` 与日志一样遮蔽。后端只上报没有被业务处理的错误（500），业务错误码和 4xx 不上报；邮件和退款最终失败时也上报（只带 id，错误信息可能含邮箱）。`/api/v1/health` 返回 `{status, env, release}`，上线检查据此确认是哪个版本在应答。
+- 可观测性：结构化日志（pino），每个请求带 requestId；Sentry 接入前后端，只在配置了 DSN 时启用（测试和本地不发送）。不采集用户、cookie、请求体，不做 tracing 和 session replay；cookie、Authorization、`X-Order-Token`、`Idempotency-Key`、`x-tagalong-edge` / `x-tagalong-client-ip` 和 URL（含 Referer）里的 `t=` 与日志一样遮蔽；错误信息和 breadcrumb 文字里的邮箱、手机号、订单 token 也会替换掉（Postgres 错误会引用字段值），错误日志同样处理。后端只上报没有被业务处理的错误（500），业务错误码和 4xx 不上报；邮件和退款最终失败时也上报（只带 id，错误信息可能含邮箱）。`/api/v1/health` 返回 `{status, env, release}`，上线检查据此确认是哪个版本在应答。
 - **生产环境的保护**：`APP_ENV=production` 时只接受 Stripe live key，其它环境只接受 test key；`NODE_ENV=production` 时 `APP_ENV` 必须是 staging 或 production，`SENTRY_DSN` 必填。
 - 测试：
   - 后端：服务层用 Vitest 单元测试（NestJS 12 只发布 ESM 包，Jest 无法加载，Nest 官方 ESM 模板默认即 Vitest + SWC）；e2e 测试用 Testcontainers Postgres；Stripe 调用通过注入的 `StripeClient` 进行 mock；必须包含第 7 节的超卖并发测试

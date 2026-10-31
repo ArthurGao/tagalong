@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import type { Response } from 'express';
+import { redactText } from '../logging/redact.js';
 import { reportError } from '../observability/sentry.js';
 import { AppError } from './app-error.js';
 import type { ErrorBodyDto as ErrorBody } from './error-body.dto.js';
@@ -53,7 +54,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
   }
 
   private internal(exception: unknown, status: number): { status: number; body: ErrorBody } {
-    this.logger.error(exception instanceof Error ? exception.stack : String(exception));
+    this.logger.error(redactText(exception instanceof Error ? (exception.stack ?? exception.message) : String(exception)));
     reportError(exception); // only what we did not answer on purpose: business codes and 4xx never reach Sentry
     return { status, body: { code: 'INTERNAL', message: 'Internal server error' } };
   }

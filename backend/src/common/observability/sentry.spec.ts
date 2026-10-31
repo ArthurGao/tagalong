@@ -1,5 +1,5 @@
 import type { ErrorEvent } from '@sentry/nestjs';
-import { scrubEvent, sentryOptions } from './sentry.js';
+import { scrubBreadcrumb, scrubEvent, sentryOptions } from './sentry.js';
 
 describe('Sentry scrubbing (DESIGN §10: no credentials or buyer data in error reports)', () => {
   it('redacts secret headers, drops cookies, body and user, and redacts the order token in the URL and query', () => {
@@ -28,6 +28,20 @@ describe('Sentry scrubbing (DESIGN §10: no credentials or buyer data in error r
     });
     expect(event.user).toBeUndefined();
     expect(JSON.stringify(event)).not.toMatch(/secret-token|jwt|amy@/);
+  });
+
+  it('redacts emails, phone numbers and order tokens quoted in error messages and breadcrumbs', () => {
+    const event = scrubEvent({
+      type: undefined,
+      message: 'refund for amy@example.test failed',
+      exception: { values: [{ type: 'PrismaClientKnownRequestError', value: 'Key (buyer_email)=(Amy.Lee@Example.test) already exists; phone +64 21 555 0101; /o/TA-1?t=secret-token' }] },
+      request: { headers: { 'x-tagalong-edge': 'edge-secret', 'x-tagalong-client-ip': '203.0.113.7' } },
+    } as ErrorEvent);
+    expect(event.exception!.values![0].value).toBe('Key (buyer_email)=([email]) already exists; phone [number]; /o/TA-1?t=%5BRedacted%5D');
+    expect(event.exception!.values![0].type).toBe('PrismaClientKnownRequestError');
+    expect(event.message).toBe('refund for [email] failed');
+    expect(event.request!.headers).toEqual({ 'x-tagalong-edge': '[Redacted]', 'x-tagalong-client-ip': '[Redacted]' });
+    expect(scrubBreadcrumb({ category: 'console', message: 'sent to ben@example.test' }).message).toBe('sent to [email]');
   });
 
   it('collects no user, cookies or bodies, and no traces', () => {

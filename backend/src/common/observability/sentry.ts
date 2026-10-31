@@ -1,6 +1,6 @@
 import * as Sentry from '@sentry/nestjs';
 import type { Env } from '../../config/env.js';
-import { REDACTED, redactQuery, redactUrl, SECRET_HEADERS, SECRET_QUERY_PARAMS } from '../logging/redact.js';
+import { REDACTED, redactQuery, redactText, redactUrl, SECRET_HEADERS, SECRET_QUERY_PARAMS } from '../logging/redact.js';
 
 type ErrorEvent = Sentry.ErrorEvent;
 type Breadcrumb = Sentry.Breadcrumb;
@@ -47,11 +47,15 @@ export function scrubEvent(event: ErrorEvent): ErrorEvent {
     }
   }
   delete event.user;
+  // Messages can quote values (Postgres: "Key (buyer_email)=(…) already exists"): the error type and stack stay.
+  if (event.message) event.message = redactText(event.message);
+  for (const value of event.exception?.values ?? []) if (value.value) value.value = redactText(value.value);
   return event;
 }
 
-function scrubBreadcrumb(crumb: Breadcrumb): Breadcrumb {
+export function scrubBreadcrumb(crumb: Breadcrumb): Breadcrumb {
   if (typeof crumb.data?.url === 'string') crumb.data.url = redactUrl(crumb.data.url);
+  if (crumb.message) crumb.message = redactText(crumb.message);
   return crumb;
 }
 
