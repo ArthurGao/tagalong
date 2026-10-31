@@ -12,7 +12,7 @@ import { canTransition, transitionOrder } from './order-state-machine.js';
 import { readFormFields } from '../listings/form-fields.js';
 import { ordersCsv } from './orders-csv.js';
 import { RefundProcessor } from './refund-processor.js';
-import { queueRefund, refundable, refundableCents, refundStateByOrder } from './refunds.js';
+import { decideRefund, refundableNow, refundStateByOrder } from './refunds.js';
 import { eventStarted } from '../listings/availability.js';
 import { cancelFreeWithEmail, lockOrder, type OrderDetail, orderDetail } from './order-ops.js';
 
@@ -103,13 +103,7 @@ export class MerchantOrdersService {
   async refund(user: AuthUser, orderId: string, amountCents: number, reason: string): Promise<MerchantOrderDto> {
     const merchantId = requireMerchantId(user);
     const task = await this.prisma.$transaction(async (tx) => {
-      const order = await lockOwnOrder(tx, merchantId, orderId);
-      if (!canTransition(order.isFree, order.status, 'REFUNDED') || !order.stripePaymentIntentId) {
-        throw new AppError('INVALID_STATE_TRANSITION', 'Only paid orders can be refunded', { from: order.status, to: 'REFUNDED' });
-      }
-      const left = await refundableCents(tx, order);
-      if (amountCents > left) throw new AppError('REFUND_EXCEEDS_TOTAL', 'More than is left to refund', { refundableCents: left });
-      return queueRefund(tx, { orderId, amountCents, reason });
+      return decideRefund(tx, await lockOwnOrder(tx, merchantId, orderId), amountCents, reason);
     });
     await this.refunds.process(task);
     return this.read(orderId);
@@ -179,7 +173,7 @@ function toMerchantOrder(o: MerchantDetail, pendingRefundCents: number, lastRefu
     canFulfil: canTransition(o.isFree, o.status, 'FULFILLED'),
     canCancel: confirmed,
     canNoShow: confirmed && started(o, now),
-    refundableCents: canTransition(o.isFree, o.status, 'REFUNDED') ? refundable(o, pendingRefundCents) : 0,
+    refundableCents: refundableNow(o, pendingRefundCents),
     pendingRefundCents,
     lastRefundFailed,
   };

@@ -18,6 +18,6 @@ import { PublicOrdersController } from './public-orders.controller.js';
   imports: [NotificationsModule, StripeClientModule],
   controllers: [PublicOrdersController, MerchantOrdersController],
   providers: [OrdersService, MerchantOrdersService, CancellationService, RefundProcessor, RefundJob, ReminderJob, RecoveryJob, CheckoutWebhooksService, ExpiryJob, { provide: TurnstileVerifier, useClass: CloudflareTurnstileVerifier }],
-  exports: [CheckoutWebhooksService, CancellationService],
+  exports: [CheckoutWebhooksService, CancellationService, RefundProcessor],
 })
 export class OrdersModule {}

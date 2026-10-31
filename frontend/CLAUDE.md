@@ -43,14 +43,15 @@ frontend/
 │   │               ├── page.tsx              # overview
 │   │               ├── merchants/page.tsx    # table + detail drawer
 │   │               ├── listings/page.tsx
-│   │               ├── orders/page.tsx
+│   │               ├── orders/page.tsx        # search, drawer (MaskedPii, refund), AnonymizeBuyer
+│   │               ├── cancellations/page.tsx # bulk refunds, RetryRefund per failed refund
 │   │               ├── disputes/page.tsx
 │   │               └── audit-log/page.tsx
 │   ├── components/
 │   │   ├── ui/                   # shadcn/ui (generated)
 │   │   ├── public/               # OptionPicker, SignUpSheet, RemainingBar, Countdown, BuyerForm, StickyBuyBar, WeChatBanner, PaymentConfirming
 │   │   ├── merchant/             # listing-editor/ (ListingEditor + one component per step, use-save hook), ListingRows, LedgerList (check-off rows), RefundDrawer, ShareTextButton
-│   │   └── admin/                # EnvBanner, AdminNav, DetailDrawer, ConfirmWithReason, RiskFlags, MerchantDetail, ListingDetail (M8b: MaskedPii)
+│   │   └── admin/                # EnvBanner, AdminNav, DetailDrawer, ConfirmWithReason, RiskFlags, MerchantDetail, ListingDetail, OrderDetail, MaskedPii, AnonymizeBuyer, RetryRefund
 │   ├── lib/
 │   │   ├── api/                  # schema.d.ts (generated), client.ts (openapi-fetch), errors.ts (map error codes → i18n keys)
 │   │   ├── money.ts              # formatCents(cents) → "$39.00" (NZD)
@@ -144,7 +145,7 @@ frontend/
   - **Admin login:** hide the sign-up footer link with `appearance.elements.footerAction: { display: 'none' }`. There is no admin sign-up route.
   - **API calls:** they are same-origin via rewrites, so Clerk's `__session` cookie reaches the backend. Don't add Authorization headers in the web app.
   - **Role checks in components:** read the role via `useUser().user.publicMetadata.role` or `sessionClaims` only for showing or hiding UI. Never use it to decide what data to fetch.
-- **Admin pages:** every write uses `ConfirmWithReason` (a reason, kept in the audit log); destructive ones (suspend, take down) also make the admin type the merchant slug. Lists are server components: filters are a GET form, pages a `cursor` link, and the selected row is `?id=`, read on the server and shown in `DetailDrawer` (a stretched link covers each row). Writes go through `useSave` in the drawer, then `router.refresh()`. Admin links use the admin host's own paths (`/{locale}/merchants`), which the proxy rewrites into the admin tree. `EnvBanner` (in the admin layout, login included) shows `NEXT_PUBLIC_APP_ENV`: red in production, amber on staging. PII is shown via `MaskedPii` (M8b), which calls the reveal endpoint.
+- **Admin pages:** every write uses `ConfirmWithReason` (a reason, kept in the audit log); destructive ones (suspend, take down) also make the admin type the merchant slug. Lists are server components: filters are a GET form, pages a `cursor` link, and the selected row is `?id=`, read on the server and shown in `DetailDrawer` (a stretched link covers each row). Writes go through `useSave` in the drawer, then `router.refresh()`. Admin links use the admin host's own paths (`/{locale}/merchants`), which the proxy rewrites into the admin tree. `EnvBanner` (in the admin layout, login included) shows `NEXT_PUBLIC_APP_ENV`: red in production, amber on staging. PII is shown via `MaskedPii`: masked as the list returns it until a reveal (with a reason, audited); the full details live only in component state, so a reload masks them again. `ConfirmWithReason`'s `valid` gates its extra fields (the admin refund's dollar amount, `dollarsToCents`, within `refundableCents`); anonymisation makes the admin type the email again.
 
 ## Testing
 

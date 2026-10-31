@@ -10,6 +10,10 @@ const SECTIONS = [
   { key: 'overview', path: '' },
   { key: 'merchants', path: '/merchants' },
   { key: 'listings', path: '/listings' },
+  { key: 'orders', path: '/orders' },
+  { key: 'cancellations', path: '/cancellations' },
+  { key: 'disputes', path: '/disputes' },
+  { key: 'audit', path: '/audit-log' },
 ] as const;
 
 export function AdminNav() {

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { isUndeliverableEmail } from '../../common/email.js';
 import { DEFAULT_LOCALE } from '../../common/locale.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { PayloadByType } from './templates.js';
@@ -21,7 +22,9 @@ export const toMerchant = (merchant: { contactEmail: string }) => ({ recipient: 
 // DESIGN §12 / D16: business code enqueues inside its own transaction; only outbox.job sends.
 @Injectable()
 export class NotificationsService {
+  /** Undeliverable addresses (an anonymized buyer's) are dropped here, the one place every email passes (refunds settling later, reminders). */
   async enqueue(tx: Prisma.TransactionClient, ...notifications: Notification[]): Promise<void> {
-    if (notifications.length) await tx.notificationOutbox.createMany({ data: notifications, skipDuplicates: true });
+    const deliverable = notifications.filter((n) => !isUndeliverableEmail(n.recipient));
+    if (deliverable.length) await tx.notificationOutbox.createMany({ data: deliverable, skipDuplicates: true });
   }
 }

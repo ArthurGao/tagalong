@@ -8,13 +8,12 @@ import { Input } from '@/components/ui/input';
 import { NativeSelect } from '@/components/ui/native-select';
 import { getAdminListing, getAdminListings } from '@/lib/api/server';
 import { listingStatusKey } from '@/lib/listing-status';
-import { firstParam, queryHref } from '@/lib/query-href';
+import { firstParam, isUuid, queryHref } from '@/lib/query-href';
 import { formatNzDateTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
 const STATUSES = ['DRAFT', 'PUBLISHED', 'CLOSED', 'CANCELLED'] as const;
 const PRICINGS = ['PAID', 'FREE'] as const;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Every merchant's listings (DESIGN §11): filter by merchant, status and pricing; a row opens the drawer (?id=).
 export default async function AdminListingsPage({
@@ -37,7 +36,7 @@ export default async function AdminListingsPage({
   };
   const status = STATUSES.find((s) => s === search.status);
   const pricing = PRICINGS.find((p) => p === search.pricing);
-  const merchantId = search.merchantId && UUID.test(search.merchantId) ? search.merchantId : undefined;
+  const merchantId = isUuid(search.merchantId) ? search.merchantId : undefined;
   const [t, tStatus, tPricing, tFilters] = await Promise.all([
     getTranslations('admin.listings'),
     getTranslations('admin.listingStatus'),
@@ -46,7 +45,7 @@ export default async function AdminListingsPage({
   ]);
   const [page, selected] = await Promise.all([
     getAdminListings({ merchantId, status, pricing, q: search.q || undefined, cursor: search.cursor || undefined }),
-    search.id && UUID.test(search.id) ? getAdminListing(search.id) : null,
+    isUuid(search.id) ? getAdminListing(search.id) : null,
   ]);
   const path = `/${locale}/listings`;
   const list = { merchantId, status: search.status, pricing: search.pricing, q: search.q, cursor: search.cursor };

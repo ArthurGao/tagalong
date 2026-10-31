@@ -22,3 +22,16 @@ export function maskName(name: string): string {
   if (words.length === 1) return words[0];
   return `${words[0]} ${[...words[words.length - 1]][0].toUpperCase()}.`;
 }
+
+/** Admin order search (DESIGN §9): "amy.lee@example.com" → "a***@example.com"; no "@" shows nothing. */
+export function maskEmail(email: string): string {
+  const at = email.lastIndexOf('@');
+  if (at < 1) return '***';
+  return `${[...email][0]}***${email.slice(at)}`;
+}
+
+/** Admin order search: only the last 4 digits, "021 555 0101" → "*** 0101"; a number too short to hide shows nothing. */
+export function maskPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  return digits.length < 7 ? '***' : `*** ${digits.slice(-4)}`;
+}

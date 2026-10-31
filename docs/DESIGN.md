@@ -144,6 +144,7 @@ Merchant 1──* MerchantNote (admin 内部备注)
 - `onePerEmail` (bool)：下单时复制接龙的 `onePerEmail`，作为快照；部分唯一索引需要它（索引条件不能引用 listing 表）
 - `idempotencyKey?` (unique)：客户端生成的 UUID，防止重复提交
 - `locale`：下单时买家界面语言（`zh-CN` / `en`），之后由 outbox 发送的邮件按它选择语言
+- `anonymizedAt?`：买家 PII 被替换的时间（admin 处理隐私删除请求，或 M9 的保留期任务）；金额和状态不变
 - `status`：`PENDING_PAYMENT | PAID | CONFIRMED | FULFILLED | EXPIRED | CANCELLED | REFUNDED | PARTIALLY_REFUNDED | NO_SHOW`，状态流转见第 6 节
 - 金额：`subtotalCents`, `platformFeeCents`, `totalCents`, `refundedCents`
 - `sequenceNo?`（付款成功后才分配，对应「#12」）
@@ -450,13 +451,20 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - `POST /admin/listings/:id/takedown` {reason, refundAll: bool}：下架，公开页显示「已下架」；可以选择一并全额退款（付费接龙）或取消所有报名（免费接龙）。不选时已有订单保持原状，只结束未付款的结账。与商家取消走同一条路径（同样写 `ListingCancellation`），并邮件通知商家
 - `POST /admin/listings/:id/restore` {reason}：恢复被下架的接龙，仅限下架时没有执行退款或取消的情况；恢复后为 `CLOSED`（商家可以自己重新开放），删除这次下架的 `ListingCancellation`（历史在 AuditLog 里）
 - **admin 不能修改商家接龙的内容**（标题、价格、描述）。内容有问题时，只能下架并联系商家修改，以免平台对商家内容承担编辑责任
-- `GET /admin/orders?q=`：可按 publicCode、邮箱、手机号查询，返回的 PII 默认遮罩
-- `POST /admin/orders/:id/reveal-pii`：返回明文 PII，并记录 `PII_REVEAL`
-- `POST /admin/orders/:id/refund` {amountCents, reason}：代商家退款（例如处理投诉时）。使用 direct charge 时，平台可以在商家的 connected account 上直接发起退款；必须记入审计日志，并邮件通知商家
+- `GET /admin/orders?q=&cursor=`：所有商家的订单，最新在前，每页 50。`q` 可以是订单号（带不带 `TA-` 都行）、买家邮箱（完整、不分大小写）或手机号（至少 6 位数字，忽略开头的 0 或 +64，所以 `021…` 和 `+64 21…` 互相能查到）；不带 `q` 时列出最新订单。返回的 PII 默认遮罩：姓名同公开脱敏（`Arthur G.`），邮箱 `a***@example.com`，手机只留后 4 位 `*** 0101`；另有 `anonymized`、`openDispute`、`refundableCents` 等
+- `GET /admin/orders/:id`：同一行再加商品、退款记录和取货点，PII 仍遮罩
+- `POST /admin/orders/:id/reveal-pii` {reason}：返回明文 PII（姓名、邮箱、手机、备注、报名信息、参加者信息），并在同一事务里记录 `PII_REVEAL`；前端只在抽屉里显示，刷新后重新遮罩
+- `POST /admin/orders/:id/refund` {amountCents, reason}：代商家退款（例如处理投诉时）。使用 direct charge 时，平台可以在商家的 connected account 上直接发起退款。与商家退款走同一套判断和队列（`refunds.decideRefund`：只有已付款且还有可退金额的订单，不超过剩余可退金额，否则 `REFUND_EXCEEDS_TOTAL`）；同一事务里写入审计（`REFUND_CREATE`，metadata 含金额和退款 id），并给商家发 `MERCHANT_REFUNDED_BY_ADMIN` 邮件；原因也会告诉买家
 - `GET /admin/disputes?status=`
 - `GET /admin/audit-log?actor=&action=&targetId=&cursor=`
-- `GET /admin/cancellations?status=`、`POST /admin/refund-tasks/:id/retry`：批量退款的失败处理
-- `POST /admin/buyers/anonymize` {email, reason}：**隐私删除请求**。把该邮箱所有订单的 `buyerName`、`buyerEmail`、`buyerPhone`、`buyerNote`、`formAnswers`、`attendeeName`、`attendeeAnswers` 替换为占位值，`accessToken` 作废；保留金额和状态用于对账；写入 AuditLog（`BUYER_ANONYMIZE`）。只有 `PENDING_PAYMENT` 和有未结争议的订单不能匿名化
+- `GET /admin/cancellations?status=&cursor=`：批量退款（取消或下架时选了退款的接龙），最新在前，带进度和每笔 FAILED 的退款（订单号、金额、尝试次数、最后的错误、是否被 Stripe 明确拒绝）
+- `POST /admin/refund-tasks/:id/retry` {reason}：把批量退款中的一笔 FAILED 退款放回队列（`CancellationService.retryFailed`），写入 `REFUND_RETRY`。先锁订单再锁退款任务，所以同时两次重试只有一次生效，另一次返回 `INVALID_STATE_TRANSITION`；如果之后这笔钱已经用别的方式退了（剩余可退金额不够），返回 `REFUND_EXCEEDS_TOTAL`。单笔退款（不属于批量退款）不在这里重试，返回 404：商家或 admin 可以直接再退一次
+- `POST /admin/buyers/anonymize` {email, reason}：**隐私删除请求**。把该邮箱（不分大小写）所有订单的 `buyerName`、`buyerEmail`、`buyerPhone`、`buyerNote`、`formAnswers`、`attendeeName`、`attendeeAnswers` 替换为占位值，`accessToken` 作废；保留金额和状态用于对账；写入 AuditLog（`BUYER_ANONYMIZE`）。只有 `PENDING_PAYMENT` 和有未结争议的订单不能匿名化
+  - 在一个事务里锁住该邮箱的所有订单；有阻挡的订单时返回 `409 ANONYMIZE_BLOCKED`，`details.publicCodes` 列出这些订单，什么都不改；没有订单时 404
+  - 占位值：姓名 `Anonymized`，邮箱 `{orderId}@anonymized.invalid`（保留域名，RFC 2606），手机为空，显示为匿名，`anonymizedAt` 记下时间；新的 `accessToken` 不给任何人：用原来的 `Idempotency-Key` 重放下单请求也只返回 404，不返回 token 或订单链接
+  - 邮件：outbox 里发给这个邮箱的记录只留类型和时间（收件人、内容、投递错误抹掉，未发的标为 FAILED，去重键换掉），待处理的找回订单请求删除；匿名化和找回订单任务对同一邮箱用同一把事务级 advisory lock 串行，所以正在生成的找回邮件不会在匿名化之后带着旧地址和链接入队；之后发往 `.invalid` 域名的邮件在入队时直接丢弃（例如之后才完成的退款）
+  - 审计行不含邮箱本身：`targetType = buyer`，`targetId` 为规范化邮箱的 SHA-256，metadata 记订单数和订单 id
+  - Stripe 上 Checkout 留存的邮箱不在此范围
 
 **风险标记**（MVP 阶段在服务端实时计算，无需规则引擎）：满足以下任一条件即标记，在列表中显示 ⚠
 - 商家创建不到 7 天
@@ -466,7 +474,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 
 口径：退款率 = 最近 90 天已付款订单的退款额 ÷ 付款额；GMV = 买家实付金额（不扣退款）；「单日」= 奥克兰时间今天零点至今，对比之前 30 个奥克兰日的日均值（之前没有销售时，今天有任何销售都算突增，只是提醒管理员看一眼）。列表和详情返回 `riskFlags`：`NEW_MERCHANT`、`HIGH_REFUND_RATE`、`OPEN_DISPUTE`、`GMV_SPIKE`。
 
-**审计**：每个 admin 写操作与它的 AuditLog 记录在同一个事务里写入（管理员、目标、原因、IP）；被拒绝的操作不留记录。动作：`MERCHANT_SUSPEND`、`MERCHANT_REINSTATE`、`MERCHANT_NOTE`、`LISTING_CLOSE`、`LISTING_TAKEDOWN`、`LISTING_RESTORE`（M8b 加上订单、退款与匿名化的动作）。
+**审计**：每个 admin 写操作与它的 AuditLog 记录在同一个事务里写入（管理员、目标、原因、IP）；被拒绝的操作不留记录。动作：`MERCHANT_SUSPEND`、`MERCHANT_REINSTATE`、`MERCHANT_NOTE`、`LISTING_CLOSE`、`LISTING_TAKEDOWN`、`LISTING_RESTORE`、`PII_REVEAL`、`REFUND_CREATE`、`REFUND_RETRY`、`BUYER_ANONYMIZE`。`GET /admin/audit-log` 按时间倒序，每页 50；`actor` 是管理员邮箱（完整、不分大小写），`action` 是大写动作名（也能查 `ADMIN_SIGN_IN` 等非 admin 控制台写入的记录）。
 
 **Webhooks**
 - `POST /webhooks/stripe/connect`
@@ -559,9 +567,10 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - `/admin`：概览，显示 4 个关键数字和「待处理」列表（风险商家、未结争议）
 - `/admin/merchants`：商家表格，点击行打开右侧抽屉查看详情，可停用 / 恢复、添加内部备注，并能跳转到该商家的所有接龙
 - `/admin/listings`：所有商家的接龙表格，可按商家、状态、付费/免费筛选；详情抽屉中可提前截止、下架（可选全部退款或取消报名）、恢复下架
-- `/admin/orders`：订单查询，PII 默认遮罩
-- `/admin/disputes`：争议列表
-- `/admin/audit-log`：审计日志
+- `/admin/orders`：订单查询，PII 默认遮罩；抽屉里可以填原因后显示完整信息（`MaskedPii`）、代商家退款；页面下方是买家匿名化工具（需要再输入一次邮箱确认）
+- `/admin/cancellations`：批量退款列表，失败的退款逐笔重试
+- `/admin/disputes`：争议列表，可按未结 / 已结筛选
+- `/admin/audit-log`：审计日志，可按管理员邮箱、动作、目标 id 筛选
 - 页面顶部始终显示环境横幅：生产环境为红色，staging 为琥珀色。admin 的 layout 在服务端校验角色，非管理员访问时返回 404。
 
 **视觉风格**：三个区域各有独立风格，详见 `docs/UI-STYLE.md`。
@@ -599,7 +608,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - 免费报名：报名成功确认（附取消链接和 .ics 文件）、商家取消报名的通知
   - 活动提醒：SESSION / EVENT 类订单在开始前 `remindBeforeHours` 小时发送（付费和免费都发），由 `reminder.job.ts` 每 15 分钟扫描一次，按最早场次先处理、一次运行内分批处理到没有为止（订单再多也不会拖过开场），`Order.reminderSentAt` 用来保证幂等
   - 买家：找回订单的链接汇总邮件；取货点变更通知；接龙被取消的通知
-  - 商家：入驻完成、出现争议、批量退款完成（含失败数）、单笔退款最终失败（`REFUND_FAILED`）、接龙被平台下架（`LISTING_TAKEN_DOWN`，含原因）、店铺被停用 / 恢复（`MERCHANT_SUSPENDED` / `MERCHANT_REINSTATED`）、每日订单汇总（Phase 2）
+  - 商家：入驻完成、出现争议、批量退款完成（含失败数）、单笔退款最终失败（`REFUND_FAILED`）、接龙被平台下架（`LISTING_TAKEN_DOWN`，含原因）、店铺被停用 / 恢复（`MERCHANT_SUSPENDED` / `MERCHANT_REINSTATED`）、平台代为退款（`MERCHANT_REFUNDED_BY_ADMIN`，含金额和原因）、每日订单汇总（Phase 2）
   - 确认邮件和收据中带上商家的 GST 号（如有）。税务发票由商家自行负责，平台不开具
 
 ## 13. 非功能需求
@@ -709,6 +718,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 | `LISTING_STALE` | 409 | 接龙已被其他请求修改（提交的 `revision` 已过期），需刷新后重试 |
 | `SELF_CANCEL_WINDOW_PASSED` | 409 | 超过自助取消时间 |
 | `REFUND_EXCEEDS_TOTAL` | 409 | 退款超过可退金额 |
+| `ANONYMIZE_BLOCKED` | 409 | 匿名化被拒：该邮箱有订单在等待付款或处于未结争议中，`details.publicCodes` 列出这些订单 |
 | `PRICE_OUT_OF_RANGE` | 422 | 价格低于 $1 或超过上限 |
 | `RATE_LIMITED` | 429 | 限流 |
 | `STRIPE_ERROR` | 502 | Stripe 调用失败，`details.stripeCode` |

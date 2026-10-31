@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { AppError } from '../../common/errors/app-error.js';
 import type { Env } from '../../config/env.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import type { OrderStatus } from '../../generated/prisma/enums.js';
 import type { NotificationsService } from '../notifications/notifications.service.js';
 import { canTransition, ENDED_UNPAID, transitionOrder } from './order-state-machine.js';
 import { merchantLine, type OrderDetail } from './order-ops.js';
@@ -23,6 +25,20 @@ export async function pendingByOrder(tx: Prisma.TransactionClient, orderIds: str
 /** What may still be refunded: the total, less what is refunded or on its way back. */
 export function refundable(order: { totalCents: number; refundedCents: number }, pendingCents: number): number {
   return order.totalCents - order.refundedCents - pendingCents;
+}
+
+/** Whether the order can be refunded at all: paid (by the state machine) and with a payment Stripe can refund. */
+export const canRefund = (order: { isFree: boolean; status: OrderStatus; stripePaymentIntentId: string | null }): boolean =>
+  canTransition(order.isFree, order.status, 'REFUNDED') && order.stripePaymentIntentId !== null;
+
+/** What a refund button may offer now: 0 when the order cannot be refunded. The read side of `decideRefund`. */
+export function refundableNow(order: Parameters<typeof canRefund>[0] & { totalCents: number; refundedCents: number }, pendingCents: number): number {
+  return canRefund(order) ? refundable(order, pendingCents) : 0;
+}
+
+/** REFUND_EXCEEDS_TOTAL unless `amountCents` fits in what is `left`. */
+export function assertRefundFits(amountCents: number, left: number, details: Record<string, unknown> = {}): void {
+  if (amountCents > left) throw new AppError('REFUND_EXCEEDS_TOTAL', 'More than is left to refund', { refundableCents: left, ...details });
 }
 
 export async function refundableCents(tx: Prisma.TransactionClient, order: { id: string; totalCents: number; refundedCents: number }) {
@@ -89,6 +105,17 @@ export async function queueRefunds(
 export async function queueRefund(tx: Prisma.TransactionClient, refund: { orderId: string; amountCents: number; reason: string | null }) {
   const [task] = await queueRefunds(tx, [refund], null);
   return task;
+}
+
+/**
+ * A refund of one order (merchant, or the admin console on the merchant's behalf), decided under the caller's lock on
+ * that order: only a paid order with money left, never more than is left (pending refunds count). Claimed, for an
+ * immediate try by RefundProcessor.
+ */
+export async function decideRefund(tx: Prisma.TransactionClient, order: OrderDetail, amountCents: number, reason: string): Promise<ClaimedRefund> {
+  if (!canRefund(order)) throw new AppError('INVALID_STATE_TRANSITION', 'Only paid orders can be refunded', { from: order.status, to: 'REFUNDED' });
+  assertRefundFits(amountCents, await refundableCents(tx, order));
+  return queueRefund(tx, { orderId: order.id, amountCents, reason });
 }
 
 export interface RefundDeps {

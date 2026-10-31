@@ -101,6 +101,18 @@ describe('admin console API: merchants, listings, disputes, risk, audit (DESIGN 
     return o;
   }
 
+  /** A paid order's refund that a cancellation gave up on (the state refund.job leaves after 5 failures). */
+  async function failedBulkRefund(l: Listing) {
+    const o = await order(l, 'PAID');
+    await prisma.listing.update({ where: { id: l.id }, data: { status: 'CANCELLED' } });
+    const c = await prisma.listingCancellation.create({
+      data: { listingId: l.id, initiatedByUserId: adminId, reason: 'gone', refundAll: true, status: 'COMPLETED_WITH_FAILURES', totalOrders: 1, failed: 1, finishedAt: new Date() },
+    });
+    const task = await prisma.refundTask.create({ data: { cancellationId: c.id, orderId: o.id, amountCents: o.totalCents, status: 'FAILED', attempts: 5, lastError: 'api_error' } });
+    await prisma.refund.create({ data: { id: task.id, orderId: o.id, amountCents: o.totalCents, status: 'FAILED', reason: 'gone' } });
+    return task;
+  }
+
   const publicListing = (l: Listing) => http().get(`/api/v1/public/listings/${l.shortCode}`);
   const buy = (l: Listing) =>
     http()
@@ -120,6 +132,7 @@ describe('admin console API: merchants, listings, disputes, risk, audit (DESIGN 
     it('every admin route: 401 without a session, 403 for a merchant, open to an admin', async () => {
       const m = await merchant();
       const l = await listing(m.id);
+      const o = await order(l, 'PAID');
       await createMerchant(prisma, { clerkUserId: 'user_shop' });
       const routes: [string, string][] = [
         ['get', 'stats'],
@@ -134,15 +147,26 @@ describe('admin console API: merchants, listings, disputes, risk, audit (DESIGN 
         ['post', `listings/${l.id}/close`],
         ['post', `listings/${l.id}/takedown`],
         ['post', `listings/${l.id}/restore`],
+        ['get', 'orders'],
+        ['get', `orders/${o.id}`],
+        ['post', `orders/${o.id}/reveal-pii`],
+        ['post', `orders/${o.id}/refund`],
+        ['post', 'buyers/anonymize'],
+        ['get', 'cancellations'],
+        ['post', `refund-tasks/${randomUUID()}/retry`],
+        ['get', 'audit-log'],
       ];
       for (const [method, path] of routes) {
-        const call = () => (method === 'get' ? http().get(`/api/v1/admin/${path}`) : http().post(`/api/v1/admin/${path}`).send({ reason: 'x', note: 'x', refundAll: false }));
+        const body = { reason: 'x', note: 'x', refundAll: false, amountCents: 100, email: o.buyerEmail };
+        const call = () => (method === 'get' ? http().get(`/api/v1/admin/${path}`) : http().post(`/api/v1/admin/${path}`).send(body));
         expect([path, (await call()).status]).toEqual([path, 401]);
         expect([path, (await call().set(as('user_shop'))).status]).toEqual([path, 403]);
       }
       expect((await get('stats')).status).toBe(200);
       expect(await prisma.auditLog.count()).toBe(0);
       expect((await prisma.merchant.findUniqueOrThrow({ where: { id: m.id } })).status).toBe('ACTIVE');
+      expect(await prisma.order.findUniqueOrThrow({ where: { id: o.id } })).toMatchObject({ refundedCents: 0, anonymizedAt: null });
+      expect(await prisma.refund.count()).toBe(0);
     });
 
     it('a write without a reason is refused before anything changes', async () => {
@@ -396,6 +420,8 @@ describe('admin console API: merchants, listings, disputes, risk, audit (DESIGN 
       const m = await merchant();
       const closing = await listing(m.id);
       const takingDown = await listing(m.id);
+      const paid = await order(await listing(m.id), 'PAID');
+      const failed = await failedBulkRefund(await listing(m.id));
       const writes: { path: string; body: object; action: string; targetType: string; targetId: string; reason: string | null }[] = [
         { path: `merchants/${m.id}/suspend`, body: { reason: 'r1' }, action: 'MERCHANT_SUSPEND', targetType: 'merchant', targetId: m.id, reason: 'r1' },
         { path: `merchants/${m.id}/reinstate`, body: { reason: 'r2' }, action: 'MERCHANT_REINSTATE', targetType: 'merchant', targetId: m.id, reason: 'r2' },
@@ -403,6 +429,10 @@ describe('admin console API: merchants, listings, disputes, risk, audit (DESIGN 
         { path: `listings/${closing.id}/close`, body: { reason: 'r3' }, action: 'LISTING_CLOSE', targetType: 'listing', targetId: closing.id, reason: 'r3' },
         { path: `listings/${takingDown.id}/takedown`, body: { reason: 'r4', refundAll: false }, action: 'LISTING_TAKEDOWN', targetType: 'listing', targetId: takingDown.id, reason: 'r4' },
         { path: `listings/${takingDown.id}/restore`, body: { reason: 'r5' }, action: 'LISTING_RESTORE', targetType: 'listing', targetId: takingDown.id, reason: 'r5' },
+        { path: `orders/${paid.id}/reveal-pii`, body: { reason: 'r6' }, action: 'PII_REVEAL', targetType: 'order', targetId: paid.id, reason: 'r6' },
+        { path: `orders/${paid.id}/refund`, body: { amountCents: 100, reason: 'r7' }, action: 'REFUND_CREATE', targetType: 'order', targetId: paid.id, reason: 'r7' },
+        { path: `refund-tasks/${failed.id}/retry`, body: { reason: 'r8' }, action: 'REFUND_RETRY', targetType: 'refund_task', targetId: failed.id, reason: 'r8' },
+        { path: 'buyers/anonymize', body: { email: paid.buyerEmail, reason: 'r9' }, action: 'BUYER_ANONYMIZE', targetType: 'buyer', targetId: expect.stringMatching(/^[0-9a-f]{64}$/), reason: 'r9' },
       ];
       for (const w of writes) {
         const before = await prisma.auditLog.count();

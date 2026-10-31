@@ -13,15 +13,11 @@ import { useSave } from '@/lib/api/use-save';
 import { statusKey } from '@/lib/order-status';
 import { centsToDollarsInput, dollarsToCents, formatCents } from '@/lib/money';
 import { formatNzDateTime } from '@/lib/time';
+import { answerText } from '@/lib/answer-text';
 
 type OrderListData = components['schemas']['MerchantOrderListDto'];
 type Order = components['schemas']['MerchantOrderDto'];
 type Action = 'fulfil' | 'no-show';
-
-const answerText = (answers: Record<string, unknown>) =>
-  Object.entries(answers)
-    .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`)
-    .join(' · ');
 
 // The registration list / order ledger (UI-STYLE §3): rows, every status in words, actions where they apply.
 // M6 adds refunds, CSV and the whole-listing cancel.

@@ -11,7 +11,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { StripeClient } from '../stripe/stripe-client.js';
 import type { CancelListingDto, CancellationPreviewDto, CancellationProgressDto } from './cancellation.dto.js';
 import { cancelFreeWithEmail, type CheckoutSessionRef, endUnpaid, expireSessions, orderDetail, sessionsToEnd } from './order-ops.js';
-import { pendingByOrder, queueRefunds, refundable } from './refunds.js';
+import { assertRefundFits, pendingByOrder, queueRefunds, refundable } from './refunds.js';
 
 interface EndRequest {
   listingId: string;
@@ -27,6 +27,14 @@ const TO_REFUND: OrderStatus[] = ['PAID', 'PARTIALLY_REFUNDED'];
 // Every order a cancellation ends: refunded (TO_REFUND), expired (unpaid) or cancelled (free).
 const ENDED: OrderStatus[] = [...TO_REFUND, 'PENDING_PAYMENT', 'CONFIRMED'];
 const CANCEL_ROUNDS = 5;
+
+/** A FAILED refund of a cancellation, as a retry reads it under lock. */
+export interface FailedRefund {
+  id: string;
+  orderId: string;
+  amountCents: number;
+  stripeRefundId: string | null;
+}
 
 @Injectable()
 export class CancellationService {
@@ -172,21 +180,53 @@ export class CancellationService {
   async progressOf(listingId: string): Promise<CancellationProgressDto> {
     const c = await this.prisma.listingCancellation.findUnique({ where: { listingId } });
     if (!c) throw new AppError('NOT_FOUND', 'This listing was not cancelled');
-    // Every refund still in flight on the listing: the cancellation's, and any queued before it, which it waits for.
-    const pending = await this.prisma.refundTask.count({ where: { status: 'PENDING', order: { listingId } } });
+    const pending = (await this.pendingByListing([listingId])).get(listingId) ?? 0;
     return { status: c.status, totalOrders: c.totalOrders, succeeded: c.succeeded, failed: c.failed, pending, finishedAt: c.finishedAt };
   }
 
   /**
-   * Puts FAILED refunds of a cancellation back in the queue (DESIGN §8.5: retried manually from the admin console, M8).
-   * One Stripe refused outright gets a new refund (a new id: its idempotency key would only replay the refusal); one
-   * that ended on errors is tried again as itself, so the same key or metadata lookup keeps it from refunding twice.
-   * Either way the money counts as in flight again.
+   * Refunds still in flight per listing, in one query: a cancellation's own, and any queued before it, which it waits
+   * for. The "pending" of every progress figure (merchant and admin).
    */
-  async retryFailed(cancellationId: string): Promise<number> {
+  async pendingByListing(listingIds: string[]): Promise<Map<string, number>> {
+    const rows = await this.prisma.$queryRaw<{ listing_id: string; pending: bigint }[]>`
+      SELECT o.listing_id, count(*) AS pending FROM refund_task t JOIN "order" o ON o.id = t.order_id
+      WHERE t.status = 'PENDING' AND o.listing_id = ANY(${listingIds}::uuid[]) GROUP BY o.listing_id`;
+    return new Map(rows.map((r) => [r.listing_id, Number(r.pending)]));
+  }
+
+  /**
+   * Puts FAILED refunds of a cancellation back in the queue (DESIGN §8.5: retried manually from the admin console), all
+   * of them or one (`taskId`). One Stripe refused outright gets a new refund (a new id: its idempotency key would only
+   * replay the refusal); one that ended on errors is tried again as itself, so the same key or metadata lookup keeps it
+   * from refunding twice. Either way the money counts as in flight again, so it must still fit in what is refundable
+   * (a refund made since may have used it). Locks the orders, then the tasks (order → task, as RefundProcessor), so a
+   * concurrent retry finds them no longer FAILED. `onRetried` runs in the same transaction with the tasks it retried
+   * (the admin's audit row).
+   */
+  async retryFailed(
+    cancellationId: string,
+    options: { taskId?: string; onRetried?: (tx: Prisma.TransactionClient, retried: FailedRefund[]) => Promise<void> } = {},
+  ): Promise<number> {
     return this.prisma.$transaction(async (tx) => {
-      const failed = await tx.refundTask.findMany({ where: { cancellationId, status: 'FAILED' } });
+      const orderIds = (
+        await tx.refundTask.findMany({ where: { cancellationId, status: 'FAILED', ...(options.taskId && { id: options.taskId }) }, select: { orderId: true } })
+      ).map((t) => t.orderId);
+      if (!orderIds.length) return 0;
+      const orders = await tx.$queryRaw<{ id: string; total_cents: number; refunded_cents: number }[]>`
+        SELECT id, total_cents, refunded_cents FROM "order" WHERE id = ANY(${orderIds}::uuid[]) ORDER BY id FOR UPDATE`;
+      // Under the order locks, the tasks as they are now: a retry that committed meanwhile left them PENDING.
+      const failed = await tx.$queryRaw<FailedRefund[]>`
+        SELECT id, order_id AS "orderId", amount_cents AS "amountCents", stripe_refund_id AS "stripeRefundId" FROM refund_task
+        WHERE cancellation_id = ${cancellationId}::uuid AND status = 'FAILED' AND order_id = ANY(${orderIds}::uuid[])
+        ORDER BY id FOR UPDATE`;
       if (!failed.length) return 0;
+      const pending = await pendingByOrder(tx, orderIds);
+      const orderById = new Map(orders.map((o) => [o.id, o]));
+      for (const task of failed) {
+        const o = orderById.get(task.orderId)!;
+        assertRefundFits(task.amountCents, refundable({ totalCents: o.total_cents, refundedCents: o.refunded_cents }, pending.get(o.id) ?? 0), { orderId: o.id });
+      }
       const refused = failed.filter((t) => t.stripeRefundId);
       const unanswered = failed.filter((t) => !t.stripeRefundId).map((t) => t.id);
       await tx.refundTask.updateMany({
@@ -202,6 +242,7 @@ export class CancellationService {
         where: { id: cancellationId },
         data: { status: 'RUNNING', failed: { decrement: failed.length }, finishedAt: null },
       });
+      await options.onRetried?.(tx, failed);
       return failed.length;
     });
   }

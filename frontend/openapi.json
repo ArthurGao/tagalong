@@ -2260,6 +2260,443 @@
           "admin"
         ]
       }
+    },
+    "/api/v1/admin/orders": {
+      "get": {
+        "operationId": "AdminController_listOrders",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Order code (TA-…), buyer email (exact, any case) or phone (6+ digits); none lists the newest",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "The nextCursor of the previous page",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOrderPageDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{id}": {
+      "get": {
+        "operationId": "AdminController_order",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOrderDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{id}/reveal-pii": {
+      "post": {
+        "operationId": "AdminController_revealPii",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOrderPiiDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{id}/refund": {
+      "post": {
+        "operationId": "AdminController_refund",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminRefundDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOrderDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/buyers/anonymize": {
+      "post": {
+        "operationId": "AdminController_anonymize",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnonymizeBuyerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnonymizeResultDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/cancellations": {
+      "get": {
+        "operationId": "AdminController_listCancellations",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/CancellationStatus"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "The nextCursor of the previous page",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminCancellationPageDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/refund-tasks/{id}/retry": {
+      "post": {
+        "operationId": "AdminController_retryRefund",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminCancellationRowDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/audit-log": {
+      "get": {
+        "operationId": "AdminController_auditLog",
+        "parameters": [
+          {
+            "name": "actor",
+            "required": false,
+            "in": "query",
+            "description": "The actor's email (exact, any case)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "required": false,
+            "in": "query",
+            "description": "e.g. MERCHANT_SUSPEND, PII_REVEAL, ADMIN_SIGN_IN",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "The nextCursor of the previous page",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPageDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
     }
   },
   "info": {
@@ -2464,6 +2901,7 @@
               "LISTING_STALE",
               "SELF_CANCEL_WINDOW_PASSED",
               "REFUND_EXCEEDS_TOTAL",
+              "ANONYMIZE_BLOCKED",
               "PRICE_OUT_OF_RANGE",
               "RATE_LIMITED",
               "STRIPE_ERROR",
@@ -5043,6 +5481,635 @@
         "required": [
           "reason",
           "refundAll"
+        ]
+      },
+      "AdminOrderListingDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "shortCode": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "shortCode",
+          "title"
+        ]
+      },
+      "AdminOrderRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "publicCode": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderStatus"
+              }
+            ]
+          },
+          "isFree": {
+            "type": "boolean"
+          },
+          "buyerName": {
+            "type": "string",
+            "description": "Masked: \"Arthur G.\""
+          },
+          "buyerEmail": {
+            "type": "string",
+            "description": "Masked: \"a***@example.com\""
+          },
+          "buyerPhone": {
+            "type": "string",
+            "description": "Masked: \"*** 0101\""
+          },
+          "anonymized": {
+            "type": "boolean",
+            "description": "PII replaced by a privacy request"
+          },
+          "totalCents": {
+            "type": "number"
+          },
+          "refundedCents": {
+            "type": "number"
+          },
+          "pendingRefundCents": {
+            "type": "number",
+            "description": "Refunds decided but not yet confirmed by Stripe"
+          },
+          "refundableCents": {
+            "type": "number",
+            "description": "What an admin refund may still take; 0 when the order cannot be refunded"
+          },
+          "lastRefundFailed": {
+            "type": "boolean"
+          },
+          "openDispute": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "listing": {
+            "$ref": "#/components/schemas/AdminOrderListingDto"
+          },
+          "merchant": {
+            "$ref": "#/components/schemas/AdminListingMerchantDto"
+          }
+        },
+        "required": [
+          "id",
+          "publicCode",
+          "status",
+          "isFree",
+          "buyerName",
+          "buyerEmail",
+          "buyerPhone",
+          "anonymized",
+          "totalCents",
+          "refundedCents",
+          "pendingRefundCents",
+          "refundableCents",
+          "lastRefundFailed",
+          "openDispute",
+          "createdAt",
+          "paidAt",
+          "listing",
+          "merchant"
+        ]
+      },
+      "AdminOrderPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminOrderRowDto"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "AdminOrderItemDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitPriceCents": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "quantity",
+          "unitPriceCents"
+        ]
+      },
+      "RefundStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "SUCCEEDED",
+          "FAILED"
+        ]
+      },
+      "AdminRefundRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "amountCents": {
+            "type": "number"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RefundStatus"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "amountCents",
+          "status",
+          "reason",
+          "createdAt"
+        ]
+      },
+      "AdminOrderDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "publicCode": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderStatus"
+              }
+            ]
+          },
+          "isFree": {
+            "type": "boolean"
+          },
+          "buyerName": {
+            "type": "string",
+            "description": "Masked: \"Arthur G.\""
+          },
+          "buyerEmail": {
+            "type": "string",
+            "description": "Masked: \"a***@example.com\""
+          },
+          "buyerPhone": {
+            "type": "string",
+            "description": "Masked: \"*** 0101\""
+          },
+          "anonymized": {
+            "type": "boolean",
+            "description": "PII replaced by a privacy request"
+          },
+          "totalCents": {
+            "type": "number"
+          },
+          "refundedCents": {
+            "type": "number"
+          },
+          "pendingRefundCents": {
+            "type": "number",
+            "description": "Refunds decided but not yet confirmed by Stripe"
+          },
+          "refundableCents": {
+            "type": "number",
+            "description": "What an admin refund may still take; 0 when the order cannot be refunded"
+          },
+          "lastRefundFailed": {
+            "type": "boolean"
+          },
+          "openDispute": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "listing": {
+            "$ref": "#/components/schemas/AdminOrderListingDto"
+          },
+          "merchant": {
+            "$ref": "#/components/schemas/AdminListingMerchantDto"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminOrderItemDto"
+            }
+          },
+          "refunds": {
+            "description": "Newest first",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminRefundRowDto"
+            }
+          },
+          "pickupPointLabel": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "publicCode",
+          "status",
+          "isFree",
+          "buyerName",
+          "buyerEmail",
+          "buyerPhone",
+          "anonymized",
+          "totalCents",
+          "refundedCents",
+          "pendingRefundCents",
+          "refundableCents",
+          "lastRefundFailed",
+          "openDispute",
+          "createdAt",
+          "paidAt",
+          "listing",
+          "merchant",
+          "items",
+          "refunds",
+          "pickupPointLabel"
+        ]
+      },
+      "AdminAttendeeDto": {
+        "type": "object",
+        "properties": {
+          "optionName": {
+            "type": "string"
+          },
+          "attendeeName": {
+            "type": "string",
+            "nullable": true
+          },
+          "attendeeAnswers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "optionName",
+          "attendeeName",
+          "attendeeAnswers"
+        ]
+      },
+      "AdminOrderPiiDto": {
+        "type": "object",
+        "properties": {
+          "buyerName": {
+            "type": "string"
+          },
+          "buyerEmail": {
+            "type": "string"
+          },
+          "buyerPhone": {
+            "type": "string"
+          },
+          "buyerNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "formAnswers": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminAttendeeDto"
+            }
+          }
+        },
+        "required": [
+          "buyerName",
+          "buyerEmail",
+          "buyerPhone",
+          "buyerNote",
+          "formAnswers",
+          "items"
+        ]
+      },
+      "AdminRefundDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why; kept in the audit log"
+          },
+          "amountCents": {
+            "type": "number",
+            "description": "Integer NZD cents, at most what is still refundable; the reason is also told to the buyer"
+          }
+        },
+        "required": [
+          "reason",
+          "amountCents"
+        ]
+      },
+      "AnonymizeBuyerDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why; kept in the audit log"
+          },
+          "email": {
+            "type": "string",
+            "description": "Every order with this buyer email (any case)"
+          }
+        },
+        "required": [
+          "reason",
+          "email"
+        ]
+      },
+      "AnonymizeResultDto": {
+        "type": "object",
+        "properties": {
+          "orderCount": {
+            "type": "number"
+          },
+          "publicCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "orderCount",
+          "publicCodes"
+        ]
+      },
+      "AdminFailedRefundDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "RefundTask id, for POST /admin/refund-tasks/:id/retry"
+          },
+          "orderId": {
+            "type": "string"
+          },
+          "orderPublicCode": {
+            "type": "string"
+          },
+          "amountCents": {
+            "type": "number"
+          },
+          "attempts": {
+            "type": "number"
+          },
+          "lastError": {
+            "type": "string",
+            "nullable": true
+          },
+          "refused": {
+            "type": "boolean",
+            "description": "Stripe refused it (a retry starts a new refund), rather than not answering"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "orderId",
+          "orderPublicCode",
+          "amountCents",
+          "attempts",
+          "lastError",
+          "refused",
+          "updatedAt"
+        ]
+      },
+      "AdminCancellationRowDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CancellationStatus"
+              }
+            ]
+          },
+          "totalOrders": {
+            "type": "number"
+          },
+          "succeeded": {
+            "type": "number"
+          },
+          "failed": {
+            "type": "number"
+          },
+          "pending": {
+            "type": "number"
+          },
+          "finishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string"
+          },
+          "refundAll": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "listing": {
+            "$ref": "#/components/schemas/AdminOrderListingDto"
+          },
+          "merchant": {
+            "$ref": "#/components/schemas/AdminListingMerchantDto"
+          },
+          "failedRefunds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminFailedRefundDto"
+            }
+          }
+        },
+        "required": [
+          "status",
+          "totalOrders",
+          "succeeded",
+          "failed",
+          "pending",
+          "finishedAt",
+          "reason",
+          "refundAll",
+          "createdAt",
+          "id",
+          "listing",
+          "merchant",
+          "failedRefunds"
+        ]
+      },
+      "AdminCancellationPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminCancellationRowDto"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "AuditActorRole": {
+        "type": "string",
+        "enum": [
+          "MERCHANT",
+          "ADMIN",
+          "SYSTEM"
+        ]
+      },
+      "AuditEntryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "actorRole": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AuditActorRole"
+              }
+            ]
+          },
+          "actorEmail": {
+            "type": "string",
+            "nullable": true,
+            "description": "null for SYSTEM (CLI, jobs)"
+          },
+          "targetType": {
+            "type": "string"
+          },
+          "targetId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "ip": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "actorRole",
+          "actorEmail",
+          "targetType",
+          "targetId",
+          "reason",
+          "metadata",
+          "ip",
+          "createdAt"
+        ]
+      },
+      "AuditPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEntryDto"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
         ]
       }
     }

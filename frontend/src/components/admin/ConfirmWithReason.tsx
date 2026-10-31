@@ -21,6 +21,7 @@ export function ConfirmWithReason({
   error,
   busy = false,
   extra,
+  valid = true,
   onConfirm,
 }: {
   label: string;
@@ -33,6 +34,8 @@ export function ConfirmWithReason({
   busy?: boolean;
   /** More fields between the reason and the buttons (e.g. "refund everyone"). */
   extra?: ReactNode;
+  /** Whether the extra fields hold a usable value (e.g. a refund amount within range). */
+  valid?: boolean;
   onConfirm: (reason: string) => Promise<boolean>;
 }) {
   const t = useTranslations('admin.confirm');
@@ -40,7 +43,7 @@ export function ConfirmWithReason({
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [typed, setTyped] = useState('');
-  const ready = reason.trim().length > 0 && (!confirmText || typed.trim() === confirmText);
+  const ready = valid && reason.trim().length > 0 && (!confirmText || typed.trim() === confirmText);
 
   const submit = async () => {
     if (await onConfirm(reason.trim())) {

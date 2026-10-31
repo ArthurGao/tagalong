@@ -692,6 +692,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminController_listOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminController_order"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{id}/reveal-pii": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminController_revealPii"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{id}/refund": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminController_refund"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/buyers/anonymize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminController_anonymize"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/cancellations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminController_listCancellations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/refund-tasks/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminController_retryRefund"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/audit-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminController_auditLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -742,7 +870,7 @@ export interface components {
         };
         ErrorBodyDto: {
             /** @enum {string} */
-            code: "VALIDATION_FAILED" | "TURNSTILE_FAILED" | "BAD_REQUEST" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "LISTING_NOT_PUBLISHED" | "LISTING_CLOSED" | "MERCHANT_SUSPENDED" | "MERCHANT_PROFILE_EXISTS" | "SLUG_TAKEN" | "MERCHANT_NOT_CHARGEABLE" | "SOLD_OUT" | "ALREADY_REGISTERED" | "QTY_EXCEEDS_LIMIT" | "INVALID_STATE_TRANSITION" | "ORDER_IN_PROGRESS" | "FIELD_LOCKED_AFTER_PUBLISH" | "CAPACITY_BELOW_SOLD" | "OPTION_HAS_ORDERS" | "PICKUP_POINT_HAS_ORDERS" | "LISTING_STALE" | "SELF_CANCEL_WINDOW_PASSED" | "REFUND_EXCEEDS_TOTAL" | "PRICE_OUT_OF_RANGE" | "RATE_LIMITED" | "STRIPE_ERROR" | "INTERNAL";
+            code: "VALIDATION_FAILED" | "TURNSTILE_FAILED" | "BAD_REQUEST" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "LISTING_NOT_PUBLISHED" | "LISTING_CLOSED" | "MERCHANT_SUSPENDED" | "MERCHANT_PROFILE_EXISTS" | "SLUG_TAKEN" | "MERCHANT_NOT_CHARGEABLE" | "SOLD_OUT" | "ALREADY_REGISTERED" | "QTY_EXCEEDS_LIMIT" | "INVALID_STATE_TRANSITION" | "ORDER_IN_PROGRESS" | "FIELD_LOCKED_AFTER_PUBLISH" | "CAPACITY_BELOW_SOLD" | "OPTION_HAS_ORDERS" | "PICKUP_POINT_HAS_ORDERS" | "LISTING_STALE" | "SELF_CANCEL_WINDOW_PASSED" | "REFUND_EXCEEDS_TOTAL" | "ANONYMIZE_BLOCKED" | "PRICE_OUT_OF_RANGE" | "RATE_LIMITED" | "STRIPE_ERROR" | "INTERNAL";
             message: string;
             details?: Record<string, never>;
         };
@@ -1435,6 +1563,179 @@ export interface components {
             reason: string;
             /** @description Refund every paid order in full (paid) or cancel every registration (free); otherwise orders stay and the takedown can be restored */
             refundAll: boolean;
+        };
+        AdminOrderListingDto: {
+            id: string;
+            shortCode: string;
+            title: string;
+        };
+        AdminOrderRowDto: {
+            id: string;
+            publicCode: string;
+            status: components["schemas"]["OrderStatus"];
+            isFree: boolean;
+            /** @description Masked: "Arthur G." */
+            buyerName: string;
+            /** @description Masked: "a***@example.com" */
+            buyerEmail: string;
+            /** @description Masked: "*** 0101" */
+            buyerPhone: string;
+            /** @description PII replaced by a privacy request */
+            anonymized: boolean;
+            totalCents: number;
+            refundedCents: number;
+            /** @description Refunds decided but not yet confirmed by Stripe */
+            pendingRefundCents: number;
+            /** @description What an admin refund may still take; 0 when the order cannot be refunded */
+            refundableCents: number;
+            lastRefundFailed: boolean;
+            openDispute: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            paidAt: string | null;
+            listing: components["schemas"]["AdminOrderListingDto"];
+            merchant: components["schemas"]["AdminListingMerchantDto"];
+        };
+        AdminOrderPageDto: {
+            items: components["schemas"]["AdminOrderRowDto"][];
+            nextCursor: string | null;
+        };
+        AdminOrderItemDto: {
+            name: string;
+            quantity: number;
+            unitPriceCents: number;
+        };
+        /** @enum {string} */
+        RefundStatus: "PENDING" | "SUCCEEDED" | "FAILED";
+        AdminRefundRowDto: {
+            id: string;
+            amountCents: number;
+            status: components["schemas"]["RefundStatus"];
+            reason: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AdminOrderDto: {
+            id: string;
+            publicCode: string;
+            status: components["schemas"]["OrderStatus"];
+            isFree: boolean;
+            /** @description Masked: "Arthur G." */
+            buyerName: string;
+            /** @description Masked: "a***@example.com" */
+            buyerEmail: string;
+            /** @description Masked: "*** 0101" */
+            buyerPhone: string;
+            /** @description PII replaced by a privacy request */
+            anonymized: boolean;
+            totalCents: number;
+            refundedCents: number;
+            /** @description Refunds decided but not yet confirmed by Stripe */
+            pendingRefundCents: number;
+            /** @description What an admin refund may still take; 0 when the order cannot be refunded */
+            refundableCents: number;
+            lastRefundFailed: boolean;
+            openDispute: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            paidAt: string | null;
+            listing: components["schemas"]["AdminOrderListingDto"];
+            merchant: components["schemas"]["AdminListingMerchantDto"];
+            items: components["schemas"]["AdminOrderItemDto"][];
+            /** @description Newest first */
+            refunds: components["schemas"]["AdminRefundRowDto"][];
+            pickupPointLabel: string | null;
+        };
+        AdminAttendeeDto: {
+            optionName: string;
+            attendeeName: string | null;
+            attendeeAnswers: {
+                [key: string]: unknown;
+            }[];
+        };
+        AdminOrderPiiDto: {
+            buyerName: string;
+            buyerEmail: string;
+            buyerPhone: string;
+            buyerNote: string | null;
+            formAnswers: {
+                [key: string]: unknown;
+            };
+            items: components["schemas"]["AdminAttendeeDto"][];
+        };
+        AdminRefundDto: {
+            /** @description Why; kept in the audit log */
+            reason: string;
+            /** @description Integer NZD cents, at most what is still refundable; the reason is also told to the buyer */
+            amountCents: number;
+        };
+        AnonymizeBuyerDto: {
+            /** @description Why; kept in the audit log */
+            reason: string;
+            /** @description Every order with this buyer email (any case) */
+            email: string;
+        };
+        AnonymizeResultDto: {
+            orderCount: number;
+            publicCodes: string[];
+        };
+        AdminFailedRefundDto: {
+            /** @description RefundTask id, for POST /admin/refund-tasks/:id/retry */
+            id: string;
+            orderId: string;
+            orderPublicCode: string;
+            amountCents: number;
+            attempts: number;
+            lastError: string | null;
+            /** @description Stripe refused it (a retry starts a new refund), rather than not answering */
+            refused: boolean;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AdminCancellationRowDto: {
+            status: components["schemas"]["CancellationStatus"];
+            totalOrders: number;
+            succeeded: number;
+            failed: number;
+            pending: number;
+            /** Format: date-time */
+            finishedAt: string | null;
+            reason: string;
+            refundAll: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            listing: components["schemas"]["AdminOrderListingDto"];
+            merchant: components["schemas"]["AdminListingMerchantDto"];
+            failedRefunds: components["schemas"]["AdminFailedRefundDto"][];
+        };
+        AdminCancellationPageDto: {
+            items: components["schemas"]["AdminCancellationRowDto"][];
+            nextCursor: string | null;
+        };
+        /** @enum {string} */
+        AuditActorRole: "MERCHANT" | "ADMIN" | "SYSTEM";
+        AuditEntryDto: {
+            id: string;
+            action: string;
+            actorRole: components["schemas"]["AuditActorRole"];
+            /** @description null for SYSTEM (CLI, jobs) */
+            actorEmail: string | null;
+            targetType: string;
+            targetId: string;
+            reason: string | null;
+            metadata: {
+                [key: string]: unknown;
+            };
+            ip: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AuditPageDto: {
+            items: components["schemas"]["AuditEntryDto"][];
+            nextCursor: string | null;
         };
     };
     responses: never;
@@ -2906,6 +3207,271 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminListingDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_listOrders: {
+        parameters: {
+            query?: {
+                /** @description Order code (TA-…), buyer email (exact, any case) or phone (6+ digits); none lists the newest */
+                q?: string;
+                /** @description The nextCursor of the previous page */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOrderPageDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOrderDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_revealPii: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminReasonDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOrderPiiDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_refund: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminRefundDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOrderDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_anonymize: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnonymizeBuyerDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnonymizeResultDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_listCancellations: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["CancellationStatus"];
+                /** @description The nextCursor of the previous page */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCancellationPageDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_retryRefund: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminReasonDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCancellationRowDto"];
+                };
+            };
+            /** @description Error (code from DESIGN §17) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBodyDto"];
+                };
+            };
+        };
+    };
+    AdminController_auditLog: {
+        parameters: {
+            query?: {
+                /** @description The actor's email (exact, any case) */
+                actor?: string;
+                /** @description e.g. MERCHANT_SUSPEND, PII_REVEAL, ADMIN_SIGN_IN */
+                action?: string;
+                targetId?: string;
+                /** @description The nextCursor of the previous page */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditPageDto"];
                 };
             };
             /** @description Error (code from DESIGN §17) */

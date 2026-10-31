@@ -8,12 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect } from '@/components/ui/native-select';
 import { getAdminMerchant, getAdminMerchants } from '@/lib/api/server';
-import { firstParam, queryHref } from '@/lib/query-href';
+import { firstParam, isUuid, queryHref } from '@/lib/query-href';
 import { formatNzDateTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
 const STATUSES = ['ACTIVE', 'SUSPENDED'] as const;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // UI-STYLE §4: a dense table, filters on top; a row opens the merchant in the right-hand drawer (?id=).
 export default async function AdminMerchantsPage({
@@ -36,7 +35,7 @@ export default async function AdminMerchantsPage({
   ]);
   const [page, selected] = await Promise.all([
     getAdminMerchants({ status, risk: search.risk === 'true' ? 'true' : undefined, q: search.q || undefined, cursor: search.cursor || undefined }),
-    id && UUID.test(id) ? getAdminMerchant(id) : null,
+    isUuid(id) ? getAdminMerchant(id) : null,
   ]);
   const path = `/${locale}/merchants`;
 

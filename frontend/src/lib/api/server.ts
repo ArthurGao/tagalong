@@ -92,3 +92,23 @@ export async function getAdminDisputes(query: Query<'/api/v1/admin/disputes'>) {
   const { data } = await api.GET('/api/v1/admin/disputes', { params: { query }, ...(await authed()) });
   return data ?? null;
 }
+
+export async function getAdminOrders(query: Query<'/api/v1/admin/orders'>) {
+  const { data } = await api.GET('/api/v1/admin/orders', { params: { query }, ...(await authed()) });
+  return data ?? null;
+}
+
+export async function getAdminOrder(id: string) {
+  const { data } = await api.GET('/api/v1/admin/orders/{id}', { params: { path: { id } }, ...(await authed()) });
+  return data ?? null;
+}
+
+export async function getAdminCancellations(query: Query<'/api/v1/admin/cancellations'>) {
+  const { data } = await api.GET('/api/v1/admin/cancellations', { params: { query }, ...(await authed()) });
+  return data ?? null;
+}
+
+export async function getAdminAuditLog(query: Query<'/api/v1/admin/audit-log'>) {
+  const { data } = await api.GET('/api/v1/admin/audit-log', { params: { query }, ...(await authed()) });
+  return data ?? null;
+}

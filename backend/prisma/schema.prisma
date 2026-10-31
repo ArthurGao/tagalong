@@ -262,6 +262,7 @@ model Order {
   onePerEmail             Boolean     @default(false) @map("one_per_email") // snapshot of listing.onePerEmail
   idempotencyKey          String?     @unique @map("idempotency_key")
   locale                  String      @default("zh-CN") // buyer's UI language, for emails sent later (outbox)
+  anonymizedAt            DateTime?   @map("anonymized_at") // PII replaced (admin privacy request, or retention); amounts and status kept
   status                  OrderStatus
   subtotalCents           Int         @map("subtotal_cents")
   platformFeeCents        Int         @map("platform_fee_cents")
@@ -294,6 +295,7 @@ model Order {
   @@index([pickupPointId]) // pickup point edits look up the orders that use it
   @@index([merchantId, paidAt]) // admin risk flags: a merchant's paid amounts over time
   @@index([paidAt]) // admin overview: platform GMV over 7 and 30 days
+  @@index([createdAt, id]) // admin order list, newest first
   @@map("order")
 }
 
@@ -459,5 +461,6 @@ model AuditLog {
   @@index([targetType, targetId])
   @@index([actorUserId, createdAt])
   @@index([action, createdAt])
+  @@index([createdAt, id]) // admin audit log, newest first
   @@map("audit_log")
 }

@@ -125,6 +125,17 @@ describe('layout, receipts and calendar files (M7)', () => {
     expect(renderEmail('MERCHANT_REINSTATED', 'en', 'shop@example.test', { merchantName: 'Kiwi' }, CTX).subject).toBe('Your TagAlong shop is active again: Kiwi');
   });
 
+  it('tells the merchant the platform refunded one of their orders, and why', () => {
+    const en = renderEmail('MERCHANT_REFUNDED_BY_ADMIN', 'en', 'shop@example.test', { publicCode: 'TA-K7M2Q9', listingTitle: 'Cherries', amountCents: 1950, reason: 'Never <b>delivered</b>' }, CTX);
+    expect(en.subject).toBe('TagAlong refunded order TA-K7M2Q9 for you');
+    expect(en.text).toContain('TagAlong refunded $19.50 on order TA-K7M2Q9 for "Cherries"');
+    expect(en.text).toContain('Reason: Never <b>delivered</b>');
+    expect(en.html).toContain('Never &lt;b&gt;delivered&lt;/b&gt;');
+    const zh = renderEmail('MERCHANT_REFUNDED_BY_ADMIN', 'zh-CN', 'shop@example.test', { publicCode: 'TA-K7M2Q9', listingTitle: '车厘子', amountCents: 1950, reason: '未发货' }, CTX);
+    expect(zh.subject).toBe('平台代你退款：订单 TA-K7M2Q9');
+    expect(zh.text).toContain('原因：未发货');
+  });
+
   it('attaches the .ics only when the order has sessions', () => {
     const withEvents = renderEmail('ORDER_CONFIRMED', 'en', 'a@example.test', { ...confirmed, events: [event] }, CTX);
     expect(withEvents.attachments).toEqual([

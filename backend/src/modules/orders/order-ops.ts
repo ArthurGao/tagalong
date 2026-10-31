@@ -19,7 +19,7 @@ export const orderDetail = {
   },
   listing: { select: { title: true, shortCode: true, type: true, allowSelfCancel: true, selfCancelUntil: true } },
   pickupPoint: { select: { label: true, address: true, windowStart: true, windowEnd: true, notes: true } },
-  merchant: { select: { stripeAccountId: true, displayName: true, gstNumber: true } },
+  merchant: { select: { stripeAccountId: true, displayName: true, gstNumber: true, contactEmail: true } },
 } satisfies Prisma.OrderInclude;
 
 export type OrderDetail = Prisma.OrderGetPayload<{ include: typeof orderDetail }>;

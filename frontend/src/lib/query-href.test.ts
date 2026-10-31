@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { firstParam, queryHref } from './query-href';
+import { firstParam, isUuid, queryHref } from './query-href';
 
 describe('queryHref', () => {
   it('keeps the current filters and applies the changes', () => {
@@ -17,5 +17,12 @@ describe('queryHref', () => {
 
   it('reads the first value of a search param', () => {
     expect([firstParam('a'), firstParam(['b', 'c']), firstParam(undefined)]).toEqual(['a', 'b', undefined]);
+  });
+});
+
+describe('isUuid', () => {
+  it('accepts a UUID in any case and nothing else', () => {
+    expect([isUuid('01a18fe0-1954-754b-89e8-872f83b0e599'), isUuid('01A18FE0-1954-754B-89E8-872F83B0E599')]).toEqual([true, true]);
+    expect([isUuid(undefined), isUuid(''), isUuid('01a18fe0'), isUuid('01a18fe0-1954-754b-89e8-872f83b0e599x')]).toEqual([false, false, false, false]);
   });
 });

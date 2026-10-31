@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min } from 'class-validator';
-import { ListingStatus, MerchantStatus, OrderStatus, Pricing } from '../../generated/prisma/enums.js';
+import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min } from 'class-validator';
+import { AuditActorRole, CancellationStatus, ListingStatus, MerchantStatus, OrderStatus, Pricing, RefundStatus } from '../../generated/prisma/enums.js';
 import { CancellationProgressDto } from '../orders/cancellation.dto.js';
 import { RISK_FLAGS, type RiskFlag } from './risk.js';
 
@@ -174,3 +174,153 @@ export class AdminDisputeDto {
   @ApiProperty({ type: AdminListingMerchantDto }) merchant!: AdminListingMerchantDto;
 }
 
+
+// M8b: orders (masked PII, reveal, refund on the merchant's behalf), failed bulk refunds, anonymisation, audit log.
+
+export class AdminOrdersQueryDto {
+  @ApiPropertyOptional({ description: 'Order code (TA-…), buyer email (exact, any case) or phone (6+ digits); none lists the newest' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(254)
+  q?: string;
+  @ApiPropertyOptional({ description: 'The nextCursor of the previous page' }) @IsOptional() @IsUUID() cursor?: string;
+}
+
+export class AdminRefundDto extends AdminReasonDto {
+  @ApiProperty({ description: 'Integer NZD cents, at most what is still refundable; the reason is also told to the buyer' })
+  @IsInt()
+  @Min(1)
+  amountCents!: number;
+}
+
+export class AnonymizeBuyerDto extends AdminReasonDto {
+  @ApiProperty({ description: 'Every order with this buyer email (any case)' }) @IsEmail() @MaxLength(254) email!: string;
+}
+
+export class AdminCancellationsQueryDto {
+  @ApiPropertyOptional({ enum: CancellationStatus, enumName: 'CancellationStatus' })
+  @IsOptional()
+  @IsIn(Object.values(CancellationStatus))
+  status?: CancellationStatus;
+  @ApiPropertyOptional({ description: 'The nextCursor of the previous page' }) @IsOptional() @IsUUID() cursor?: string;
+}
+
+export class AdminAuditQueryDto {
+  @ApiPropertyOptional({ description: "The actor's email (exact, any case)" }) @IsOptional() @IsString() @MaxLength(254) actor?: string;
+  @ApiPropertyOptional({ description: 'e.g. MERCHANT_SUSPEND, PII_REVEAL, ADMIN_SIGN_IN' }) @IsOptional() @Matches(/^[A-Z_]{1,64}$/) action?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) targetId?: string;
+  @ApiPropertyOptional({ description: 'The nextCursor of the previous page' }) @IsOptional() @IsUUID() cursor?: string;
+}
+
+export class AdminOrderListingDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() shortCode!: string;
+  @ApiProperty() title!: string;
+}
+
+export class AdminOrderRowDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() publicCode!: string;
+  @ApiProperty({ enum: OrderStatus, enumName: 'OrderStatus' }) status!: OrderStatus;
+  @ApiProperty() isFree!: boolean;
+  @ApiProperty({ description: 'Masked: "Arthur G."' }) buyerName!: string;
+  @ApiProperty({ description: 'Masked: "a***@example.com"' }) buyerEmail!: string;
+  @ApiProperty({ description: 'Masked: "*** 0101"' }) buyerPhone!: string;
+  @ApiProperty({ description: 'PII replaced by a privacy request' }) anonymized!: boolean;
+  @ApiProperty() totalCents!: number;
+  @ApiProperty() refundedCents!: number;
+  @ApiProperty({ description: 'Refunds decided but not yet confirmed by Stripe' }) pendingRefundCents!: number;
+  @ApiProperty({ description: 'What an admin refund may still take; 0 when the order cannot be refunded' }) refundableCents!: number;
+  @ApiProperty() lastRefundFailed!: boolean;
+  @ApiProperty() openDispute!: boolean;
+  @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) paidAt!: Date | null;
+  @ApiProperty({ type: AdminOrderListingDto }) listing!: AdminOrderListingDto;
+  @ApiProperty({ type: AdminListingMerchantDto }) merchant!: AdminListingMerchantDto;
+}
+
+export class AdminOrderPageDto {
+  @ApiProperty({ type: [AdminOrderRowDto] }) items!: AdminOrderRowDto[];
+  @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
+}
+
+export class AdminOrderItemDto {
+  @ApiProperty() name!: string;
+  @ApiProperty() quantity!: number;
+  @ApiProperty() unitPriceCents!: number;
+}
+
+export class AdminRefundRowDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() amountCents!: number;
+  @ApiProperty({ enum: RefundStatus, enumName: 'RefundStatus' }) status!: RefundStatus;
+  @ApiProperty({ type: String, nullable: true }) reason!: string | null;
+  @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
+}
+
+export class AdminOrderDto extends AdminOrderRowDto {
+  @ApiProperty({ type: [AdminOrderItemDto] }) items!: AdminOrderItemDto[];
+  @ApiProperty({ type: [AdminRefundRowDto], description: 'Newest first' }) refunds!: AdminRefundRowDto[];
+  @ApiProperty({ type: String, nullable: true }) pickupPointLabel!: string | null;
+}
+
+export class AdminAttendeeDto {
+  @ApiProperty() optionName!: string;
+  @ApiProperty({ type: String, nullable: true }) attendeeName!: string | null;
+  @ApiProperty({ type: 'array', items: { type: 'object', additionalProperties: true } }) attendeeAnswers!: Record<string, unknown>[];
+}
+
+export class AdminOrderPiiDto {
+  @ApiProperty() buyerName!: string;
+  @ApiProperty() buyerEmail!: string;
+  @ApiProperty() buyerPhone!: string;
+  @ApiProperty({ type: String, nullable: true }) buyerNote!: string | null;
+  @ApiProperty({ type: 'object', additionalProperties: true }) formAnswers!: Record<string, unknown>;
+  @ApiProperty({ type: [AdminAttendeeDto] }) items!: AdminAttendeeDto[];
+}
+
+export class AnonymizeResultDto {
+  @ApiProperty() orderCount!: number;
+  @ApiProperty({ type: [String] }) publicCodes!: string[];
+}
+
+export class AdminFailedRefundDto {
+  @ApiProperty({ description: 'RefundTask id, for POST /admin/refund-tasks/:id/retry' }) id!: string;
+  @ApiProperty() orderId!: string;
+  @ApiProperty() orderPublicCode!: string;
+  @ApiProperty() amountCents!: number;
+  @ApiProperty() attempts!: number;
+  @ApiProperty({ type: String, nullable: true }) lastError!: string | null;
+  @ApiProperty({ description: 'Stripe refused it (a retry starts a new refund), rather than not answering' }) refused!: boolean;
+  @ApiProperty({ type: String, format: 'date-time' }) updatedAt!: Date;
+}
+
+export class AdminCancellationRowDto extends AdminCancellationDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ type: AdminOrderListingDto }) listing!: AdminOrderListingDto;
+  @ApiProperty({ type: AdminListingMerchantDto }) merchant!: AdminListingMerchantDto;
+  @ApiProperty({ type: [AdminFailedRefundDto] }) failedRefunds!: AdminFailedRefundDto[];
+}
+
+export class AdminCancellationPageDto {
+  @ApiProperty({ type: [AdminCancellationRowDto] }) items!: AdminCancellationRowDto[];
+  @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
+}
+
+export class AuditEntryDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() action!: string;
+  @ApiProperty({ enum: AuditActorRole, enumName: 'AuditActorRole' }) actorRole!: AuditActorRole;
+  @ApiProperty({ type: String, nullable: true, description: 'null for SYSTEM (CLI, jobs)' }) actorEmail!: string | null;
+  @ApiProperty() targetType!: string;
+  @ApiProperty() targetId!: string;
+  @ApiProperty({ type: String, nullable: true }) reason!: string | null;
+  @ApiProperty({ type: 'object', additionalProperties: true }) metadata!: Record<string, unknown>;
+  @ApiProperty({ type: String, nullable: true }) ip!: string | null;
+  @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
+}
+
+export class AuditPageDto {
+  @ApiProperty({ type: [AuditEntryDto] }) items!: AuditEntryDto[];
+  @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
+}

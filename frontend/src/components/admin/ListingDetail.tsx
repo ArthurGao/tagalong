@@ -102,6 +102,11 @@ export function ListingDetail({ listing: l }: { listing: Listing }) {
             })}
           </p>
           <p className="text-muted-foreground">{l.cancellation.reason}</p>
+          {l.cancellation.failed > 0 && (
+            <Link className="text-primary underline" href={`/${locale}/cancellations?status=COMPLETED_WITH_FAILURES`}>
+              {t('handleFailed')}
+            </Link>
+          )}
         </section>
       )}
 

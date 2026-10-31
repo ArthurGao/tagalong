@@ -1,4 +1,4 @@
-import { maskName } from './mask.js';
+import { maskEmail, maskName, maskPhone } from './mask.js';
 
 describe('maskName (DESIGN §10)', () => {
   it.each([
@@ -32,5 +32,27 @@ describe('maskName (DESIGN §10)', () => {
 
   it('never returns the full surname of a two-word name', () => {
     expect(maskName('Wei Zhang')).not.toContain('Zhang');
+  });
+});
+
+describe('maskEmail / maskPhone (admin order search, DESIGN §9)', () => {
+  it.each([
+    ['amy.lee@example.com', 'a***@example.com'],
+    ['A@b.co', 'A***@b.co'],
+    ['高阳@example.cn', '高***@example.cn'],
+    ['@example.com', '***'],
+    ['not-an-email', '***'],
+  ])('email %j → %j', (input, masked) => {
+    expect(maskEmail(input)).toBe(masked);
+  });
+
+  it.each([
+    ['021 555 0101', '*** 0101'],
+    ['+64 21 555 0101', '*** 0101'],
+    ['5550101', '*** 0101'],
+    ['555 010', '***'],
+    ['', '***'],
+  ])('phone %j → %j', (input, masked) => {
+    expect(maskPhone(input)).toBe(masked);
   });
 });

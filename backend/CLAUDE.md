@@ -19,7 +19,7 @@ backend/
 │   │   ├── errors/             # AppError(code, httpStatus), global exception filter → { code, message, details }
 │   │   ├── money.ts            # cents helpers, fee calc (bps)
 │   │   ├── ids.ts              # shortCode, publicCode, accessToken generators (crypto)
-│   │   ├── mask.ts             # name masking (DESIGN §10)
+│   │   ├── mask.ts             # name masking (DESIGN §10); email / phone masks for the admin console
 │   │   └── rate-limit/         # @nestjs/throttler config
 │   └── modules/
 │       ├── health/
@@ -40,7 +40,7 @@ backend/
 │       ├── cancellations/      # ListingCancellation + RefundTask, refund.job.ts (DESIGN §8.5)
 │       ├── notifications/      # enqueue() → NotificationOutbox, outbox.job.ts, EmailService impls, templates, ics
 │       ├── uploads/            # S3/R2 presign
-│       └── admin/              # admin console API (M8a): merchants (suspend/reinstate/notes), listings (close/takedown/restore), stats, disputes, risk flags, audit
+│       └── admin/              # admin console API: merchants (suspend/reinstate/notes), listings (close/takedown/restore), stats, disputes, risk flags (M8a); orders (masked search, reveal, refund), bulk-refund retry, anonymisation, audit log (M8b)
 └── test/
     ├── e2e/                    # supertest + Testcontainers Postgres (support/global-setup.ts runs migrate deploy), *.e2e-spec.ts; files run serially and truncate between tests
     └── fixtures/
@@ -133,6 +133,10 @@ backend/
   - Risk flags (`risk.ts`): a pure `riskFlags(metrics, now)` plus one SQL aggregate per page of merchants (`order(merchant_id, paid_at)` index). `?risk=true` computes flags only for candidates (new, an open dispute, or paid orders in 90 days). "Today" is Auckland (`common/time.ts` `aucklandDayStart`).
   - Disputes: `charge.dispute.created/updated/closed` upsert a `Dispute` row in one `INSERT … ON CONFLICT DO UPDATE … WHERE` (newer events only, never reopening a closed one), so concurrent first deliveries cannot lose the newer state.
   - Reinstating a merchant locks the owner's user row first (user → merchant, as account deletion), so a deletion in flight is seen.
+  - Orders (M8b, `admin-orders.service.ts`): the list is keyset-paged raw SQL (`order(created_at, id)`), matching a code, an email (`lower(buyer_email)` index) or phone digits without the trunk 0 / +64; PII leaves masked (`maskName` / `maskEmail` / `maskPhone`). `reveal-pii` reads and audits (`PII_REVEAL`) in one transaction. An admin refund locks the order and uses the merchant's decision (`refunds.decideRefund`), then audits `REFUND_CREATE` and queues `MERCHANT_REFUNDED_BY_ADMIN` in the same transaction, and `RefundProcessor.process` tries it at once.
+  - Bulk refunds (`admin-cancellations.service.ts`): the list counts pending refunds per listing in one query (as `progressOf` does). `refund-tasks/:id/retry` wraps `CancellationService.retryFailed(cancellationId, { taskId, onRetried })`, which locks the orders, then the FAILED tasks (order → task, as RefundProcessor), and refuses a retry the order can no longer cover (`REFUND_EXCEEDS_TOTAL`); a concurrent second retry finds nothing FAILED (409).
+  - Anonymisation: `orders/anonymize.ts` `anonymizeBuyer(tx, email)` (reusable by the M9 retention job) locks every order of the address, refuses PENDING_PAYMENT or open disputes (`ANONYMIZE_BLOCKED`, `details.publicCodes`), replaces the PII with placeholders (`{orderId}@anonymized.invalid`, new unpublished `accessToken`, `anonymizedAt`), scrubs the address's outbox rows (recipient, payload, last error, dedupe key) and recovery requests. It takes `lockBuyerEmail` (an advisory lock on the normalised address) first, and `recovery.job.ts` takes it for every address of its batch (sorted, up front) before reading orders, so a recovery email cannot be built from pre-anonymisation orders and queued after. `OrdersService.replay` answers 404 for an anonymized order, never its token. `NotificationsService.enqueue` drops any recipient under the `.invalid` TLD (`common/email.ts` `isUndeliverableEmail`), so later emails (a refund settling) never queue. The audit row holds the SHA-256 of the address, never the address.
+  - Audit log (`admin-audit.service.ts`): newest first, 50 a page, filtered by actor email, action and target id. Actions: `ADMIN_ACTIONS` in `audit.ts`.
 - `orders-csv.ts` builds the merchant CSV (pure, one column table; BOM, CRLF, formula-safe cells).
 - **Find my orders** (`OrdersService.recover`): Turnstile + per-IP throttler, then only an `order_recovery_request` row and `202 { ok: true }`: every request does the same work, so neither answer nor timing reveals the address. `recovery.job.ts` (every 10 s, SKIP LOCKED, rows deleted as claimed) looks the orders up and queues at most 3 ORDER_RECOVERY emails per address per clock hour of the request: the n-th has dedupe key `ORDER_RECOVERY:{email}:{hour}:{n}`, so the unique key holds the limit under races.
 - `GET /public/orders/:code/calendar.ics`: the order's `.ics` for attending event/lesson orders (`hasCalendar` on the DTO).
@@ -241,7 +245,7 @@ Merchants and admins share **one Clerk application** and are distinguished by ro
   - Outbox: a failing email provider leaves the order PAID and the outbox row PENDING with `attempts=1`; `dedupeKey` prevents duplicate rows from a replayed webhook.
   - Cancellation: 50 paid orders with the Stripe mock failing on 5 → 45 SUCCEEDED, 5 FAILED after retries, status COMPLETED_WITH_FAILURES, and a retry succeeds.
   - Recover-order returns an identical response for known and unknown emails.
-  - Anonymize: PII columns replaced, `accessToken` invalid, amounts unchanged.
+  - Anonymize: PII columns replaced, `accessToken` invalid, amounts unchanged (`admin-orders.e2e-spec.ts`).
 
 ## Commands
 

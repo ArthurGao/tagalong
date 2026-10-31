@@ -175,7 +175,11 @@
       "label": "后台导航",
       "overview": "概览",
       "merchants": "商家",
-      "listings": "接龙"
+      "listings": "接龙",
+      "orders": "订单",
+      "cancellations": "批量退款",
+      "disputes": "争议",
+      "audit": "审计日志"
     },
     "env": {
       "production": "生产环境：所有操作都作用于真实数据",
@@ -286,7 +290,8 @@
         "RUNNING": "退款中",
         "COMPLETED": "已完成",
         "COMPLETED_WITH_FAILURES": "已完成（有失败）"
-      }
+      },
+      "handleFailed": "处理失败的退款"
     },
     "confirm": {
       "reason": "原因（会记入审计日志）",
@@ -296,6 +301,90 @@
     },
     "drawer": {
       "close": "关闭"
+    },
+    "orders": {
+      "title": "订单",
+      "searchHint": "订单号、买家邮箱或手机号",
+      "empty": "没有符合条件的订单。",
+      "code": "订单",
+      "buyer": "买家",
+      "listing": "接龙",
+      "merchant": "商家",
+      "status": "状态",
+      "total": "金额",
+      "created": "创建时间",
+      "anonymized": "已匿名",
+      "dispute": "争议中",
+      "refunded": "已退 {amount}",
+      "refundPending": "{amount} 退款处理中",
+      "refundFailed": "最近一次退款失败。",
+      "items": "商品",
+      "pickup": "取货点",
+      "refunds": "退款记录",
+      "noRefunds": "没有退款。",
+      "refundStatus": {
+        "PENDING": "处理中",
+        "SUCCEEDED": "已完成",
+        "FAILED": "失败"
+      },
+      "pii": "买家信息",
+      "reveal": "显示完整信息",
+      "revealTitle": "显示订单 {code} 的买家信息？",
+      "revealBody": "信息只在这里显示一次，这次查看会记入审计日志。",
+      "note": "备注",
+      "answers": "报名信息",
+      "attendee": "参加者",
+      "refund": "退款",
+      "refundTitle": "代商家为订单 {code} 退款？",
+      "refundBody": "最多还可退 {amount}。钱从商家的 Stripe 账户退回；买家和商家都会收到邮件，并看到退款原因。",
+      "refundAmount": "金额（纽币）",
+      "anonymize": "匿名化买家",
+      "anonymizeHint": "隐私删除请求：该邮箱的所有订单都会删除买家姓名、联系方式、备注和报名信息，金额和状态保留用于对账。",
+      "anonymizeEmail": "买家邮箱",
+      "anonymizeTitle": "匿名化 {email} 的所有订单？",
+      "anonymizeBody": "此操作无法撤销。买家的订单链接会失效，之后也不会再给这个邮箱发邮件。",
+      "anonymizedDone": "已匿名化 {count} 个订单：{codes}",
+      "email": "邮箱",
+      "phone": "手机号"
+    },
+    "cancellations": {
+      "title": "批量退款",
+      "hint": "取消或下架时选择了退款的接龙。失败的退款在原因解决后可以重试。",
+      "empty": "没有符合条件的批量退款。",
+      "failedRefunds": "失败的退款",
+      "attempts": "已尝试 {count} 次",
+      "refused": "Stripe 拒绝了这笔退款，重试会发起一笔新的退款。",
+      "retry": "重试",
+      "retryTitle": "重试订单 {code} 的 {amount} 退款？",
+      "retryBody": "它会重新进入队列，一分钟内再次尝试。",
+      "reason": "原因：{reason}"
+    },
+    "disputes": {
+      "title": "争议",
+      "empty": "没有符合条件的争议。",
+      "open": "未结",
+      "closed": "已结",
+      "order": "订单",
+      "listing": "接龙",
+      "merchant": "商家",
+      "amount": "金额",
+      "reason": "原因",
+      "status": "Stripe 状态",
+      "created": "发起时间",
+      "closedAt": "结束时间"
+    },
+    "audit": {
+      "title": "审计日志",
+      "actor": "管理员邮箱",
+      "action": "操作",
+      "target": "目标 id",
+      "when": "时间",
+      "who": "操作人",
+      "what": "操作",
+      "reason": "原因",
+      "details": "详情",
+      "system": "系统",
+      "empty": "没有符合条件的记录。"
     }
   },
   "errors": {
@@ -326,7 +415,8 @@
     "PRICE_OUT_OF_RANGE": "价格需在 $1.00 到 $20,000.00 之间。",
     "RATE_LIMITED": "尝试次数过多，请稍等一分钟再试。",
     "STRIPE_ERROR": "Stripe 暂时没有响应，请稍后再试。",
-    "INTERNAL": "系统出了点问题，请稍后再试。"
+    "INTERNAL": "系统出了点问题，请稍后再试。",
+    "ANONYMIZE_BLOCKED": "该买家有订单仍在等待付款或处于争议中，处理完后再匿名化。"
   },
   "auth": {
     "signInTitle": "商家登录",

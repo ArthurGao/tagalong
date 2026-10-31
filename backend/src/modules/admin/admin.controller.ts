@@ -4,6 +4,10 @@ import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { AuthUser } from '../auth/auth-user.js';
 import { Auth } from '../auth/auth.decorator.js';
 import {
+  AdminAuditQueryDto,
+  AdminCancellationPageDto,
+  AdminCancellationRowDto,
+  AdminCancellationsQueryDto,
   AdminDisputeDto,
   AdminDisputesQueryDto,
   AdminListingDto,
@@ -12,14 +16,25 @@ import {
   AdminMerchantDto,
   AdminMerchantPageDto,
   AdminMerchantsQueryDto,
+  AdminOrderDto,
+  AdminOrderPageDto,
+  AdminOrderPiiDto,
+  AdminOrdersQueryDto,
   AdminReasonDto,
+  AdminRefundDto,
   AdminStatsDto,
+  AnonymizeBuyerDto,
+  AnonymizeResultDto,
+  AuditPageDto,
   MerchantNoteDto,
   MerchantNoteInputDto,
   TakedownDto,
 } from './admin.dto.js';
+import { AdminAuditService } from './admin-audit.service.js';
+import { AdminCancellationsService } from './admin-cancellations.service.js';
 import { AdminListingsService } from './admin-listings.service.js';
 import { AdminMerchantsService } from './admin-merchants.service.js';
+import { AdminOrdersService } from './admin-orders.service.js';
 import { AdminOverviewService } from './admin-overview.service.js';
 import type { AdminActor } from './audit.js';
 
@@ -38,6 +53,9 @@ export class AdminController {
     private readonly merchants: AdminMerchantsService,
     private readonly listings: AdminListingsService,
     private readonly overview: AdminOverviewService,
+    private readonly orders: AdminOrdersService,
+    private readonly cancellations: AdminCancellationsService,
+    private readonly audit: AdminAuditService,
   ) {}
 
   @Get('stats')
@@ -115,5 +133,57 @@ export class AdminController {
   @ApiOkResponse({ type: AdminListingDto })
   restore(@Actor() actor: AdminActor, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AdminReasonDto): Promise<AdminListingDto> {
     return this.listings.restore(actor, id, dto.reason);
+  }
+
+  @Get('orders')
+  @ApiOkResponse({ type: AdminOrderPageDto })
+  listOrders(@Query() q: AdminOrdersQueryDto): Promise<AdminOrderPageDto> {
+    return this.orders.list(q);
+  }
+
+  @Get('orders/:id')
+  @ApiOkResponse({ type: AdminOrderDto })
+  order(@Param('id', ParseUUIDPipe) id: string): Promise<AdminOrderDto> {
+    return this.orders.get(id);
+  }
+
+  @Post('orders/:id/reveal-pii')
+  @HttpCode(200)
+  @ApiOkResponse({ type: AdminOrderPiiDto })
+  revealPii(@Actor() actor: AdminActor, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AdminReasonDto): Promise<AdminOrderPiiDto> {
+    return this.orders.revealPii(actor, id, dto.reason);
+  }
+
+  @Post('orders/:id/refund')
+  @HttpCode(200)
+  @ApiOkResponse({ type: AdminOrderDto })
+  refund(@Actor() actor: AdminActor, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AdminRefundDto): Promise<AdminOrderDto> {
+    return this.orders.refund(actor, id, dto.amountCents, dto.reason);
+  }
+
+  @Post('buyers/anonymize')
+  @HttpCode(200)
+  @ApiOkResponse({ type: AnonymizeResultDto })
+  anonymize(@Actor() actor: AdminActor, @Body() dto: AnonymizeBuyerDto): Promise<AnonymizeResultDto> {
+    return this.orders.anonymize(actor, dto.email, dto.reason);
+  }
+
+  @Get('cancellations')
+  @ApiOkResponse({ type: AdminCancellationPageDto })
+  listCancellations(@Query() q: AdminCancellationsQueryDto): Promise<AdminCancellationPageDto> {
+    return this.cancellations.list(q);
+  }
+
+  @Post('refund-tasks/:id/retry')
+  @HttpCode(200)
+  @ApiOkResponse({ type: AdminCancellationRowDto })
+  retryRefund(@Actor() actor: AdminActor, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AdminReasonDto): Promise<AdminCancellationRowDto> {
+    return this.cancellations.retry(actor, id, dto.reason);
+  }
+
+  @Get('audit-log')
+  @ApiOkResponse({ type: AuditPageDto })
+  auditLog(@Query() q: AdminAuditQueryDto): Promise<AuditPageDto> {
+    return this.audit.list(q);
   }
 }

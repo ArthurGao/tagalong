@@ -175,7 +175,11 @@
       "label": "Admin sections",
       "overview": "Overview",
       "merchants": "Merchants",
-      "listings": "Listings"
+      "listings": "Listings",
+      "orders": "Orders",
+      "cancellations": "Bulk refunds",
+      "disputes": "Disputes",
+      "audit": "Audit log"
     },
     "env": {
       "production": "PRODUCTION — every action changes live data",
@@ -286,7 +290,8 @@
         "RUNNING": "Refunding",
         "COMPLETED": "Done",
         "COMPLETED_WITH_FAILURES": "Done with failures"
-      }
+      },
+      "handleFailed": "Retry the failed refunds"
     },
     "confirm": {
       "reason": "Reason (kept in the audit log)",
@@ -296,6 +301,90 @@
     },
     "drawer": {
       "close": "Close"
+    },
+    "orders": {
+      "title": "Orders",
+      "searchHint": "Order code, buyer email or phone",
+      "empty": "No orders match.",
+      "code": "Order",
+      "buyer": "Buyer",
+      "listing": "Listing",
+      "merchant": "Merchant",
+      "status": "Status",
+      "total": "Total",
+      "created": "Created",
+      "anonymized": "anonymized",
+      "dispute": "dispute",
+      "refunded": "{amount} refunded",
+      "refundPending": "{amount} refund in flight",
+      "refundFailed": "The last refund failed.",
+      "items": "Items",
+      "pickup": "Pickup",
+      "refunds": "Refunds",
+      "noRefunds": "No refunds.",
+      "refundStatus": {
+        "PENDING": "in flight",
+        "SUCCEEDED": "done",
+        "FAILED": "failed"
+      },
+      "pii": "Buyer details",
+      "reveal": "Show in full",
+      "revealTitle": "Show {code}'s buyer details?",
+      "revealBody": "The details are shown once, here; the reveal is kept in the audit log.",
+      "note": "Note",
+      "answers": "Answers",
+      "attendee": "Attendee",
+      "refund": "Refund",
+      "refundTitle": "Refund order {code} for the merchant?",
+      "refundBody": "Up to {amount} is left to refund. The money goes back from the merchant's Stripe account; the buyer and the merchant are emailed, and the reason is told to both.",
+      "refundAmount": "Amount (NZD)",
+      "anonymize": "Anonymize a buyer",
+      "anonymizeHint": "A privacy deletion request: every order with this email loses the buyer's name, contact, note and answers. Amounts and status stay for the books.",
+      "anonymizeEmail": "Buyer email",
+      "anonymizeTitle": "Anonymize every order of {email}?",
+      "anonymizeBody": "This cannot be undone. The buyer's order links stop working and no more emails reach them.",
+      "anonymizedDone": "Anonymized {count, plural, one {# order} other {# orders}}: {codes}",
+      "email": "Email",
+      "phone": "Phone"
+    },
+    "cancellations": {
+      "title": "Bulk refunds",
+      "hint": "Listings cancelled or taken down with refunds. A failed refund can be retried once the cause is fixed.",
+      "empty": "No bulk refunds match.",
+      "failedRefunds": "Failed refunds",
+      "attempts": "{count, plural, one {# try} other {# tries}}",
+      "refused": "Stripe refused it: a retry starts a new refund.",
+      "retry": "Retry",
+      "retryTitle": "Retry the {amount} refund on {code}?",
+      "retryBody": "It goes back in the queue and is tried within a minute.",
+      "reason": "Why: {reason}"
+    },
+    "disputes": {
+      "title": "Disputes",
+      "empty": "No disputes match.",
+      "open": "Open",
+      "closed": "Closed",
+      "order": "Order",
+      "listing": "Listing",
+      "merchant": "Merchant",
+      "amount": "Amount",
+      "reason": "Reason",
+      "status": "Stripe status",
+      "created": "Opened",
+      "closedAt": "Closed"
+    },
+    "audit": {
+      "title": "Audit log",
+      "actor": "Admin email",
+      "action": "Action",
+      "target": "Target id",
+      "when": "When",
+      "who": "Who",
+      "what": "What",
+      "reason": "Reason",
+      "details": "Details",
+      "system": "system",
+      "empty": "No entries match."
     }
   },
   "errors": {
@@ -326,7 +415,8 @@
     "PRICE_OUT_OF_RANGE": "Prices must be between $1.00 and $20,000.00.",
     "RATE_LIMITED": "Too many attempts. Wait a minute and try again.",
     "STRIPE_ERROR": "Stripe did not respond. Try again in a moment.",
-    "INTERNAL": "Something went wrong on our side. Try again in a moment."
+    "INTERNAL": "Something went wrong on our side. Try again in a moment.",
+    "ANONYMIZE_BLOCKED": "Some of this buyer's orders are awaiting payment or under dispute; anonymize once they are settled."
   },
   "auth": {
     "signInTitle": "Seller sign in",

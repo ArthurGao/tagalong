@@ -262,6 +262,8 @@ export class OrdersService {
   private async replay(key: string): Promise<CreateOrderResultDto | null> {
     const order = await this.prisma.order.findUnique({ where: { idempotencyKey: key }, include: orderDetail });
     if (!order) return null;
+    // An anonymized buyer's order is no one's to open again: its new token is never handed out (DESIGN §9).
+    if (order.anonymizedAt) throw new AppError('NOT_FOUND', 'Order not found');
     if (order.isFree) return { kind: 'confirmed', publicCode: order.publicCode, accessToken: order.accessToken };
     if (order.status !== 'PENDING_PAYMENT') {
       // Paid (or otherwise settled) already: send the buyer to their order page.

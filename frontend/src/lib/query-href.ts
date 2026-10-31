@@ -6,5 +6,9 @@ export function queryHref(path: string, current: Record<string, string | undefin
   return query ? `${path}?${query}` : path;
 }
 
+/** Whether a search param can be an id: admin pages fetch a drawer's row only for a UUID. */
+export const isUuid = (value: string | undefined): value is string =>
+  value !== undefined && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
 /** One value of a Next.js search param (the first, when repeated). */
 export const firstParam = (value: string | string[] | undefined): string | undefined => (Array.isArray(value) ? value[0] : value);

@@ -84,6 +84,7 @@ export type AdminSignInPayload = {
 export type ListingTakenDownPayload = { listingTitle: string; reason: string; refundAll: boolean };
 export type MerchantSuspendedPayload = { merchantName: string; reason: string };
 export type MerchantReinstatedPayload = { merchantName: string };
+export type MerchantRefundedByAdminPayload = { publicCode: string; listingTitle: string; amountCents: number; reason: string };
 export type MerchantLine = { name: string; gstNumber: string | null };
 export type EventReminderPayload = {
   publicCode: string;
@@ -116,6 +117,7 @@ export interface PayloadByType {
   LISTING_TAKEN_DOWN: ListingTakenDownPayload;
   MERCHANT_SUSPENDED: MerchantSuspendedPayload;
   MERCHANT_REINSTATED: MerchantReinstatedPayload;
+  MERCHANT_REFUNDED_BY_ADMIN: MerchantRefundedByAdminPayload;
 }
 
 export interface RenderContext {
@@ -340,6 +342,16 @@ export function renderEmail(type: string, locale: string, to: string, payload: u
       const p = payload as MerchantReinstatedPayload;
       return toStaff(zh ? `你的 TagAlong 店铺已恢复：${p.merchantName}` : `Your TagAlong shop is active again: ${p.merchantName}`, [
         zh ? '平台已恢复你的店铺，进行中的接龙可以继续接受下单。' : 'The platform reinstated your shop; your open listings take orders again.',
+      ]);
+    }
+    case 'MERCHANT_REFUNDED_BY_ADMIN': {
+      const p = payload as MerchantRefundedByAdminPayload;
+      return toStaff(zh ? `平台代你退款：订单 ${p.publicCode}` : `TagAlong refunded order ${p.publicCode} for you`, [
+        zh
+          ? `TagAlong 平台为「${p.listingTitle}」的订单 ${p.publicCode} 发起了 ${money(p.amountCents)} 的退款，退款从你的 Stripe 账户退回给买家。`
+          : `TagAlong refunded ${money(p.amountCents)} on order ${p.publicCode} for "${p.listingTitle}"; the money goes back to the buyer from your Stripe account.`,
+        zh ? `原因：${p.reason}` : `Reason: ${p.reason}`,
+        zh ? '如有疑问，请回复这封邮件联系平台。' : 'Reply to this email if you have questions.',
       ]);
     }
     case 'ADMIN_SIGN_IN': {
