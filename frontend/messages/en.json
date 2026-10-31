@@ -246,6 +246,12 @@
         ],
         "updated": "2026-11-01"
       }
+    },
+    "notFound": {
+      "title": "Page not found",
+      "body": "This listing or page does not exist, or the link is incomplete. Check the link you were sent, or find your orders by email.",
+      "home": "Home",
+      "findOrder": "Find my orders"
     }
   },
   "admin": {
