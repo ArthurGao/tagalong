@@ -6,7 +6,7 @@ import type { Merchant } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { AuthUser } from '../auth/auth-user.js';
 import { MerchantsService } from '../merchants/merchants.service.js';
-import { StripeClient } from './stripe-client.js';
+import { isStripeRejection, StripeClient } from './stripe-client.js';
 
 @Injectable()
 export class MerchantStripeService {
@@ -57,8 +57,30 @@ export class MerchantStripeService {
     );
   }
 
+  /**
+   * Retries of an onboarding share an idempotency key, so a lost response or a Stripe outage never makes a second
+   * account. But Stripe keeps a key's first answer for 24 h, a refusal included: after a refusal (nothing was made),
+   * the next try takes a new key, or fixing the cause (Connect not enabled, a bad email) would not help for a day.
+   */
+  private async createAtStripe(merchant: Merchant): Promise<string> {
+    const attempt = merchant.stripeAccountAttempt;
+    const key = attempt ? `connect-account:${merchant.id}:${attempt}` : `connect-account:${merchant.id}`;
+    try {
+      return await this.stripe.createConnectedAccount(merchant.id, merchant.contactEmail, key);
+    } catch (e) {
+      // Conditional: of two refused requests racing on the same key, one moves it on.
+      if (isStripeRejection(e)) {
+        await this.prisma.merchant.updateMany({
+          where: { id: merchant.id, stripeAccountAttempt: attempt },
+          data: { stripeAccountAttempt: { increment: 1 } },
+        });
+      }
+      throw e;
+    }
+  }
+
   private async createAccount(merchant: Merchant): Promise<string> {
-    const created = await this.stripe.createConnectedAccount(merchant.id, merchant.contactEmail);
+    const created = await this.createAtStripe(merchant);
     // Conditional: a concurrent onboarding may have stored an id first (the idempotency key makes
     // Stripe return the same account anyway); keep whatever is stored.
     const { count } = await this.prisma.merchant.updateMany({

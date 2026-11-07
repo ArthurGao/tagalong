@@ -69,6 +69,28 @@ describe('Stripe Connect (DESIGN §8.1, §8.3)', () => {
       });
     });
 
+    it('after Stripe refuses an account, the next try uses a new key, so fixing the cause works at once', async () => {
+      // Stripe keeps a key's first answer for 24 h, a refusal included (found when Connect was enabled after a try).
+      const merchant = await merchantFor('user_a');
+      t.stripe.rejectAccounts = true;
+      expect((await http().post('/api/v1/merchants/me/stripe/onboard').set(as('user_a'))).status).toBe(502);
+      t.stripe.rejectAccounts = false;
+      const res = await http().post('/api/v1/merchants/me/stripe/onboard').set(as('user_a'));
+      expect(res.status).toBe(201);
+      expect(t.stripe.accountKeys).toEqual([`connect-account:${merchant.id}`, `connect-account:${merchant.id}:1`]);
+      const { stripeAccountId } = await prisma.merchant.findUniqueOrThrow({ where: { id: merchant.id } });
+      expect(res.body.url).toBe(`https://connect.stripe.test/setup/${stripeAccountId}`);
+    });
+
+    it('after a lost response, the retry keeps the key and gets back the account Stripe already made', async () => {
+      const merchant = await merchantFor('user_a');
+      t.stripe.loseNextAccountResponse = true;
+      expect((await http().post('/api/v1/merchants/me/stripe/onboard').set(as('user_a'))).status).toBe(502);
+      expect((await http().post('/api/v1/merchants/me/stripe/onboard').set(as('user_a'))).status).toBe(201);
+      expect(t.stripe.accountKeys).toEqual([`connect-account:${merchant.id}`, `connect-account:${merchant.id}`]);
+      expect(t.stripe.createdFor).toEqual([merchant.id]); // one account, not two
+    });
+
     it('is NOT_FOUND without a merchant profile and MERCHANT_SUSPENDED for a suspended merchant', async () => {
       await prisma.user.create({ data: { email: 'new@example.test', clerkUserId: 'user_new' } });
       expect((await http().post('/api/v1/merchants/me/stripe/onboard').set(as('user_new'))).status).toBe(404);

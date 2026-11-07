@@ -41,7 +41,10 @@ export async function callStripe<T>(request: () => Promise<T>): Promise<T> {
   } catch (e) {
     if (e instanceof Stripe.errors.StripeError) {
       stripeLogger.warn(`Stripe request failed: ${e.code ?? e.rawType ?? e.type} / ${e.type}${e.requestId ? ` (${e.requestId})` : ''}: ${redactText(e.message)}`);
-      throw new AppError('STRIPE_ERROR', 'Stripe request failed', { stripeCode: e.code ?? e.rawType ?? e.type });
+      throw new AppError('STRIPE_ERROR', 'Stripe request failed', {
+        stripeCode: e.code ?? e.rawType ?? e.type,
+        ...(e.statusCode && { stripeStatus: e.statusCode }),
+      });
     }
     throw e;
   }
@@ -50,6 +53,15 @@ export async function callStripe<T>(request: () => Promise<T>): Promise<T> {
 /** Stripe's own error code from a STRIPE_ERROR thrown by callStripe, e.g. 'idempotency_key_in_use'. */
 export function stripeErrorCode(e: unknown): string | undefined {
   return e instanceof AppError && e.code === 'STRIPE_ERROR' ? (e.details as { stripeCode?: string } | undefined)?.stripeCode : undefined;
+}
+
+/**
+ * Stripe answered and refused the request (4xx), so nothing was created. Not a 409 (the same key still in flight) or a
+ * 429 (rate limit), and not a network error or a 5xx, where Stripe may have done the work.
+ */
+export function isStripeRejection(e: unknown): boolean {
+  const status = e instanceof AppError && e.code === 'STRIPE_ERROR' ? (e.details as { stripeStatus?: number } | undefined)?.stripeStatus : undefined;
+  return status !== undefined && status >= 400 && status < 500 && status !== 409 && status !== 429;
 }
 
 /** A Stripe refund as the platform needs it. `status`: pending | requires_action | succeeded | failed | canceled. */
@@ -70,7 +82,8 @@ const toStripeRefund = (r: Stripe.Refund): StripeRefund => ({
 
 // Business code never touches the SDK class (backend/CLAUDE.md); tests swap this token for a fake.
 export abstract class StripeClient {
-  abstract createConnectedAccount(merchantId: string, email: string): Promise<string>;
+  /** The caller owns the idempotency key: it moves on after a refusal (merchant-stripe.service.ts). */
+  abstract createConnectedAccount(merchantId: string, email: string, idempotencyKey: string): Promise<string>;
   abstract createOnboardingLink(accountId: string, refreshUrl: string, returnUrl: string): Promise<string>;
   abstract retrieveAccount(accountId: string): Promise<StripeAccountState>;
   /** Direct charge on the merchant's account (D2); idempotent per order. */
@@ -102,7 +115,7 @@ export class StripeSdkClient extends StripeClient {
     this.stripe = new Stripe(env.STRIPE_SECRET_KEY || 'sk_test_unset');
   }
 
-  async createConnectedAccount(merchantId: string, email: string): Promise<string> {
+  async createConnectedAccount(merchantId: string, email: string, idempotencyKey: string): Promise<string> {
     // D2: the merchant gets the full Dashboard and carries fees and losses (the "Standard" set).
     const account = await callStripe(() =>
       this.stripe.accounts.create(
@@ -117,8 +130,7 @@ export class StripeSdkClient extends StripeClient {
         },
         metadata: { merchantId },
       },
-      // Retries of the same onboarding never create a second account.
-      { idempotencyKey: `connect-account:${merchantId}` },
+      { idempotencyKey },
       ),
     );
     return account.id;

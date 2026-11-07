@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { AppError } from '../../common/errors/app-error.js';
-import { callStripe } from './stripe-client.js';
+import { callStripe, isStripeRejection } from './stripe-client.js';
 
 describe('callStripe', () => {
   it('turns SDK errors into 502 STRIPE_ERROR with the Stripe code (DESIGN §17)', async () => {
@@ -41,5 +41,27 @@ describe('callStripe', () => {
     const bug = new TypeError('bug');
     await expect(callStripe(() => Promise.reject(bug))).rejects.toBe(bug);
     await expect(callStripe(() => Promise.resolve(42))).resolves.toBe(42);
+  });
+});
+
+describe('isStripeRejection', () => {
+  const failWith = (sdkError: Error) => callStripe(() => Promise.reject(sdkError)).catch((e: unknown) => e);
+  const answered = (statusCode: number) =>
+    new Stripe.errors.StripeInvalidRequestError({ type: 'invalid_request_error', message: 'x', statusCode } as never);
+
+  it.each([
+    [400, true],
+    [402, true],
+    [404, true],
+    [409, false], // the same key still in flight
+    [429, false], // rate limited: nothing decided
+    [500, false], // Stripe may have done the work
+  ])('a Stripe answer with HTTP %s is a refusal: %s', async (statusCode, refused) => {
+    expect(isStripeRejection(await failWith(answered(statusCode)))).toBe(refused);
+  });
+
+  it('is never a network failure (Stripe may have done the work) or an error that is not from Stripe', async () => {
+    expect(isStripeRejection(await failWith(new Stripe.errors.StripeConnectionError({ message: 'socket hang up' })))).toBe(false);
+    expect(isStripeRejection(new AppError('NOT_FOUND', 'x'))).toBe(false);
   });
 });

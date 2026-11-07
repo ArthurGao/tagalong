@@ -122,6 +122,8 @@ model Merchant {
   contactPhone     String         @map("contact_phone")
   gstNumber        String?        @map("gst_number")
   stripeAccountId  String?        @unique @map("stripe_account_id")
+  /// Stripe refusals of account creation so far; each one moves the idempotency key on (merchant-stripe.service.ts).
+  stripeAccountAttempt Int        @default(0) @map("stripe_account_attempt")
   chargesEnabled   Boolean        @default(false) @map("charges_enabled")
   payoutsEnabled   Boolean        @default(false) @map("payouts_enabled")
   detailsSubmitted Boolean        @default(false) @map("details_submitted")

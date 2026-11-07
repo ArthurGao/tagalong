@@ -10,12 +10,22 @@ export function signStripeEvent(event: object, secret: string): { body: string; 
   return { body, signature: sdk.webhooks.generateTestHeaderString({ payload: body, secret }) };
 }
 
-const stripeError = (stripeCode: string) => new AppError('STRIPE_ERROR', 'Stripe request failed', { stripeCode });
+const stripeError = (stripeCode: string, stripeStatus?: number) =>
+  new AppError('STRIPE_ERROR', 'Stripe request failed', { stripeCode, ...(stripeStatus && { stripeStatus }) });
+const REJECTED = Symbol('rejected');
 const sessionIdFor = (orderId: string) => `cs_test_${orderId.replace(/-/g, '').slice(-16)}`;
 const checkoutUrlFor = (sessionId: string) => `https://checkout.stripe.test/${sessionId}`;
 
 export class FakeStripeClient implements StripeClient {
   readonly createdFor: string[] = [];
+  /** The idempotency key of every account request, in order. */
+  readonly accountKeys: string[] = [];
+  /** What Stripe keeps per key for 24 h: the account it made, or its refusal (replayed as is). */
+  private readonly accountsByKey = new Map<string, string | typeof REJECTED>();
+  /** Stripe refuses new accounts (e.g. the platform has not signed up for Connect): 400. */
+  rejectAccounts = false;
+  /** The next account is created, but its response is lost (a connection error). */
+  loseNextAccountResponse = false;
   readonly links: { accountId: string; refreshUrl: string; returnUrl: string }[] = [];
   readonly retrieveCalls: string[] = [];
   readonly accounts = new Map<string, StripeAccountState>();
@@ -63,6 +73,10 @@ export class FakeStripeClient implements StripeClient {
     this.failRefundKeys.clear();
     this.checkoutInUse = false;
     this.createdFor.length = 0;
+    this.accountKeys.length = 0;
+    this.accountsByKey.clear();
+    this.rejectAccounts = false;
+    this.loseNextAccountResponse = false;
     this.links.length = 0;
     this.retrieveCalls.length = 0;
     this.accounts.clear();
@@ -70,10 +84,24 @@ export class FakeStripeClient implements StripeClient {
     this.failNextRetrieve = false;
   }
 
-  async createConnectedAccount(merchantId: string): Promise<string> {
+  async createConnectedAccount(merchantId: string, _email: string, idempotencyKey: string): Promise<string> {
+    this.accountKeys.push(idempotencyKey);
+    const kept = this.accountsByKey.get(idempotencyKey);
+    if (kept === REJECTED) throw stripeError('invalid_request_error', 400);
+    if (kept) return kept;
+    if (this.rejectAccounts) {
+      this.accountsByKey.set(idempotencyKey, REJECTED);
+      throw stripeError('invalid_request_error', 400);
+    }
+    const n = this.createdFor.filter((m) => m === merchantId).length;
     this.createdFor.push(merchantId);
-    const id = `acct_${merchantId.replace(/-/g, '').slice(-12)}`;
+    const id = `acct_${merchantId.replace(/-/g, '').slice(-12)}${n || ''}`;
     this.accounts.set(id, { chargesEnabled: false, payoutsEnabled: false, detailsSubmitted: false });
+    this.accountsByKey.set(idempotencyKey, id);
+    if (this.loseNextAccountResponse) {
+      this.loseNextAccountResponse = false;
+      throw stripeError('StripeConnectionError');
+    }
     return id;
   }
 
