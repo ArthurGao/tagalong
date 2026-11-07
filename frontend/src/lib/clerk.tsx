@@ -11,16 +11,19 @@ export const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KE
 
 const localizations: Record<Locale, typeof enUS> = { 'zh-CN': zhCN, en: enUS };
 
-// Clerk components take the active surface's CSS variables, so they follow docs/UI-STYLE.md tokens.
-const surfaceAppearance = {
+// Clerk components take the active surface's CSS variables, so they follow docs/UI-STYLE.md tokens, light or dark.
+// Current variable names only: Clerk ignores the ones it deprecated (colorText, colorInputBackground, …).
+export const surfaceAppearance = {
   variables: {
     colorPrimary: 'var(--primary)',
+    colorPrimaryForeground: 'var(--primary-foreground)',
     colorBackground: 'var(--card)',
-    colorText: 'var(--foreground)',
-    colorTextSecondary: 'var(--muted-foreground)',
+    colorForeground: 'var(--foreground)',
+    colorMutedForeground: 'var(--muted-foreground)',
+    colorNeutral: 'var(--foreground)', // secondary buttons, borders and dividers derive from it
     colorDanger: 'var(--destructive)',
-    colorInputBackground: 'var(--card)',
-    colorInputText: 'var(--foreground)',
+    colorInput: 'var(--card)',
+    colorInputForeground: 'var(--foreground)',
     borderRadius: 'var(--radius)',
     fontFamily: 'var(--surface-font-body)',
   },
