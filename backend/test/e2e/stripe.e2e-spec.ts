@@ -78,17 +78,45 @@ describe('Stripe Connect (DESIGN §8.1, §8.3)', () => {
       const res = await http().post('/api/v1/merchants/me/stripe/onboard').set(as('user_a'));
       expect(res.status).toBe(201);
       expect(t.stripe.accountKeys).toEqual([`connect-account:${merchant.id}`, `connect-account:${merchant.id}:1`]);
+      expect(t.stripe.accountLookups).toEqual([]); // a refusal made nothing, so nothing to look for
       const { stripeAccountId } = await prisma.merchant.findUniqueOrThrow({ where: { id: merchant.id } });
       expect(res.body.url).toBe(`https://connect.stripe.test/setup/${stripeAccountId}`);
     });
 
-    it('after a lost response, the retry keeps the key and gets back the account Stripe already made', async () => {
+    it('after a lost response, the retry gets back the account Stripe already made, and the key stays', async () => {
       const merchant = await merchantFor('user_a');
       t.stripe.loseNextAccountResponse = true;
       expect((await http().post('/api/v1/merchants/me/stripe/onboard').set(as('user_a'))).status).toBe(502);
+      const row = await prisma.merchant.findUniqueOrThrow({ where: { id: merchant.id } });
+      expect(row.stripeAccountAttempt).toBe(0); // not a refusal: the next create would reuse the key
+      expect(row.stripeAccountCreateStartedAt).not.toBeNull();
+      t.stripe.loseNextAccountResponse = true; // lost again: the mark keeps the first try's time, so its age means something
+      expect((await http().post('/api/v1/merchants/me/stripe/onboard').set(as('user_a'))).status).toBe(502);
+      const again = await prisma.merchant.findUniqueOrThrow({ where: { id: merchant.id } });
+      expect(again.stripeAccountCreateStartedAt).toEqual(row.stripeAccountCreateStartedAt);
       expect((await http().post('/api/v1/merchants/me/stripe/onboard').set(as('user_a'))).status).toBe(201);
-      expect(t.stripe.accountKeys).toEqual([`connect-account:${merchant.id}`, `connect-account:${merchant.id}`]);
+      expect(t.stripe.accountKeys).toEqual(Array(3).fill(`connect-account:${merchant.id}`));
       expect(t.stripe.createdFor).toEqual([merchant.id]); // one account, not two
+      expect(t.stripe.accountLookups).toEqual([]); // within the key's life the key replays it; no account list
+      const stored = await prisma.merchant.findUniqueOrThrow({ where: { id: merchant.id } });
+      expect(stored.stripeAccountCreateStartedAt).toBeNull();
+    });
+
+    it('after a lost response and a day gone (the key forgotten), the retry finds the account instead of making a second', async () => {
+      const merchant = await merchantFor('user_a');
+      t.stripe.loseNextAccountResponse = true;
+      expect((await http().post('/api/v1/merchants/me/stripe/onboard').set(as('user_a'))).status).toBe(502);
+      expect(t.stripe.accountLookups).toEqual([]); // a first try never searches
+      // A day later: the mark is old and Stripe has forgotten the key (it keeps keys for 24 h).
+      await prisma.merchant.update({ where: { id: merchant.id }, data: { stripeAccountCreateStartedAt: new Date(Date.now() - 24 * 3_600_000) } });
+      t.stripe.keysExpired = true;
+      const res = await http().post('/api/v1/merchants/me/stripe/onboard').set(as('user_a'));
+      expect(res.status).toBe(201);
+      expect(t.stripe.createdFor).toEqual([merchant.id]); // still one account
+      expect(t.stripe.accountLookups).toEqual([merchant.id]);
+      const { stripeAccountId } = await prisma.merchant.findUniqueOrThrow({ where: { id: merchant.id } });
+      expect(res.body.url).toBe(`https://connect.stripe.test/setup/${stripeAccountId}`);
+      expect(t.stripe.accounts.has(stripeAccountId!)).toBe(true);
     });
 
     it('is NOT_FOUND without a merchant profile and MERCHANT_SUSPENDED for a suspended merchant', async () => {

@@ -124,6 +124,8 @@ model Merchant {
   stripeAccountId  String?        @unique @map("stripe_account_id")
   /// Stripe refusals of account creation so far; each one moves the idempotency key on (merchant-stripe.service.ts).
   stripeAccountAttempt Int        @default(0) @map("stripe_account_attempt")
+  /// When the first unsettled try to create the Stripe account began (DESIGN §8.1, merchant-stripe.service.ts).
+  stripeAccountCreateStartedAt DateTime? @map("stripe_account_create_started_at")
   chargesEnabled   Boolean        @default(false) @map("charges_enabled")
   payoutsEnabled   Boolean        @default(false) @map("payouts_enabled")
   detailsSubmitted Boolean        @default(false) @map("details_submitted")

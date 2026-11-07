@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { errorText } from '../../common/errors/error-text.js';
+import { STRIPE_KEY_SAFE_MS } from '../../common/time.js';
 import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -11,8 +12,6 @@ import { type ClaimedRefund, markRefundSucceeded, stillHeld } from './refunds.js
 
 const MAX_ATTEMPTS = 5;
 const BASE_DELAY_MS = 30_000;
-/** Stripe keeps an idempotency key for 24 h; a task older than this may have outlived its key. */
-const KEY_SAFE_MS = 23 * 60 * 60_000;
 /** How often a refund Stripe holds as pending (e.g. the merchant's balance is short) is looked at again. */
 const PENDING_RECHECK_MS = 15 * 60_000;
 
@@ -82,7 +81,7 @@ export class RefundProcessor {
    */
   private async askStripe(task: ClaimedRefund, accountId: string, paymentIntentId: string): Promise<StripeRefund> {
     if (task.stripeRefundId) return this.stripe.retrieveRefund(accountId, task.stripeRefundId);
-    if (Date.now() - task.createdAt.getTime() > KEY_SAFE_MS) {
+    if (Date.now() - task.createdAt.getTime() > STRIPE_KEY_SAFE_MS) {
       const earlier = (await this.stripe.listRefunds(accountId, paymentIntentId)).find((r) => r.refundId === task.id && r.amountCents === task.amountCents);
       if (earlier) return earlier;
     }

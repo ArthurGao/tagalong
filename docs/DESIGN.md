@@ -294,7 +294,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 
 ### 8.1 商家入驻
 1. `POST /merchants/me/stripe/onboard` 执行以下操作：
-   - 如果商家还没有 Stripe 账户，就调用 `accounts.create` 创建一个，参数为 country `NZ`，以及 controller 配置 `stripe_dashboard.type=full`, `fees.payer=account`, `losses.payments=stripe`, `requirement_collection=stripe`；使用 Stripe idempotency key `connect-account:{merchantId}`，重试不会建出第二个账户。Stripe 会把同一个 key 的第一次结果（包括拒绝）保留 24 小时，所以 Stripe 明确拒绝（4xx，409、429 除外）后 `merchant.stripe_account_attempt` 加一，下次用 `connect-account:{merchantId}:{n}`，修好原因（平台没开通 Connect、邮箱有误）后马上能重试；网络错误或 5xx 不换 key，Stripe 可能已经建好账户
+   - 如果商家还没有 Stripe 账户，就调用 `accounts.create` 创建一个，参数为 country `NZ`，以及 controller 配置 `stripe_dashboard.type=full`, `fees.payer=account`, `losses.payments=stripe`, `requirement_collection=stripe`；使用 Stripe idempotency key `connect-account:{merchantId}`，重试不会建出第二个账户。Stripe 会把同一个 key 的第一次结果（包括拒绝）保留 24 小时，所以 Stripe 明确拒绝（4xx，409、429 除外）后 `merchant.stripe_account_attempt` 加一，下次用 `connect-account:{merchantId}:{n}`，修好原因（平台没开通 Connect、邮箱有误）后马上能重试；网络错误或 5xx 不换 key，Stripe 可能已经建好账户。key 只保留 24 小时，所以第一次创建前在 `merchant.stripe_account_create_started_at` 记下开始时间，存下账户 id 或被拒绝时清掉；标记超过 23 小时（key 可能已失效）的重试先按 `metadata.merchantId` 在 Stripe 查已有账户（要列出全部账户，所以只在这时查），找到就用，找不到才创建；23 小时内的重试用原 key 就能拿回同一个账户。这样过了 24 小时也不会建出第二个账户
    - 然后调用 `accountLinks.create` 生成入驻链接，并返回该 URL
 2. 前端跳转到 Stripe 完成入驻，完成后回到 `/dashboard/onboarding/return`（链接失效时 Stripe 跳到 `/dashboard/onboarding?expired=1`，重新生成）。返回页调用 `GET /merchants/me/stripe/status`，它会**实时读取 Stripe 账户并同步**，不必等 webhook。
 3. 收到 `account.updated` webhook 后，同步 `chargesEnabled`、`payoutsEnabled`、`detailsSubmitted` 三个字段；商家 `status` 不受影响（创建即 `ACTIVE`，只表示是否被平台停用）；能否收款只看 `chargesEnabled`。

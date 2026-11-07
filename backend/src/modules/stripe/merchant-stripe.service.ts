@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AppError } from '../../common/errors/app-error.js';
+import { STRIPE_KEY_SAFE_MS } from '../../common/time.js';
 import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import type { Merchant } from '../../generated/prisma/client.js';
@@ -62,10 +63,27 @@ export class MerchantStripeService {
 
   /**
    * Retries of an onboarding share an idempotency key, so a lost response or a Stripe outage never makes a second
-   * account. But Stripe keeps a key's first answer for 24 h, a refusal included: after a refusal (nothing was made),
-   * the next try takes a new key, or fixing the cause (Connect not enabled, a bad email) would not help for a day.
+   * account. But Stripe keeps a key's first answer for 24 h only, a refusal included:
+   * - after a refusal (nothing was made), the next try takes a new key, or fixing the cause (Connect not enabled, a bad
+   *   email) would not help for a day;
+   * - a try that ended any other way may have made an account, and after 24 h its key would make another. So the first
+   *   try is marked (kept until the id is stored or Stripe refused), and a retry once the key may have expired looks
+   *   the account up by metadata before creating one. A younger retry needs no lookup: the key replays the account.
+   *   An old mark is a finished try: the create follows the mark in the same request, and Stripe calls time out in
+   *   minutes (SDK 80 s), so no try still on its way can create an account after the lookup.
    */
   private async createAtStripe(merchant: Merchant): Promise<string> {
+    const started = merchant.stripeAccountCreateStartedAt;
+    if (started && Date.now() - started.getTime() > STRIPE_KEY_SAFE_MS) {
+      const found = await this.stripe.findConnectedAccount(merchant.id);
+      if (found) return found;
+    }
+    if (!started) {
+      await this.prisma.merchant.updateMany({
+        where: { id: merchant.id, stripeAccountCreateStartedAt: null },
+        data: { stripeAccountCreateStartedAt: new Date() },
+      });
+    }
     const attempt = merchant.stripeAccountAttempt;
     const key = attempt ? `connect-account:${merchant.id}:${attempt}` : `connect-account:${merchant.id}`;
     try {
@@ -75,7 +93,7 @@ export class MerchantStripeService {
       if (isStripeRejection(e)) {
         await this.prisma.merchant.updateMany({
           where: { id: merchant.id, stripeAccountAttempt: attempt },
-          data: { stripeAccountAttempt: { increment: 1 } },
+          data: { stripeAccountAttempt: { increment: 1 }, stripeAccountCreateStartedAt: null },
         });
       }
       throw e;
@@ -88,7 +106,7 @@ export class MerchantStripeService {
     // Stripe return the same account anyway); keep whatever is stored.
     const { count } = await this.prisma.merchant.updateMany({
       where: { id: merchant.id, stripeAccountId: null },
-      data: { stripeAccountId: created },
+      data: { stripeAccountId: created, stripeAccountCreateStartedAt: null },
     });
     if (count === 1) return created;
     const stored = await this.prisma.merchant.findUniqueOrThrow({ where: { id: merchant.id } });

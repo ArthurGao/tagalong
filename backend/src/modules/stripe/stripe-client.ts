@@ -84,6 +84,8 @@ const toStripeRefund = (r: Stripe.Refund): StripeRefund => ({
 export abstract class StripeClient {
   /** The caller owns the idempotency key: it moves on after a refusal (merchant-stripe.service.ts). */
   abstract createConnectedAccount(merchantId: string, email: string, idempotencyKey: string): Promise<string>;
+  /** Our connected account for this merchant (by `metadata.merchantId`), or null. Lists every account: use sparingly. */
+  abstract findConnectedAccount(merchantId: string): Promise<string | null>;
   abstract createOnboardingLink(accountId: string, refreshUrl: string, returnUrl: string): Promise<string>;
   abstract retrieveAccount(accountId: string): Promise<StripeAccountState>;
   /** Direct charge on the merchant's account (D2); idempotent per order. */
@@ -134,6 +136,18 @@ export class StripeSdkClient extends StripeClient {
       ),
     );
     return account.id;
+  }
+
+  async findConnectedAccount(merchantId: string): Promise<string | null> {
+    return callStripe(async () => {
+      // Accounts cannot be searched by metadata; walk the list (auto-paginated). It holds only this platform's
+      // connected accounts, and only the platform's key writes their metadata. More than one match means a duplicate
+      // already exists, which needs a person anyway.
+      for await (const account of this.stripe.accounts.list({ limit: 100 })) {
+        if (account.metadata?.merchantId === merchantId) return account.id;
+      }
+      return null;
+    });
   }
 
   async createOnboardingLink(accountId: string, refreshUrl: string, returnUrl: string): Promise<string> {

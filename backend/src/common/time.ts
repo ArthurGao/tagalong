@@ -1,6 +1,8 @@
 // Times are stored in UTC and shown in Auckland time (root CLAUDE.md rule 2); mirrors frontend lib/time.ts.
 export const HOUR_MS = 3_600_000;
 export const DAY_MS = 24 * HOUR_MS;
+/** Stripe keeps an idempotency key for 24 h; until then the same key is sure to replay its first answer. */
+export const STRIPE_KEY_SAFE_MS = 23 * HOUR_MS;
 
 /** The UTC clock hour of `at` ("2026-10-28T13"), for per-hour dedupe keys, and when it began. */
 export function utcHour(at: Date): { key: string; start: Date } {

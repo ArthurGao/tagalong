@@ -26,6 +26,10 @@ export class FakeStripeClient implements StripeClient {
   rejectAccounts = false;
   /** The next account is created, but its response is lost (a connection error). */
   loseNextAccountResponse = false;
+  /** Merchants whose account was searched for by metadata. */
+  readonly accountLookups: string[] = [];
+  /** metadata.merchantId of every account made. */
+  private readonly accountOwners = new Map<string, string>();
   readonly links: { accountId: string; refreshUrl: string; returnUrl: string }[] = [];
   readonly retrieveCalls: string[] = [];
   readonly accounts = new Map<string, StripeAccountState>();
@@ -77,6 +81,8 @@ export class FakeStripeClient implements StripeClient {
     this.accountsByKey.clear();
     this.rejectAccounts = false;
     this.loseNextAccountResponse = false;
+    this.accountLookups.length = 0;
+    this.accountOwners.clear();
     this.links.length = 0;
     this.retrieveCalls.length = 0;
     this.accounts.clear();
@@ -86,9 +92,9 @@ export class FakeStripeClient implements StripeClient {
 
   async createConnectedAccount(merchantId: string, _email: string, idempotencyKey: string): Promise<string> {
     this.accountKeys.push(idempotencyKey);
-    const kept = this.accountsByKey.get(idempotencyKey);
+    const kept = this.keysExpired ? undefined : this.accountsByKey.get(idempotencyKey);
     if (kept === REJECTED) throw stripeError('invalid_request_error', 400);
-    if (kept) return kept;
+    if (kept) return this.answerAccount(kept);
     if (this.rejectAccounts) {
       this.accountsByKey.set(idempotencyKey, REJECTED);
       throw stripeError('invalid_request_error', 400);
@@ -98,11 +104,22 @@ export class FakeStripeClient implements StripeClient {
     const id = `acct_${merchantId.replace(/-/g, '').slice(-12)}${n || ''}`;
     this.accounts.set(id, { chargesEnabled: false, payoutsEnabled: false, detailsSubmitted: false });
     this.accountsByKey.set(idempotencyKey, id);
+    this.accountOwners.set(id, merchantId);
+    return this.answerAccount(id);
+  }
+
+  /** Stripe's answer, new or replayed for the key, unless the response is to be lost. */
+  private answerAccount(id: string): string {
     if (this.loseNextAccountResponse) {
       this.loseNextAccountResponse = false;
       throw stripeError('StripeConnectionError');
     }
     return id;
+  }
+
+  async findConnectedAccount(merchantId: string): Promise<string | null> {
+    this.accountLookups.push(merchantId);
+    return [...this.accountOwners].find(([, owner]) => owner === merchantId)?.[0] ?? null;
   }
 
   async createOnboardingLink(accountId: string, refreshUrl: string, returnUrl: string): Promise<string> {
