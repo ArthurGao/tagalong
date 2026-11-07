@@ -19,6 +19,10 @@ export class FakeClerkAdminApi implements ClerkAdminApi {
     return email;
   }
 
+  async findUserIdByEmail(email: string): Promise<string | null> {
+    return [...this.users].find(([, e]) => e.toLowerCase() === email.toLowerCase())?.[0] ?? null;
+  }
+
   async setRole(clerkUserId: string, role: Role): Promise<void> {
     if (this.failSetRole) throw new Error('Clerk API down');
     this.roleCalls.push({ clerkUserId, role: role === 'ADMIN' ? 'admin' : 'merchant' });

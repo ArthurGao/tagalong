@@ -16,6 +16,8 @@ export abstract class ClerkVerifier {
 
 export abstract class ClerkAdminApi {
   abstract getPrimaryEmail(clerkUserId: string): Promise<string>;
+  /** The Clerk user with this email address, or null when there is none. */
+  abstract findUserIdByEmail(email: string): Promise<string | null>;
   /** Mirrors our DB role to publicMetadata.role (lower-case), which the frontend reads for routing only. */
   abstract setRole(clerkUserId: string, role: Role): Promise<void>;
 }
@@ -55,6 +57,11 @@ export class ClerkSdkAdminApi extends ClerkAdminApi {
     const email = user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress;
     if (!email) throw new Error(`Clerk user ${clerkUserId} has no primary email`);
     return email;
+  }
+
+  async findUserIdByEmail(email: string): Promise<string | null> {
+    const { data } = await this.client.users.getUserList({ emailAddress: [email], limit: 1 });
+    return data[0]?.id ?? null;
   }
 
   async setRole(clerkUserId: string, role: Role): Promise<void> {

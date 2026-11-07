@@ -103,9 +103,9 @@ name), `NEXT_PUBLIC_APP_ENV`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET
 - **Check the admin-subdomain session** (DESIGN §16-8): sign in on `admin…` and open the console. If the session does
   not hold, move admin to `/admin` on the main host (DESIGN §13 fallback) before going on.
 - Grant the first admin with `pnpm admin:grant <email>`, run from a machine with the environment's `.env`; the email
-  must be in `ADMIN_EMAIL_ALLOWLIST`. The user must exist in our DB first, and the admin host answers 404 before any
-  API call while the role is missing. So after signing in on `admin…`, open `https://admin…/api/v1/me` once: it creates
-  the user. Then grant, and sign in again so the session carries the new role.
+  must be in `ADMIN_EMAIL_ALLOWLIST` and must have a Clerk account (signed up once). The command creates our user row
+  from the Clerk account if it does not exist yet (the admin host answers 404 to non-admins, so signing in there cannot
+  create it). Sign in again afterwards so the session carries the new role.
 
 **Resend.** Add the sending domain and its DNS records (SPF, DKIM, return path), and create an API key for that
 domain only.

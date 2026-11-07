@@ -20,6 +20,7 @@ describe('admin:grant / admin:revoke', () => {
     await resetDb(prisma);
     t.clerk.roleCalls.length = 0;
     t.clerk.failSetRole = false;
+    t.clerk.users.clear();
   });
 
   afterAll(async () => {
@@ -62,8 +63,18 @@ describe('admin:grant / admin:revoke', () => {
     expect(await prisma.auditLog.count()).toBe(0);
   });
 
-  it('refuses a user who has never signed in', async () => {
-    await expect(roles.grant('ops@tagalong.test')).rejects.toThrow(/sign in once/);
+  it('creates the user from their Clerk account when they never reached the API, then grants', async () => {
+    // The admin host answers 404 to anyone who is not an admin yet, so a new admin cannot create their row by signing in.
+    t.clerk.users.set('user_new_ops', 'Ops@TagAlong.test');
+    expect(await roles.grant('ops@tagalong.test')).toEqual({ clerkSynced: true });
+    expect(await prisma.user.findFirstOrThrow({ where: { clerkUserId: 'user_new_ops' } })).toMatchObject({ email: 'ops@tagalong.test', role: 'ADMIN' });
+    expect(await prisma.auditLog.findMany({ select: { action: true } })).toEqual([{ action: 'ADMIN_GRANT' }]);
+    expect(t.clerk.roleCalls.at(-1)).toEqual({ clerkUserId: 'user_new_ops', role: 'admin' });
+  });
+
+  it('refuses an email that has no Clerk account', async () => {
+    await expect(roles.grant('ops@tagalong.test')).rejects.toThrow(/no Clerk account/);
+    expect(await prisma.user.count()).toBe(0);
   });
 
   it('refuses a user who owns a merchant profile (one role per account)', async () => {

@@ -3,6 +3,7 @@ import { normalizeEmail } from '../../common/email.js';
 import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import type { Role } from '../../generated/prisma/enums.js';
+import { isUniqueViolation } from '../../prisma/errors.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { ClerkAdminApi } from './clerk.js';
 
@@ -23,7 +24,7 @@ export class AdminRoleService {
     if (!this.env.ADMIN_EMAIL_ALLOWLIST.includes(email)) {
       throw new Error(`${email} is not in ADMIN_EMAIL_ALLOWLIST`);
     }
-    const user = await this.findUser(email);
+    const user = (await this.prisma.user.findFirst({ where: { email, deletedAt: null } })) ?? (await this.createFromClerk(email));
     const merchant = await this.prisma.merchant.findUnique({ where: { ownerUserId: user.id }, select: { id: true } });
     if (merchant) throw new Error(`${email} owns a merchant profile; admins need a separate account`);
     return this.setRole(user, 'ADMIN', 'ADMIN_GRANT');
@@ -32,6 +33,23 @@ export class AdminRoleService {
   async revoke(rawEmail: string): Promise<{ clerkSynced: boolean }> {
     const user = await this.findUser(normalizeEmail(rawEmail));
     return this.setRole(user, 'MERCHANT', 'ADMIN_REVOKE');
+  }
+
+  /**
+   * A new admin's row, from their Clerk account. The admin host answers 404 to anyone not yet an admin, so they cannot
+   * create it by signing in (the API's just-in-time create never runs). Created as MERCHANT; the grant then audits it.
+   */
+  private async createFromClerk(email: string) {
+    const clerkUserId = await this.clerk.findUserIdByEmail(email);
+    if (!clerkUserId) throw new Error(`${email} has no Clerk account; they must sign up first`);
+    try {
+      return await this.prisma.user.create({ data: { clerkUserId, email, role: 'MERCHANT' } });
+    } catch (e) {
+      // They signed in meanwhile and the API created the row first.
+      const existing = isUniqueViolation(e) ? await this.prisma.user.findUnique({ where: { clerkUserId } }) : null;
+      if (existing) return existing;
+      throw e;
+    }
   }
 
   private async findUser(email: string) {
