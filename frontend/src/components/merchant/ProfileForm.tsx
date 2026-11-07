@@ -21,6 +21,7 @@ export function ProfileForm({ defaultEmail }: { defaultEmail: string }) {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<ProfileValues>({
     resolver: zodResolver(profileSchema((key) => t(`validation.${key}`))),
@@ -39,6 +40,8 @@ export function ProfileForm({ defaultEmail }: { defaultEmail: string }) {
     }
   });
   const slugTaken = save.code === 'SLUG_TAKEN';
+  // The hint shows the shop's link as it will be, with an example until something is typed.
+  const slug = watch('slug').trim() || t('fields.slugExample');
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4 rounded-[var(--radius)] border border-border bg-card p-6">
@@ -46,7 +49,7 @@ export function ProfileForm({ defaultEmail }: { defaultEmail: string }) {
         <div key={name} className="flex flex-col gap-1">
           <Label htmlFor={name}>{t(`fields.${name}`)}</Label>
           <Input id={name} aria-invalid={Boolean(errors[name]) || (name === 'slug' && slugTaken)} {...register(name)} />
-          {name === 'slug' && <p className="text-sm text-muted-foreground">{t('fields.slugHint')}</p>}
+          {name === 'slug' && <p className="text-sm text-muted-foreground">{t('fields.slugHint', { slug })}</p>}
           {(errors[name] || (name === 'slug' && slugTaken)) && (
             <p role="alert" className="text-sm text-destructive">
               {errors[name]?.message ?? save.error}

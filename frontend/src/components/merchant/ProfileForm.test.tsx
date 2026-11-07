@@ -24,6 +24,14 @@ describe('ProfileForm', () => {
     post.mockReset();
   });
 
+  it('previews the shop link as the slug is typed', () => {
+    renderWithIntl(<ProfileForm defaultEmail="a@example.test" />);
+    const hint = () => screen.getByText((text) => text.startsWith('tagalong.nz/m/'));
+    expect(hint().textContent).toBe(messages.onboarding.fields.slugHint.replace('{slug}', messages.onboarding.fields.slugExample));
+    fireEvent.change(screen.getByLabelText(messages.onboarding.fields.slug), { target: { value: 'xiaolin-farm' } });
+    expect(hint().textContent).toBe(messages.onboarding.fields.slugHint.replace('{slug}', 'xiaolin-farm'));
+  });
+
   it('shows the fallback error when the request fails at the network level', async () => {
     post.mockRejectedValueOnce(new TypeError('Failed to fetch'));
     fillAndSubmit();

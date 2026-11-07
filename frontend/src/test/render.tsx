@@ -10,11 +10,16 @@ import { LiveListingProvider } from '@/components/public/live-listing';
 
 export { messages };
 
+// A missing message or a placeholder without its value fails the test: in the app it renders the raw key.
+const failOnIntlError = (error: Error) => {
+  throw error;
+};
+
 // As a wrapper (not a parent element) so rerender() keeps the provider.
 export const renderWithIntl = (ui: ReactElement) =>
   render(ui, {
     wrapper: ({ children }) => (
-      <NextIntlClientProvider locale="en" messages={messages} timeZone={NZ_TIME_ZONE}>
+      <NextIntlClientProvider locale="en" messages={messages} timeZone={NZ_TIME_ZONE} onError={failOnIntlError}>
         {children}
       </NextIntlClientProvider>
     ),

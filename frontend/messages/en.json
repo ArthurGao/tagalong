@@ -532,7 +532,8 @@
       "contactEmail": "Contact email",
       "contactPhone": "Contact phone",
       "gstNumber": "GST number (optional)",
-      "description": "About (optional)"
+      "description": "About (optional)",
+      "slugExample": "your-shop"
     },
     "validation": {
       "slug": "Use 3-30 lowercase letters, digits or hyphens; no hyphen at the start or end.",
