@@ -567,8 +567,14 @@
     "new": "新建接龙",
     "empty": "还没有接龙。",
     "createFirst": "发布第一条接龙",
-    "sold": "已接龙 {sold} 人",
-    "soldOf": "已接龙 {sold} / {capacity}",
+    "sold": {
+      "PAID": "已接龙 {sold} 人",
+      "FREE": "已报名 {sold} 人"
+    },
+    "soldOf": {
+      "PAID": "已接龙 {sold} / {capacity}",
+      "FREE": "已报名 {sold} / {capacity}"
+    },
     "closes": "{date} 截止",
     "status": {
       "DRAFT": "草稿",

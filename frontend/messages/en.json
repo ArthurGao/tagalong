@@ -567,8 +567,14 @@
     "new": "New listing",
     "empty": "No listings yet.",
     "createFirst": "Publish your first listing",
-    "sold": "{sold} joined",
-    "soldOf": "{sold} / {capacity} joined",
+    "sold": {
+      "PAID": "{sold} joined",
+      "FREE": "{sold} registered"
+    },
+    "soldOf": {
+      "PAID": "{sold} / {capacity} joined",
+      "FREE": "{sold} / {capacity} registered"
+    },
     "closes": "Closes {date}",
     "status": {
       "DRAFT": "Draft",

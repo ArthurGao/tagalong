@@ -23,8 +23,8 @@ export async function ListingRows({ listings, locale }: { listings: Summary[]; l
               <span>{t(`pricing.${l.pricing}`)}</span>
               <span>
                 {l.totalCapacity === null
-                  ? t('sold', { sold: l.soldCount })
-                  : t('soldOf', { sold: l.soldCount, capacity: l.totalCapacity })}
+                  ? t(`sold.${l.pricing}`, { sold: l.soldCount })
+                  : t(`soldOf.${l.pricing}`, { sold: l.soldCount, capacity: l.totalCapacity })}
               </span>
               {l.closesAt && <span>{t('closes', { date: formatNzDateTime(l.closesAt, locale) })}</span>}
             </span>
