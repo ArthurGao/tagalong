@@ -72,6 +72,15 @@ describe('admin:grant / admin:revoke', () => {
     expect(t.clerk.roleCalls.at(-1)).toEqual({ clerkUserId: 'user_new_ops', role: 'admin' });
   });
 
+  it('never grants a row of ours that belongs to another address, even when Clerk names the same user', async () => {
+    // Our row for this Clerk user carries another email (changed since): the create collides, and the fallback must refuse.
+    await prisma.user.create({ data: { clerkUserId: 'user_new_ops', email: 'someone-else@tagalong.test', role: 'MERCHANT' } });
+    t.clerk.users.set('user_new_ops', 'ops@tagalong.test');
+    await expect(roles.grant('ops@tagalong.test')).rejects.toThrow();
+    expect(await prisma.user.findFirstOrThrow({ where: { clerkUserId: 'user_new_ops' } })).toMatchObject({ role: 'MERCHANT' });
+    expect(await prisma.auditLog.count()).toBe(0);
+  });
+
   it('refuses an email that has no Clerk account', async () => {
     await expect(roles.grant('ops@tagalong.test')).rejects.toThrow(/no Clerk account/);
     expect(await prisma.user.count()).toBe(0);

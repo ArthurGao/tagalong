@@ -16,7 +16,7 @@ export abstract class ClerkVerifier {
 
 export abstract class ClerkAdminApi {
   abstract getPrimaryEmail(clerkUserId: string): Promise<string>;
-  /** The Clerk user with this email address, or null when there is none. */
+  /** The one Clerk user whose verified primary email is this address; null when none or more than one. */
   abstract findUserIdByEmail(email: string): Promise<string | null>;
   /** Mirrors our DB role to publicMetadata.role (lower-case), which the frontend reads for routing only. */
   abstract setRole(clerkUserId: string, role: Role): Promise<void>;
@@ -60,11 +60,32 @@ export class ClerkSdkAdminApi extends ClerkAdminApi {
   }
 
   async findUserIdByEmail(email: string): Promise<string | null> {
-    const { data } = await this.client.users.getUserList({ emailAddress: [email], limit: 1 });
-    return data[0]?.id ?? null;
+    // Clerk matches any address on the account, unverified secondary ones included: filter to the verified primary.
+    const { data } = await this.client.users.getUserList({ emailAddress: [email], limit: 10 });
+    return verifiedPrimaryMatch(data, email);
   }
 
   async setRole(clerkUserId: string, role: Role): Promise<void> {
     await this.client.users.updateUserMetadata(clerkUserId, { publicMetadata: { role: role.toLowerCase() } });
   }
+}
+
+interface ClerkUserEmails {
+  id: string;
+  primaryEmailAddressId: string | null;
+  emailAddresses: { id: string; emailAddress: string; verification: { status: string } | null }[];
+}
+
+/**
+ * Who an admin grant may bind to: exactly one user whose primary email is this address and verified. A match on a
+ * secondary or unverified address proves nothing (anyone can add an address to their own account), and two
+ * qualifying users are ambiguous; both give null.
+ */
+export function verifiedPrimaryMatch(users: ClerkUserEmails[], email: string): string | null {
+  const wanted = email.trim().toLowerCase();
+  const matches = users.filter((u) => {
+    const primary = u.emailAddresses.find((e) => e.id === u.primaryEmailAddressId);
+    return primary?.verification?.status === 'verified' && primary.emailAddress.trim().toLowerCase() === wanted;
+  });
+  return matches.length === 1 ? matches[0].id : null;
 }

@@ -41,13 +41,13 @@ export class AdminRoleService {
    */
   private async createFromClerk(email: string) {
     const clerkUserId = await this.clerk.findUserIdByEmail(email);
-    if (!clerkUserId) throw new Error(`${email} has no Clerk account; they must sign up first`);
+    if (!clerkUserId) throw new Error(`${email} has no Clerk account with it as the verified primary email; they must sign up first`);
     try {
       return await this.prisma.user.create({ data: { clerkUserId, email, role: 'MERCHANT' } });
     } catch (e) {
-      // They signed in meanwhile and the API created the row first.
+      // They signed in meanwhile and the API created the row first: take it only if it is that same live address.
       const existing = isUniqueViolation(e) ? await this.prisma.user.findUnique({ where: { clerkUserId } }) : null;
-      if (existing) return existing;
+      if (existing && !existing.deletedAt && existing.email === email) return existing;
       throw e;
     }
   }
