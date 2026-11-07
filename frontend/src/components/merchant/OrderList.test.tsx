@@ -41,7 +41,7 @@ const order = (over: Partial<Order> = {}): Order => ({
   ...over,
 });
 const data = (orders: Order[], pricing: 'FREE' | 'PAID' = 'FREE') => ({
-  listing: { id: 'l1', title: 'Yoga', pricing, status: 'PUBLISHED' as const },
+  listing: { id: 'l1', title: 'Yoga', pricing, status: 'PUBLISHED' as const, formFields: [{ key: 'diet', label: 'Dietary needs', scope: 'order' as const }] },
   orders,
 });
 
@@ -57,7 +57,9 @@ describe('OrderList (merchant registrations)', () => {
     renderWithIntl(<OrderList initial={data([order()])} />);
     const row = screen.getByRole('listitem');
     expect(row.textContent).toContain('#3 Amy Lee');
-    expect(row.textContent).toContain('diet: Vegan');
+    // Answers show under the merchant's question, not its key.
+    expect(row.textContent).toContain('Dietary needs: Vegan');
+    expect(row.textContent).not.toContain('diet: Vegan');
     expect(row.textContent).toContain('age: 7');
     expect(within(row).queryByRole('button', { name: t.noShow })).toBeNull(); // the event has not started (canNoShow)
     fireEvent.click(within(row).getByRole('button', { name: t.checkIn }));

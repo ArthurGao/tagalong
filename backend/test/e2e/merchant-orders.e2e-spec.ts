@@ -424,6 +424,13 @@ describe('merchant order management: refunds, CSV, listing cancellation (DESIGN 
     expect((await http().get(`/api/v1/merchants/me/listings/${l.id}/orders.csv`).set(as('user_other'))).status).toBe(404);
   });
 
+  it("lists the listing's questions with the orders, so answers show under their labels, not their keys", async () => {
+    const l = await paidListing('Cherry run');
+    const res = await http().get(`/api/v1/merchants/me/listings/${l.id}/orders`).set(as('user_m'));
+    expect(res.status).toBe(200);
+    expect(res.body.listing.formFields).toEqual([{ key: 'size', label: 'Size', scope: 'order' }]);
+  });
+
   describe('cancelling a whole listing', () => {
     const cancel = (l: Listing, confirmTitle = l.title) =>
       http().post(`/api/v1/merchants/me/listings/${l.id}/cancel`).set(as('user_m')).send({ reason: 'Storm damaged the crop', confirmTitle });

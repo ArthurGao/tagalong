@@ -44,9 +44,10 @@ export class MerchantOrdersService {
     const merchantId = requireMerchantId(user);
     const listing = await this.prisma.listing.findFirst({
       where: { id: listingId, merchantId },
-      select: { id: true, title: true, pricing: true, status: true },
+      select: { id: true, title: true, pricing: true, status: true, formFields: true },
     });
     if (!listing) throw new AppError('NOT_FOUND', 'Listing not found');
+    const formFields = readFormFields(listing.formFields).map(({ key, label, scope }) => ({ key, label, scope }));
     const q = query.q?.trim();
     const orders = await this.prisma.order.findMany({
       where: {
@@ -65,7 +66,7 @@ export class MerchantOrdersService {
       include: merchantDetail,
     });
     const refunds = await refundStateByOrder(this.prisma, orders.map((o) => o.id));
-    return { listing, orders: orders.map((o) => toMerchantOrder(o, refunds.pending.get(o.id) ?? 0, refunds.lastFailed.has(o.id))) };
+    return { listing: { ...listing, formFields }, orders: orders.map((o) => toMerchantOrder(o, refunds.pending.get(o.id) ?? 0, refunds.lastFailed.has(o.id))) };
   }
 
   /** Check-in (free) or hand-over (paid): DESIGN §6 → FULFILLED. */

@@ -3585,6 +3585,30 @@
           "CANCELLED"
         ]
       },
+      "MerchantOrderQuestionDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "description": "The merchant's question, shown with the answers"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "order",
+              "attendee"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "scope"
+        ]
+      },
       "MerchantOrderListingDto": {
         "type": "object",
         "properties": {
@@ -3607,13 +3631,21 @@
                 "$ref": "#/components/schemas/ListingStatus"
               }
             ]
+          },
+          "formFields": {
+            "description": "The listing's questions, so answers can be labelled",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MerchantOrderQuestionDto"
+            }
           }
         },
         "required": [
           "id",
           "title",
           "pricing",
-          "status"
+          "status",
+          "formFields"
         ]
       },
       "MerchantOrderListDto": {

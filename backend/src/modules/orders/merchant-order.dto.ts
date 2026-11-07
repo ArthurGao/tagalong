@@ -54,11 +54,19 @@ export class MerchantOrderDto {
   @ApiProperty({ description: 'The latest refund failed for good: nothing was refunded' }) lastRefundFailed!: boolean;
 }
 
+export class MerchantOrderQuestionDto {
+  @ApiProperty() key!: string;
+  @ApiProperty({ description: "The merchant's question, shown with the answers" }) label!: string;
+  @ApiProperty({ enum: ['order', 'attendee'] }) scope!: 'order' | 'attendee';
+}
+
 export class MerchantOrderListingDto {
   @ApiProperty() id!: string;
   @ApiProperty() title!: string;
   @ApiProperty({ enum: Pricing, enumName: 'Pricing' }) pricing!: Pricing;
   @ApiProperty({ enum: ListingStatus, enumName: 'ListingStatus' }) status!: ListingStatus;
+  @ApiProperty({ type: [MerchantOrderQuestionDto], description: 'The listing\'s questions, so answers can be labelled' })
+  formFields!: MerchantOrderQuestionDto[];
 }
 
 export class MerchantOrderListDto {

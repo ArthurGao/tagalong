@@ -32,6 +32,8 @@ export function OrderList({ initial }: { initial: OrderListData }) {
   const [refunding, setRefunding] = useState<Order | null>(null);
   const [refundAmount, setRefundAmount] = useState('');
   const free = initial.listing.pricing === 'FREE';
+  // Answers are stored by field key; the merchant reads them under their own questions.
+  const labels = Object.fromEntries(initial.listing.formFields.map((f) => [f.key, f.label]));
 
   const replace = (updated: Order) => setOrders((list) => list.map((o) => (o.id === updated.id ? updated : o)));
   const act = async (order: Order, action: Action) => {
@@ -116,10 +118,10 @@ export function OrderList({ initial }: { initial: OrderListData }) {
                 {o.items.map((i) => `${i.name} ×${i.quantity}`).join(', ')}
                 {o.pickupPointLabel ? ` · ${o.pickupPointLabel}` : ''} · {o.buyerEmail} · {o.buyerPhone}
               </p>
-              {Object.keys(o.formAnswers).length > 0 && <p className="text-sm">{answerText(o.formAnswers)}</p>}
+              {Object.keys(o.formAnswers).length > 0 && <p className="text-sm">{answerText(o.formAnswers, labels)}</p>}
               {o.items.flatMap((i) => i.attendeeAnswers).map((a, n) => (
                 <p key={n} className="text-sm">
-                  {t('attendee', { n: n + 1 })} {answerText(a)}
+                  {t('attendee', { n: n + 1 })} {answerText(a, labels)}
                 </p>
               ))}
               {o.buyerNote && <p className="text-sm italic">{o.buyerNote}</p>}

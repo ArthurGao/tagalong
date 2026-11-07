@@ -1082,11 +1082,20 @@ export interface components {
         Pricing: "FREE" | "PAID";
         /** @enum {string} */
         ListingStatus: "DRAFT" | "PUBLISHED" | "CLOSED" | "CANCELLED";
+        MerchantOrderQuestionDto: {
+            key: string;
+            /** @description The merchant's question, shown with the answers */
+            label: string;
+            /** @enum {string} */
+            scope: "order" | "attendee";
+        };
         MerchantOrderListingDto: {
             id: string;
             title: string;
             pricing: components["schemas"]["Pricing"];
             status: components["schemas"]["ListingStatus"];
+            /** @description The listing's questions, so answers can be labelled */
+            formFields: components["schemas"]["MerchantOrderQuestionDto"][];
         };
         MerchantOrderListDto: {
             listing: components["schemas"]["MerchantOrderListingDto"];
