@@ -30,6 +30,13 @@ describe('StickyBuyBar', () => {
     expect(button).toHaveProperty('disabled', !enabled);
   });
 
+  it('cannot order from the merchant preview, even when the listing is open', () => {
+    renderLive(<StickyBuyBar />, publicListingFixture({ availability: 'OPEN' }), { preview: true });
+    const button = screen.getByRole('button');
+    expect(button.textContent).toBe(t.previewNoOrder);
+    expect(button).toHaveProperty('disabled', true);
+  });
+
   it('shows "from" the lowest price when options differ, and "Free" for free listings', () => {
     const options = [5900, 3900].map((priceCents) => ({ ...publicListingFixture().options[0], priceCents }));
     renderBar(publicListingFixture({ options }));

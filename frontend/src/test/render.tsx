@@ -26,8 +26,11 @@ export const renderWithIntl = (ui: ReactElement) =>
   });
 
 /** A public component inside the live-listing provider, seeded like the SSR page. */
-export const renderLive = (ui: ReactElement, listing: PublicListing, participants: ParticipantPage | null = null) =>
-  renderWithIntl(<LiveListingProvider initial={{ listing, participants }}>{ui}</LiveListingProvider>);
+export const renderLive = (
+  ui: ReactElement,
+  listing: PublicListing,
+  { participants = null, preview = false }: { participants?: ParticipantPage | null; preview?: boolean } = {},
+) => renderWithIntl(<LiveListingProvider initial={{ listing, participants, preview }}>{ui}</LiveListingProvider>);
 
 /** With fake timers: run one 15 s poll, then let TanStack flush its batched render notification. */
 export const poll = async (ms = 15_000) => {

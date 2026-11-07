@@ -1590,6 +1590,51 @@
         ]
       }
     },
+    "/api/v1/merchants/me/listings/{id}/preview": {
+      "get": {
+        "operationId": "ListingPreviewController_preview",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicListingDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error (code from DESIGN §17)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBodyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "__session": []
+          }
+        ],
+        "tags": [
+          "listings"
+        ]
+      }
+    },
     "/api/v1/admin/stats": {
       "get": {
         "operationId": "AdminController_stats",

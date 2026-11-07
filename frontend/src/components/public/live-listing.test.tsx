@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { poll, publicListingFixture } from '@/test/render';
+import { poll, publicListingFixture, renderLive } from '@/test/render';
 import type { PublicListing } from '@/lib/api/public';
 import { listingRefreshMs, LiveListingProvider, useLiveListing } from './live-listing';
 
@@ -60,6 +60,15 @@ describe('LiveListingProvider polling', () => {
     expect(fetchPublicListing).not.toHaveBeenCalled();
     await poll(45_000);
     expect(container.textContent).toBe('4');
+  });
+
+  it('never polls in the merchant preview: a draft has no public URL, and the page shows what is saved', async () => {
+    const listing = publicListingFixture({ joinedCount: 1 });
+    fetchPublicListing.mockResolvedValue({ ...listing, joinedCount: 2 });
+    const { container } = renderLive(<Probe />, listing, { preview: true });
+    await poll(60_000);
+    expect(fetchPublicListing).not.toHaveBeenCalled();
+    expect(container.textContent).toBe('1');
   });
 
   it('keeps the last good data when a poll fails', async () => {

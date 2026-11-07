@@ -41,6 +41,15 @@ export const getListing = cache(async (id: string) => {
   return data ?? null;
 });
 
+// The owner's listing as buyers will see it, drafts included (null: not theirs or not found).
+export const getListingPreview = cache(async (id: string) => {
+  const { data } = await api.GET('/api/v1/merchants/me/listings/{id}/preview', {
+    params: { path: { id } },
+    ...(await authed()),
+  });
+  return data ?? null;
+});
+
 // Page-level gates on the DB role (the proxy only checks for a session / the Clerk role claim).
 async function requireRole(locale: string, role: 'MERCHANT' | 'ADMIN') {
   const me = await getMe();

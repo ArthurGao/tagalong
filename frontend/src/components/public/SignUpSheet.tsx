@@ -4,7 +4,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Section } from './Section';
 import { formatNzDateTime } from '@/lib/time';
-import { useLiveListing, useParticipants } from './live-listing';
+import { useLiveListing, useParticipants, usePreview } from './live-listing';
 
 // The heart of the page (UI-STYLE §2): the numbered list that keeps growing, newest on top.
 export function SignUpSheet() {
@@ -12,7 +12,16 @@ export function SignUpSheet() {
   const locale = useLocale();
   const l = useLiveListing();
   const { data, hasNextPage, fetchNextPage, isFetchingNextPage } = useParticipants();
+  const preview = usePreview();
   if (!l.showParticipants) return null;
+  // The preview loads no names (a draft has none, and the merchant sees real ones under Orders): say where they go
+  // rather than claim nobody has joined.
+  if (preview)
+    return (
+      <Section title={t(`sheet.${l.pricing}`)}>
+        <p className="text-muted-foreground">{t('sheetPreview')}</p>
+      </Section>
+    );
   const rows = data?.pages.flatMap((p) => p.items) ?? [];
   return (
     <Section title={t(`sheet.${l.pricing}`)}>

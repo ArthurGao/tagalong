@@ -54,7 +54,9 @@
         "TAKEN_DOWN": "这条接龙已被下架。",
         "SUSPENDED": "该商家已暂停销售。",
         "CANCELLED": "这条接龙已取消。"
-      }
+      },
+      "previewNoOrder": "预览中，不能下单",
+      "sheetPreview": "买家加入后，打码的名字会按顺序显示在这里。"
     },
     "checkout": {
       "title": "参加接龙",
@@ -692,7 +694,8 @@
       "shareLink": "分享链接",
       "live": "{date} 起进行中",
       "closed": "已截止",
-      "cancelled": "已取消"
+      "cancelled": "已取消",
+      "preview": "以买家视角预览"
     },
     "missing": {
       "title": "标题",
@@ -739,6 +742,11 @@
       "joinedFREE": "已报名 {count} 人",
       "left": "，剩 {count} 份",
       "link": "👉 {url}"
+    },
+    "preview": {
+      "banner": "预览：买家看到的页面就是这样。只有你能看到此页。",
+      "back": "返回编辑",
+      "title": "预览"
     }
   },
   "orders": {

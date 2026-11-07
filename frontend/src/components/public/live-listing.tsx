@@ -20,6 +20,9 @@ export function listingRefreshMs(availability: Availability): number | false {
 interface Initial {
   listing: PublicListing;
   participants: ParticipantPage | null;
+  /** The merchant's preview (DESIGN §11): the saved listing as it is, no polling (a draft has no public URL) and no
+   * ordering. */
+  preview?: boolean;
 }
 const InitialContext = createContext<Initial | null>(null);
 
@@ -43,6 +46,11 @@ function useInitial(): Initial {
   return initial;
 }
 
+/** True on the merchant's preview, where nothing may be ordered. */
+export function usePreview(): boolean {
+  return Boolean(useInitial().preview);
+}
+
 /** The listing as the server last rendered it (updates after router.refresh()); useLiveListing() is the polled one. */
 export function useServerListing(): PublicListing {
   return useInitial().listing;
@@ -51,7 +59,7 @@ export function useServerListing(): PublicListing {
 export const liveListingKey = (shortCode: string) => ['public-listing', shortCode] as const;
 
 export function useLiveListing(): PublicListing {
-  const { listing } = useInitial();
+  const { listing, preview } = useInitial();
   const { data } = useQuery({
     queryKey: liveListingKey(listing.shortCode),
     queryFn: async () => {
@@ -61,18 +69,19 @@ export function useLiveListing(): PublicListing {
       return fresh;
     },
     initialData: listing,
+    enabled: !preview,
     refetchInterval: (q) => listingRefreshMs(q.state.data?.availability ?? listing.availability),
   });
   return data;
 }
 
 export function useParticipants() {
-  const { listing, participants } = useInitial();
+  const { listing, participants, preview } = useInitial();
   // From the live listing, so a sheet the merchant turns on after page load starts loading.
   const current = useLiveListing();
   return useInfiniteQuery({
     queryKey: ['participants', listing.shortCode],
-    enabled: current.showParticipants,
+    enabled: !preview && current.showParticipants,
     queryFn: async ({ pageParam }) =>
       (await fetchParticipants(listing.shortCode, pageParam)) ?? { items: [], nextCursor: null },
     initialPageParam: undefined as number | undefined,

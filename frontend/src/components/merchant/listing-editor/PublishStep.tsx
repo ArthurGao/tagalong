@@ -45,6 +45,17 @@ export function PublishStep({ listing, onSaved }: StepProps) {
 
   return (
     <div className="flex flex-col gap-4">
+      {listing.status !== 'CANCELLED' && (
+        // A new tab: the editor keeps its place. The preview shows what is saved.
+        <a
+          href={`/${locale}/dashboard/listings/${listing.id}/preview`}
+          target="_blank"
+          rel="noopener"
+          className="self-start text-sm underline underline-offset-2"
+        >
+          {t('preview')}
+        </a>
+      )}
       {listing.status === 'DRAFT' && (
         <>
           <p>{t('ready')}</p>

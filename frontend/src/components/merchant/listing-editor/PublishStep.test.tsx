@@ -25,4 +25,15 @@ describe('PublishStep', () => {
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain([m.policyText, m.optionsStartsAt, m.pickupPoints].join(', '));
   });
+
+  it('links a draft to its buyer-page preview in a new tab, and a cancelled listing to none', () => {
+    const listing = listingFixture();
+    renderWithIntl(<PublishStep listing={{ ...listing, status: 'DRAFT' }} onSaved={() => {}} />);
+    const link = screen.getByRole('link', { name: messages.listings.publish.preview });
+    expect(link.getAttribute('href')).toBe(`/en/dashboard/listings/${listing.id}/preview`);
+    expect(link.getAttribute('target')).toBe('_blank');
+    cleanup();
+    renderWithIntl(<PublishStep listing={{ ...listing, status: 'CANCELLED' }} onSaved={() => {}} />);
+    expect(screen.queryByRole('link', { name: messages.listings.publish.preview })).toBeNull();
+  });
 });

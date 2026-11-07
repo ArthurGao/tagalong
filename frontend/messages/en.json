@@ -54,7 +54,9 @@
         "TAKEN_DOWN": "This listing was taken down.",
         "SUSPENDED": "This seller has paused sales.",
         "CANCELLED": "This listing was cancelled."
-      }
+      },
+      "previewNoOrder": "Preview — ordering is off",
+      "sheetPreview": "Buyers' masked names appear here as they join."
     },
     "checkout": {
       "title": "Join this group buy",
@@ -692,7 +694,8 @@
       "shareLink": "Share link",
       "live": "Live since {date}",
       "closed": "Closed",
-      "cancelled": "Cancelled"
+      "cancelled": "Cancelled",
+      "preview": "Preview as buyers see it"
     },
     "missing": {
       "title": "title",
@@ -739,6 +742,11 @@
       "joinedFREE": "{count} registered",
       "left": ", {count} left",
       "link": "👉 {url}"
+    },
+    "preview": {
+      "banner": "Preview — this is how buyers will see your listing. Nobody else can see this page.",
+      "back": "Back to editing",
+      "title": "Preview"
     }
   },
   "orders": {

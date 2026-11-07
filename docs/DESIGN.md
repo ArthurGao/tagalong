@@ -401,6 +401,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - `GET /merchants/me/listings`
 - `POST /merchants/me/listings`
 - `GET|PATCH /merchants/me/listings/:id`
+- `GET /merchants/me/listings/:id/preview`：本人的接龙按公开页的结构返回（任何状态，草稿也可），别人的接龙 404；公开接口仍不返回草稿
 - `POST /merchants/me/listings/:id/publish`
 - `POST /merchants/me/listings/:id/close`
 - `POST /merchants/me/listings/:id/reopen` {closesAt?}：CLOSED → PUBLISHED
@@ -556,7 +557,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - 公开首页 `/` 上的「商家登录」按钮链接到这里。
 - `/dashboard`：概览，以及待办事项（如未完成 Stripe 入驻）
 - `/dashboard/onboarding`、`/dashboard/onboarding/return`
-- `/dashboard/listings`、`/new`、`/[id]/edit`：编辑器分步骤进行：类型 → 内容 → 规格/场次 → 取货/地点 → 政策 → 预览发布。时间输入一律按新西兰本地时间理解：夏令时开始时不存在的时间直接拒绝，结束时重复的一小时取较早的时刻，未改动的时间原样保留
+- `/dashboard/listings`、`/new`、`/[id]/edit`：编辑器分步骤进行：类型 → 内容 → 规格/场次 → 取货/地点 → 政策 → 预览发布。预览页 `/dashboard/listings/[id]/preview` 用公开页同一套组件和样式渲染已保存的内容，不轮询、不能下单，报名名单处只显示说明。时间输入一律按新西兰本地时间理解：夏令时开始时不存在的时间直接拒绝，结束时重复的一小时取较早的时刻，未改动的时间原样保留
 - `/dashboard/listings/[id]/orders`：订单列表，支持搜索、按状态筛选、一键核销、退款弹窗、导出 CSV、复制分享文案
 - `/dashboard/settings`：商家资料、Stripe Dashboard 链接（固定为 `https://dashboard.stripe.com/`）
 

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppError } from '../../common/errors/app-error.js';
 import { maskName } from '../../common/mask.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import type { OrderStatus } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { readFormFields } from '../listings/form-fields.js';
@@ -16,60 +17,32 @@ const PAGE_SIZE = 20;
 // Drafts are never public.
 const publicWhere = (shortCode: string) => ({ shortCode, status: { not: 'DRAFT' as const } });
 
+const PAGE_INCLUDE = {
+  merchant: { select: { slug: true, displayName: true, logoUrl: true, chargesEnabled: true, status: true } },
+  options: { where: { active: true }, orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }] },
+  pickupPoints: { orderBy: { createdAt: 'asc' as const } },
+} satisfies Prisma.ListingInclude;
+
+type PageListing = Prisma.ListingGetPayload<{ include: typeof PAGE_INCLUDE }>;
+
 @Injectable()
 export class PublicListingsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async get(shortCode: string): Promise<PublicListingDto> {
-    const l = await this.prisma.listing.findFirst({
-      where: publicWhere(shortCode),
-      include: {
-        merchant: { select: { slug: true, displayName: true, logoUrl: true, chargesEnabled: true, status: true } },
-        options: { where: { active: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
-        pickupPoints: { orderBy: { createdAt: 'asc' } },
-      },
-    });
+    const l = await this.prisma.listing.findFirst({ where: publicWhere(shortCode), include: PAGE_INCLUDE });
     if (!l) throw new AppError('NOT_FOUND', 'Listing not found');
-    const options = l.options.map((o) => ({
-      id: o.id,
-      name: o.name,
-      priceCents: o.priceCents,
-      remaining: remainingPlaces(o.capacity, o.soldCount, o.reservedCount),
-      startsAt: o.startsAt,
-      endsAt: o.endsAt,
-      location: o.location,
-    }));
-    const totalRemaining = remainingPlaces(l.totalCapacity, l.soldCount, l.reservedCount);
-    const dto: PublicListingDto = {
-      shortCode: l.shortCode,
-      title: l.title,
-      description: l.description,
-      images: l.images,
-      type: l.type,
-      pricing: l.pricing,
-      fulfilment: l.fulfilment,
-      status: l.status,
-      availability: availabilityOf(l, new Date()),
-      opensAt: l.opensAt,
-      closesAt: l.closesAt,
-      maxQtyPerOrder: l.maxQtyPerOrder,
-      policyText: l.policyText,
-      indexable: l.indexable,
-      showParticipants: l.showParticipants,
-      joinedCount: l.soldCount,
-      totalCapacity: l.totalCapacity,
-      totalRemaining,
-      formFields: readFormFields(l.formFields),
-      options,
-      pickupPoints: l.pickupPoints.map(toPickupPointDto),
-      merchant: {
-        slug: l.merchant.slug,
-        displayName: l.merchant.displayName,
-        logoUrl: l.merchant.logoUrl,
-        verified: l.merchant.chargesEnabled,
-      },
-    };
-    return dto.availability === 'TAKEN_DOWN' ? redactTakenDown(dto) : dto;
+    return toPublicListing(l);
+  }
+
+  /**
+   * The owner's listing exactly as buyers will see it (DESIGN §11 preview), in any status. Availability ignores DRAFT,
+   * so a draft shows as it will once published; anyone else's listing is NOT_FOUND, as on every merchant route.
+   */
+  async preview(merchantId: string, id: string): Promise<PublicListingDto> {
+    const l = await this.prisma.listing.findFirst({ where: { id, merchantId }, include: PAGE_INCLUDE });
+    if (!l) throw new AppError('NOT_FOUND', 'Listing not found');
+    return toPublicListing(l);
   }
 
   /** Newest first by sequence number; `cursor` is the last seq of the previous page. */
@@ -112,6 +85,49 @@ export class PublicListingsService {
       nextCursor: rows.length > limit ? page[page.length - 1].sequenceNo : null,
     };
   }
+}
+
+/** The buyer page's view of a listing; a taken-down one keeps only the notice. */
+function toPublicListing(l: PageListing): PublicListingDto {
+  const options = l.options.map((o) => ({
+    id: o.id,
+    name: o.name,
+    priceCents: o.priceCents,
+    remaining: remainingPlaces(o.capacity, o.soldCount, o.reservedCount),
+    startsAt: o.startsAt,
+    endsAt: o.endsAt,
+    location: o.location,
+  }));
+  const dto: PublicListingDto = {
+    shortCode: l.shortCode,
+    title: l.title,
+    description: l.description,
+    images: l.images,
+    type: l.type,
+    pricing: l.pricing,
+    fulfilment: l.fulfilment,
+    status: l.status,
+    availability: availabilityOf(l, new Date()),
+    opensAt: l.opensAt,
+    closesAt: l.closesAt,
+    maxQtyPerOrder: l.maxQtyPerOrder,
+    policyText: l.policyText,
+    indexable: l.indexable,
+    showParticipants: l.showParticipants,
+    joinedCount: l.soldCount,
+    totalCapacity: l.totalCapacity,
+    totalRemaining: remainingPlaces(l.totalCapacity, l.soldCount, l.reservedCount),
+    formFields: readFormFields(l.formFields),
+    options,
+    pickupPoints: l.pickupPoints.map(toPickupPointDto),
+    merchant: {
+      slug: l.merchant.slug,
+      displayName: l.merchant.displayName,
+      logoUrl: l.merchant.logoUrl,
+      verified: l.merchant.chargesEnabled,
+    },
+  };
+  return dto.availability === 'TAKEN_DOWN' ? redactTakenDown(dto) : dto;
 }
 
 /**

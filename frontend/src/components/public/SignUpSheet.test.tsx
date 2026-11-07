@@ -22,7 +22,7 @@ const row = (seq: number, displayName: string | null) => ({
   joinedAt: '2026-10-27T01:00:00.000Z',
 });
 const renderSheet = (listing: PublicListing, participants: ParticipantPage | null) =>
-  renderLive(<SignUpSheet />, listing, participants);
+  renderLive(<SignUpSheet />, listing, { participants });
 
 describe('SignUpSheet', () => {
   afterEach(() => {
@@ -30,6 +30,13 @@ describe('SignUpSheet', () => {
     vi.useRealTimers();
     fetchParticipants.mockReset();
     fetchPublicListing.mockReset();
+  });
+
+  it('in the merchant preview, says where names will appear instead of "nobody yet", and loads none', () => {
+    renderLive(<SignUpSheet />, publicListingFixture({ joinedCount: 2 }), { preview: true });
+    expect(screen.getByText(t.sheetPreview)).toBeTruthy();
+    expect(screen.queryByText(t.sheetEmpty)).toBeNull();
+    expect(fetchParticipants).not.toHaveBeenCalled();
   });
 
   it('numbers rows by seq, newest first, and shows anonymous buyers as "Anonymous"', () => {
