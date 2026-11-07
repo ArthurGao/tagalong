@@ -514,7 +514,8 @@
     "RATE_LIMITED": "尝试次数过多，请稍等一分钟再试。",
     "STRIPE_ERROR": "Stripe 暂时没有响应，请稍后再试。",
     "INTERNAL": "系统出了点问题，请稍后再试。",
-    "ANONYMIZE_BLOCKED": "该买家有订单仍在等待付款或处于争议中，处理完后再匿名化。"
+    "ANONYMIZE_BLOCKED": "该买家有订单仍在等待付款或处于争议中，处理完后再匿名化。",
+    "PAID_LISTINGS_DISABLED": "本站暂时不开放付费接龙，免费接龙可以正常使用。"
   },
   "auth": {
     "signInTitle": "商家登录",
@@ -747,7 +748,8 @@
       "banner": "预览：买家看到的页面就是这样。只有你能看到此页。",
       "back": "返回编辑",
       "title": "预览"
-    }
+    },
+    "pricingFreeOnly": "本站目前只开放免费接龙。"
   },
   "orders": {
     "title": "订单",

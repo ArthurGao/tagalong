@@ -22,7 +22,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ loca
         )}
       </div>
       {merchant && (
-        <StripeStatusCard locale={locale} stripeConnected={merchant.stripeConnected} chargesEnabled={merchant.chargesEnabled} />
+        <StripeStatusCard locale={locale} merchant={merchant} />
       )}
       {listings.length ? (
         <ListingRows listings={listings} locale={locale} />

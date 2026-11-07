@@ -6,6 +6,7 @@ import type { Merchant } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { AuthUser } from '../auth/auth-user.js';
 import { MerchantsService } from '../merchants/merchants.service.js';
+import { assertPaidListingsEnabled } from '../listings/publish-rules.js';
 import { isStripeRejection, StripeClient } from './stripe-client.js';
 
 @Injectable()
@@ -19,6 +20,8 @@ export class MerchantStripeService {
 
   /** DESIGN §8.1: create the connected account once, then hand out a fresh onboarding link. */
   async onboard(user: AuthUser): Promise<string> {
+    // Nothing to connect while paid listings are off (DESIGN §13): no test-mode accounts for real merchants.
+    assertPaidListingsEnabled(this.env.PAID_LISTINGS_ENABLED);
     const merchant = await this.merchants.getOwn(user.id);
     if (merchant.status === 'SUSPENDED') throw new AppError('MERCHANT_SUSPENDED', 'This merchant is suspended');
     const accountId = merchant.stripeAccountId ?? (await this.createAccount(merchant));

@@ -642,6 +642,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
   - Clerk 的 Development 实例不支持自定义域名，staging 的 admin 子域名共享会话需要实际验证；如果不行，staging 可以先把 admin 路径放在主域名下。
 - **备份与恢复**：生产数据库开启 PITR（至少 7 天），每周做一次恢复演练（从某个时间点建 Neon 分支，用 `scripts/restore-check.sql` 和生产对比，记录在 RUNBOOK）；S3 / R2 开启版本控制；Clerk 用户数据每月导出一次存档。
 - 可观测性：结构化日志（pino），每个请求带 requestId；Sentry 接入前后端，只在配置了 DSN 时启用（测试和本地不发送）。不采集用户、cookie、请求体，不做 tracing 和 session replay；cookie、Authorization、`X-Order-Token`、`Idempotency-Key`、`x-tagalong-edge` / `x-tagalong-client-ip` 和 URL（含 Referer）里的 `t=` 与日志一样遮蔽；错误信息和 breadcrumb 文字里的邮箱、手机号、订单 token 也会替换掉（Postgres 错误会引用字段值），错误日志同样处理。后端只上报没有被业务处理的错误（500），业务错误码和 4xx 不上报；邮件和退款最终失败时也上报（只带 id，错误信息可能含邮箱）。`/api/v1/health` 返回 `{status, env, release}`，上线检查据此确认是哪个版本在应答。
+- **内部试用期（staging）只做免费接龙**（2026-11-08 决定）：staging 用 Stripe 测试 key，为了不让真实买家用测试卡「付款」，`PAID_LISTINGS_ENABLED=false`（`render.yaml`）。此时创建付费接龙、把草稿改成付费、发布或重开付费接龙、给已有付费接龙下单（包括用原幂等 key 重放拿回 Checkout 链接），以及连接 Stripe 都返回 `PAID_LISTINGS_DISABLED`；关闭前已经打开的 Checkout 页面在过期（最多约 32 分钟）前仍能付款，所以关闭前先截止付费接龙（RUNBOOK §2）；`GET /merchants/me` 的 `paidListingsEnabled` 让商家后台隐藏付费选项和「连接 Stripe」。试用期先用平台自带域名（`*.vercel.app`、`*.onrender.com`），只给内部人员用，邮件只能发到 Resend 账号的邮箱。要收钱时上 production（live key，开关为 true）。
 - **生产环境的保护**：`APP_ENV=production` 时只接受 Stripe live key，其它环境只接受 test key；`NODE_ENV=production` 时 `APP_ENV` 必须是 staging 或 production，`SENTRY_DSN` 必填。
 - 测试：
   - 后端：服务层用 Vitest 单元测试（NestJS 12 只发布 ESM 包，Jest 无法加载，Nest 官方 ESM 模板默认即 Vitest + SWC）；e2e 测试用 Testcontainers Postgres；Stripe 调用通过注入的 `StripeClient` 进行 mock；必须包含第 7 节的超卖并发测试
@@ -714,6 +715,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 | `MERCHANT_PROFILE_EXISTS` | 409 | 该账号已经创建过商家资料 |
 | `SLUG_TAKEN` | 409 | 商家 slug 已被占用 |
 | `MERCHANT_NOT_CHARGEABLE` | 409 | 发布付费接龙但未完成 Stripe 入驻 |
+| `PAID_LISTINGS_DISABLED` | 409 | 本站关闭了付费接龙（`PAID_LISTINGS_ENABLED=false`）：创建付费接龙或把草稿改成付费，发布、重开付费接龙，给付费接龙下单或重放拿回 Checkout 链接，或连接 Stripe |
 | `SOLD_OUT` | 409 | 库存或名额不足 |
 | `ALREADY_REGISTERED` | 409 | onePerEmail 冲突 |
 | `QTY_EXCEEDS_LIMIT` | 409 | 超过 maxQtyPerOrder |

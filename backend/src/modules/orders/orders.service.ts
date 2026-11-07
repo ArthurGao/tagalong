@@ -17,6 +17,7 @@ import { answerIssues, readFormFields } from '../listings/form-fields.js';
 import { icsCalendar } from '../notifications/ics.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { assertOrderable, availabilityOf } from '../listings/availability.js';
+import { assertPaidListingsEnabled } from '../listings/publish-rules.js';
 import { StripeClient, stripeErrorCode } from '../stripe/stripe-client.js';
 import type { CreateOrderDto, CreateOrderResultDto, PublicOrderDto, RecoverOrdersDto, RecoverOrdersResultDto } from './order.dto.js';
 import {
@@ -129,6 +130,8 @@ export class OrdersService {
       locale: dto.locale ?? DEFAULT_LOCALE,
     };
     if (listing.pricing === 'FREE') return this.register(listing.id, common, listing.onePerEmail, dto, quantities);
+    // A paid listing published before paid listings were switched off sells nothing meanwhile.
+    assertPaidListingsEnabled(this.env.PAID_LISTINGS_ENABLED);
     if (!listing.merchant.chargesEnabled || !listing.merchant.stripeAccountId) {
       throw new AppError('MERCHANT_NOT_CHARGEABLE', 'This seller cannot take payments right now');
     }
@@ -269,6 +272,8 @@ export class OrdersService {
       // Paid (or otherwise settled) already: send the buyer to their order page.
       return { kind: 'checkout', checkoutUrl: orderUrl(this.env, order.locale, order.publicCode, order.accessToken, true) };
     }
+    // A checkout opened before the site switched paid listings off is not handed out again (DESIGN §13).
+    assertPaidListingsEnabled(this.env.PAID_LISTINGS_ENABLED);
     const accountId = order.merchant.stripeAccountId!;
     if (order.stripeCheckoutSessionId) {
       // Read the session back rather than re-sending a request the merchant's later edits could have changed.

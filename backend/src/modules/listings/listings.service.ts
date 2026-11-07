@@ -1,8 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AppError } from '../../common/errors/app-error.js';
 import { shortCode } from '../../common/ids.js';
 import type { Listing, ListingOption, PickupPoint, Prisma } from '../../generated/prisma/client.js';
 import { isForeignKeyViolation, isUniqueViolation } from '../../prisma/errors.js';
+import { ENV } from '../../config/config.module.js';
+import type { Env } from '../../config/env.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { type AuthUser, requireMerchantId } from '../auth/auth-user.js';
@@ -21,6 +23,7 @@ import { assertListingRestorable, assertListingTransition } from './listing-stat
 import { shareInfo } from './share-info.js';
 import {
   applyListingDefaults,
+  assertPaidListingsEnabled,
   defaultSelfCancelUntil,
   validateListingPatch,
   validateOptionsReplace,
@@ -130,6 +133,7 @@ export class ListingsService {
     private readonly prisma: PrismaService,
     private readonly storage: ObjectStorage,
     private readonly notifications: NotificationsService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   list(user: AuthUser) {
@@ -142,6 +146,7 @@ export class ListingsService {
 
   async create(user: AuthUser, dto: CreateListingDto): Promise<FullListing> {
     const merchantId = requireMerchantId(user);
+    if (dto.pricing === 'PAID') assertPaidListingsEnabled(this.env.PAID_LISTINGS_ENABLED);
     for (let attempt = 0; ; attempt++) {
       try {
         return await this.prisma.listing.create({
@@ -170,6 +175,8 @@ export class ListingsService {
 
   async update(user: AuthUser, id: string, dto: UpdateListingDto): Promise<FullListing> {
     const { revision, ...fields } = dto;
+    // A draft may switch pricing; not to paid while the site has paid listings off (DESIGN §13).
+    if (fields.pricing === 'PAID') assertPaidListingsEnabled(this.env.PAID_LISTINGS_ENABLED);
     return this.mutate(user, id, revision, async (tx, listing) => {
       if (fields.formFields) {
         const issues = formFieldIssues(fields.formFields);
@@ -387,6 +394,7 @@ export class ListingsService {
       options: listing.options,
       pickupPointCount: listing.pickupPoints.length,
       merchant,
+      paidListingsEnabled: this.env.PAID_LISTINGS_ENABLED,
       now: new Date(),
     });
   }

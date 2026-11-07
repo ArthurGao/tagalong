@@ -20,14 +20,15 @@ const schema = z.object({
 });
 
 // Step 1 of the editor (DESIGN §11): paid or free first; free listings skip the Stripe check.
-export function NewListingForm() {
+export function NewListingForm({ paidListingsEnabled }: { paidListingsEnabled: boolean }) {
   const t = useTranslations('listings');
   const locale = useLocale();
   const router = useRouter();
   const save = useSave();
   const { register, handleSubmit } = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
-    defaultValues: { pricing: 'PAID', type: 'RETAIL', fulfilment: 'PICKUP', title: '' },
+    // While the site has paid listings off (DESIGN §13), free is the only choice.
+    defaultValues: { pricing: paidListingsEnabled ? 'PAID' : 'FREE', type: 'RETAIL', fulfilment: 'PICKUP', title: '' },
   });
 
   const onSubmit = handleSubmit(async (body) => {
@@ -40,10 +41,10 @@ export function NewListingForm() {
       <div className="flex flex-col gap-1">
         <Label htmlFor="pricing">{t('pricingLabel')}</Label>
         <NativeSelect id="pricing" {...register('pricing')}>
-          <option value="PAID">{t('pricing.PAID')}</option>
+          {paidListingsEnabled && <option value="PAID">{t('pricing.PAID')}</option>}
           <option value="FREE">{t('pricing.FREE')}</option>
         </NativeSelect>
-        <p className="text-sm text-muted-foreground">{t('pricingHint')}</p>
+        <p className="text-sm text-muted-foreground">{t(paidListingsEnabled ? 'pricingHint' : 'pricingFreeOnly')}</p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1">

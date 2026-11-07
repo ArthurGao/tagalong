@@ -3,7 +3,7 @@ import { ApiCreatedResponse, ApiOkResponse, ApiProperty, ApiTags } from '@nestjs
 import type { AuthUser } from '../auth/auth-user.js';
 import { Auth, CurrentUser } from '../auth/auth.decorator.js';
 import { MerchantDto } from '../merchants/merchant.dto.js';
-import { toMerchantDto } from '../merchants/merchants.service.js';
+import { MerchantsService } from '../merchants/merchants.service.js';
 import { MerchantStripeService } from './merchant-stripe.service.js';
 
 export class StripeLinkDto {
@@ -14,7 +14,10 @@ export class StripeLinkDto {
 @Auth('MERCHANT')
 @Controller('merchants/me/stripe')
 export class MerchantStripeController {
-  constructor(private readonly service: MerchantStripeService) {}
+  constructor(
+    private readonly service: MerchantStripeService,
+    private readonly merchants: MerchantsService,
+  ) {}
 
   @Post('onboard')
   @ApiCreatedResponse({ type: StripeLinkDto })
@@ -26,6 +29,6 @@ export class MerchantStripeController {
   @Get('status')
   @ApiOkResponse({ type: MerchantDto })
   async status(@CurrentUser() user: AuthUser): Promise<MerchantDto> {
-    return toMerchantDto(await this.service.syncOwn(user));
+    return this.merchants.toDto(await this.service.syncOwn(user));
   }
 }

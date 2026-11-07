@@ -3,6 +3,8 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../../../src/app.module.js';
 import { APP_OPTIONS, configureApp } from '../../../src/app.setup.js';
+import { ENV } from '../../../src/config/config.module.js';
+import type { Env } from '../../../src/config/env.js';
 import { ClerkAdminApi, ClerkVerifier } from '../../../src/modules/auth/clerk.js';
 import { TurnstileVerifier } from '../../../src/common/security/turnstile.js';
 import { EmailService } from '../../../src/modules/notifications/email.service.js';
@@ -21,6 +23,8 @@ export interface TestApp {
   storage: FakeObjectStorage;
   email: FakeEmailService;
   turnstile: FakeTurnstileVerifier;
+  /** The app's parsed env; services read it per call, so a test may flip a flag (and must restore it). */
+  env: Env;
 }
 
 // The real AppModule with Clerk, Stripe, object storage, email and Turnstile swapped for fakes: tests never call them.
@@ -48,5 +52,5 @@ export async function createTestApp(extraControllers: Type[] = []): Promise<Test
   await app.init();
   // Jobs run only when a test calls them; a ticking cron would race tests on the shared database.
   for (const job of app.get(SchedulerRegistry).getCronJobs().values()) await job.stop();
-  return { app, clerk, stripe, storage, email, turnstile };
+  return { app, clerk, stripe, storage, email, turnstile, env: app.get<Env>(ENV) };
 }

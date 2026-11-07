@@ -91,6 +91,7 @@ frontend/
     - Actions follow the backend's `canFulfil` / `canCancel` / `canNoShow` / `refundableCents`.
     - The refund dialog takes dollars (`dollarsToCents`), and there is a plain CSV link.
     - A refund Stripe has not confirmed yet shows as in progress (`pendingRefundCents`), and one that failed for good as `lastRefundFailed`; the refund request itself does not fail when Stripe is slow.
+  - Paid listings can be off for the whole site (`MerchantDto.paidListingsEnabled`, backend env `PAID_LISTINGS_ENABLED`, DESIGN §13): then `NewListingForm` offers only free and `StripeStatusCard` renders nothing. Read the flag from the backend; there is no frontend env for it.
   - `components/merchant/CancelListing.tsx` (in PublishStep) reloads the preview on every open and cannot confirm without it, needs a reason and the exact title, and then polls the batch refund's progress.
   - Free listings get `{ kind: 'confirmed', publicCode, accessToken }`. Navigate to `/o/{publicCode}?t={accessToken}`, which shows "报名成功" (registered). Branch on `kind`, never on price.
   - Handle `ALREADY_REGISTERED` by showing "该邮箱已报名，确认邮件已重新发送" (this email is already registered; the confirmation email has been resent).

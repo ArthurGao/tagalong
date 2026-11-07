@@ -514,7 +514,8 @@
     "RATE_LIMITED": "Too many attempts. Wait a minute and try again.",
     "STRIPE_ERROR": "Stripe did not respond. Try again in a moment.",
     "INTERNAL": "Something went wrong on our side. Try again in a moment.",
-    "ANONYMIZE_BLOCKED": "Some of this buyer's orders are awaiting payment or under dispute; anonymize once they are settled."
+    "ANONYMIZE_BLOCKED": "Some of this buyer's orders are awaiting payment or under dispute; anonymize once they are settled.",
+    "PAID_LISTINGS_DISABLED": "Paid listings are not available on this site yet. Free listings work as usual."
   },
   "auth": {
     "signInTitle": "Seller sign in",
@@ -747,7 +748,8 @@
       "banner": "Preview — this is how buyers will see your listing. Nobody else can see this page.",
       "back": "Back to editing",
       "title": "Preview"
-    }
+    },
+    "pricingFreeOnly": "Only free listings are available on this site for now."
   },
   "orders": {
     "title": "Orders",

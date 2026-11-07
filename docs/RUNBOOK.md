@@ -25,7 +25,11 @@ under row locks, so a cross-region database (about 90 ms each) would hold stock 
 **API (Render).** Plain values come from `render.yaml`; every secret is `sync: false` and entered in the dashboard.
 The full list and meanings are in `backend/CLAUDE.md` (Env) and `backend/.env.example`.
 - Set by the blueprint: `APP_ENV`, `APP_URL`, `CLERK_AUTHORIZED_PARTIES`, `EMAIL_PROVIDER=resend`, `EMAIL_FROM` and
-  `TRUST_PROXY`. `NODE_ENV=production` comes from the Dockerfile; `PORT` and `RENDER_GIT_COMMIT` are set by Render.
+  `TRUST_PROXY`. Staging also sets `PAID_LISTINGS_ENABLED=false`: the internal trial runs on Stripe test keys, so it
+  offers free listings only (DESIGN §13). Production leaves it at the default `true`.
+  - Turning it off where paid orders exist: it stops new paid listings, orders and replays at once, but a Checkout page a
+    buyer already has open stays payable until it expires (at most ~32 minutes; the expiry job then ends the order).
+    Close the paid listings first, and wait that long before announcing the change. `NODE_ENV=production` comes from the Dockerfile; `PORT` and `RENDER_GIT_COMMIT` are set by Render.
 - Secrets:
   - `DATABASE_URL` (Neon, pooled), `ADMIN_EMAIL_ALLOWLIST`;
   - `CLERK_SECRET_KEY`, `CLERK_JWT_KEY` (PEM), `CLERK_WEBHOOK_SIGNING_SECRET`;

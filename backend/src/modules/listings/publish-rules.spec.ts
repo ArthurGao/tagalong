@@ -120,6 +120,7 @@ describe('validatePublishable (D11, D12)', () => {
     options: [{ priceCents: 3900, active: true, startsAt: null }],
     pickupPointCount: 1,
     merchant: { status: 'ACTIVE' as const, chargesEnabled: true },
+    paidListingsEnabled: true,
     now,
   };
 
@@ -135,6 +136,12 @@ describe('validatePublishable (D11, D12)', () => {
   it('lets a free listing publish without Stripe (D12)', () => {
     const free = { ...ok, listing: { ...ok.listing, pricing: 'FREE' as const }, options: [{ priceCents: 0, active: true, startsAt: null }] };
     expect(code(() => validatePublishable({ ...free, merchant: { status: 'ACTIVE', chargesEnabled: false } }))).toBe('OK');
+  });
+
+  it('blocks paid listings, even from a chargeable merchant, while the site has them off; free ones still publish (DESIGN §13)', () => {
+    expect(code(() => validatePublishable({ ...ok, paidListingsEnabled: false }))).toBe('PAID_LISTINGS_DISABLED');
+    const free = { ...ok, listing: { ...ok.listing, pricing: 'FREE' as const }, options: [{ priceCents: 0, active: true, startsAt: null }] };
+    expect(code(() => validatePublishable({ ...free, paidListingsEnabled: false }))).toBe('OK');
   });
 
   it('lists every missing piece as VALIDATION_FAILED details', () => {

@@ -59,6 +59,8 @@ export class MerchantDto {
   @ApiProperty({ description: 'A Stripe connected account exists (onboarding may still be incomplete)' })
   stripeConnected!: boolean;
   @ApiProperty() chargesEnabled!: boolean;
+  @ApiProperty({ description: 'Paid listings are on for this site (off during the internal trial, DESIGN §13)' })
+  paidListingsEnabled!: boolean;
   @ApiProperty() payoutsEnabled!: boolean;
   @ApiProperty() detailsSubmitted!: boolean;
   @ApiProperty() createdAt!: Date;

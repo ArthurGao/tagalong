@@ -146,11 +146,21 @@ export interface PublishInput {
   options: { priceCents: number; active: boolean; startsAt: Date | null }[];
   pickupPointCount: number;
   merchant: { status: MerchantStatus; chargesEnabled: boolean };
+  paidListingsEnabled: boolean;
   now: Date;
 }
 
-export function validatePublishable({ listing, options, pickupPointCount, merchant, now }: PublishInput): void {
+/**
+ * DESIGN §13: while the site has paid listings off (PAID_LISTINGS_ENABLED=false), nothing paid happens: no paid listing
+ * is published (the gate; creating one is refused early too, for a clear error), sold, and no Stripe account connected.
+ */
+export function assertPaidListingsEnabled(paidListingsEnabled: boolean): void {
+  if (!paidListingsEnabled) throw new AppError('PAID_LISTINGS_DISABLED', 'Paid listings are turned off on this site');
+}
+
+export function validatePublishable({ listing, options, pickupPointCount, merchant, paidListingsEnabled, now }: PublishInput): void {
   if (merchant.status === 'SUSPENDED') throw new AppError('MERCHANT_SUSPENDED', 'This merchant is suspended');
+  if (listing.pricing === 'PAID') assertPaidListingsEnabled(paidListingsEnabled);
   if (listing.pricing === 'PAID' && !merchant.chargesEnabled) {
     throw new AppError('MERCHANT_NOT_CHARGEABLE', 'Finish Stripe onboarding before publishing a paid listing');
   }

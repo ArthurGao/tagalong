@@ -291,6 +291,7 @@ STRIPE_WEBHOOK_SECRET_PLATFORM=
 PLATFORM_FEE_BPS=300
 PLATFORM_FEE_FIXED_CENTS=0
 RESERVATION_MINUTES=30
+PAID_LISTINGS_ENABLED=true    # false on the staging trial: PAID_LISTINGS_DISABLED for paid create/publish/reopen/order and Stripe onboard
 EMAIL_PROVIDER=mailpit        # mailpit | resend
 RESEND_API_KEY=
 EMAIL_FROM=

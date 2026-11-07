@@ -45,6 +45,8 @@ export const envSchema = z
     PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(10_000).default(300),
     PLATFORM_FEE_FIXED_CENTS: z.coerce.number().int().min(0).default(0),
     RESERVATION_MINUTES: z.coerce.number().int().min(30).max(1440).default(30),
+    // DESIGN §13: off for the internal trial on Stripe test keys, so nobody "pays" with a test card. Free listings only.
+    PAID_LISTINGS_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
     // Email (DESIGN §12): Mailpit over SMTP locally, Resend in production.
     EMAIL_PROVIDER: z.enum(['mailpit', 'resend']).default('mailpit'),
     EMAIL_FROM: z.string().default(''),

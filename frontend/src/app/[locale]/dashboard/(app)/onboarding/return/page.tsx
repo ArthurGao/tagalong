@@ -14,7 +14,7 @@ export default async function StripeReturnPage({ params }: { params: Promise<{ l
     <main className="mx-auto flex max-w-xl flex-col gap-4 px-4 py-8">
       <h1 className="text-2xl font-bold">{t('returnTitle')}</h1>
       {merchant && (
-        <StripeStatusCard locale={locale} stripeConnected={merchant.stripeConnected} chargesEnabled={merchant.chargesEnabled} />
+        <StripeStatusCard locale={locale} merchant={merchant} />
       )}
       <Button variant="outline" asChild className="self-start">
         <Link href={`/${locale}/dashboard`}>{t('backToDashboard')}</Link>

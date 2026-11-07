@@ -886,6 +886,8 @@ export interface components {
             /** @description A Stripe connected account exists (onboarding may still be incomplete) */
             stripeConnected: boolean;
             chargesEnabled: boolean;
+            /** @description Paid listings are on for this site (off during the internal trial, DESIGN §13) */
+            paidListingsEnabled: boolean;
             payoutsEnabled: boolean;
             detailsSubmitted: boolean;
             /** Format: date-time */
@@ -893,7 +895,7 @@ export interface components {
         };
         ErrorBodyDto: {
             /** @enum {string} */
-            code: "VALIDATION_FAILED" | "TURNSTILE_FAILED" | "BAD_REQUEST" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "LISTING_NOT_PUBLISHED" | "LISTING_CLOSED" | "MERCHANT_SUSPENDED" | "MERCHANT_PROFILE_EXISTS" | "SLUG_TAKEN" | "MERCHANT_NOT_CHARGEABLE" | "SOLD_OUT" | "ALREADY_REGISTERED" | "QTY_EXCEEDS_LIMIT" | "INVALID_STATE_TRANSITION" | "ORDER_IN_PROGRESS" | "FIELD_LOCKED_AFTER_PUBLISH" | "CAPACITY_BELOW_SOLD" | "OPTION_HAS_ORDERS" | "PICKUP_POINT_HAS_ORDERS" | "LISTING_STALE" | "SELF_CANCEL_WINDOW_PASSED" | "REFUND_EXCEEDS_TOTAL" | "ANONYMIZE_BLOCKED" | "PRICE_OUT_OF_RANGE" | "RATE_LIMITED" | "STRIPE_ERROR" | "INTERNAL";
+            code: "VALIDATION_FAILED" | "TURNSTILE_FAILED" | "BAD_REQUEST" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "LISTING_NOT_PUBLISHED" | "LISTING_CLOSED" | "MERCHANT_SUSPENDED" | "MERCHANT_PROFILE_EXISTS" | "SLUG_TAKEN" | "MERCHANT_NOT_CHARGEABLE" | "PAID_LISTINGS_DISABLED" | "SOLD_OUT" | "ALREADY_REGISTERED" | "QTY_EXCEEDS_LIMIT" | "INVALID_STATE_TRANSITION" | "ORDER_IN_PROGRESS" | "FIELD_LOCKED_AFTER_PUBLISH" | "CAPACITY_BELOW_SOLD" | "OPTION_HAS_ORDERS" | "PICKUP_POINT_HAS_ORDERS" | "LISTING_STALE" | "SELF_CANCEL_WINDOW_PASSED" | "REFUND_EXCEEDS_TOTAL" | "ANONYMIZE_BLOCKED" | "PRICE_OUT_OF_RANGE" | "RATE_LIMITED" | "STRIPE_ERROR" | "INTERNAL";
             message: string;
             details?: Record<string, never>;
         };

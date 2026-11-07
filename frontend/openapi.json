@@ -2903,6 +2903,10 @@
           "chargesEnabled": {
             "type": "boolean"
           },
+          "paidListingsEnabled": {
+            "type": "boolean",
+            "description": "Paid listings are on for this site (off during the internal trial, DESIGN §13)"
+          },
           "payoutsEnabled": {
             "type": "boolean"
           },
@@ -2926,6 +2930,7 @@
           "status",
           "stripeConnected",
           "chargesEnabled",
+          "paidListingsEnabled",
           "payoutsEnabled",
           "detailsSubmitted",
           "createdAt"
@@ -2949,6 +2954,7 @@
               "MERCHANT_PROFILE_EXISTS",
               "SLUG_TAKEN",
               "MERCHANT_NOT_CHARGEABLE",
+              "PAID_LISTINGS_DISABLED",
               "SOLD_OUT",
               "ALREADY_REGISTERED",
               "QTY_EXCEEDS_LIMIT",
