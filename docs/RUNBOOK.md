@@ -95,10 +95,17 @@ name), `NEXT_PUBLIC_APP_ENV`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET
   `session.created`. Its Svix secret goes into `CLERK_WEBHOOK_SIGNING_SECRET`.
 - `CLERK_JWT_KEY` is the instance's PEM public key (API keys → Advanced).
 - Allow the admin host as a satellite or authorized party.
+- **Organizations off** (Configure → Organizations): TagAlong does not use them. With "require membership" on, every
+  merchant is stopped at a "set up your organization" step after signing in (found in local testing, 2026-11-07).
+- **Session token claim** (Sessions → Customize session token → Claims): `{"metadata": "{{user.public_metadata}}"}`.
+  The proxy's admin check reads `sessionClaims.metadata.role`; Clerk's default token has no metadata, so without this
+  every admin, granted or not, gets 404 on the admin host. The backend still decides from the DB role.
 - **Check the admin-subdomain session** (DESIGN §16-8): sign in on `admin…` and open the console. If the session does
   not hold, move admin to `/admin` on the main host (DESIGN §13 fallback) before going on.
 - Grant the first admin with `pnpm admin:grant <email>`, run from a machine with the environment's `.env`; the email
-  must be in `ADMIN_EMAIL_ALLOWLIST`.
+  must be in `ADMIN_EMAIL_ALLOWLIST`. The user must exist in our DB first, and the admin host answers 404 before any
+  API call while the role is missing. So after signing in on `admin…`, open `https://admin…/api/v1/me` once: it creates
+  the user. Then grant, and sign in again so the session carries the new role.
 
 **Resend.** Add the sending domain and its DNS records (SPF, DKIM, return path), and create an API key for that
 domain only.
