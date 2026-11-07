@@ -1,8 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import { AppError } from '../../common/errors/app-error.js';
+import { redactText } from '../../common/logging/redact.js';
 
 interface CheckoutLine {
   name: string;
@@ -28,12 +29,18 @@ export interface StripeAccountState {
   detailsSubmitted: boolean;
 }
 
-/** SDK failures become 502 STRIPE_ERROR with `details.stripeCode` (DESIGN §17); Stripe's message stays in logs. */
+const stripeLogger = new Logger('Stripe');
+
+/**
+ * SDK failures become 502 STRIPE_ERROR with `details.stripeCode` (DESIGN §17). Stripe's own message never reaches the
+ * client, but it is logged (emails and tokens redacted): it is often the only clue, e.g. "signed up for Connect".
+ */
 export async function callStripe<T>(request: () => Promise<T>): Promise<T> {
   try {
     return await request();
   } catch (e) {
     if (e instanceof Stripe.errors.StripeError) {
+      stripeLogger.warn(`Stripe request failed: ${e.code ?? e.rawType ?? e.type} / ${e.type}${e.requestId ? ` (${e.requestId})` : ''}: ${redactText(e.message)}`);
       throw new AppError('STRIPE_ERROR', 'Stripe request failed', { stripeCode: e.code ?? e.rawType ?? e.type });
     }
     throw e;

@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { AppError } from '../../common/errors/app-error.js';
 import { callStripe } from './stripe-client.js';
@@ -13,6 +14,20 @@ describe('callStripe', () => {
     expect(error).toBeInstanceOf(AppError);
     expect(error).toMatchObject({ code: 'STRIPE_ERROR', httpStatus: 502, details: { stripeCode: 'resource_missing' } });
     expect((error as AppError).message).not.toContain('acct_123');
+  });
+
+  it("logs Stripe's own message (redacted) so a misconfiguration is visible, not just a 502", async () => {
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    const sdkError = new Stripe.errors.StripeInvalidRequestError({
+      type: 'invalid_request_error',
+      message: "You can only create new accounts if you've signed up for Connect (merchant amy@example.test)",
+      requestId: 'req_123',
+    } as never);
+    await callStripe(() => Promise.reject(sdkError)).catch(() => {});
+    expect(warn).toHaveBeenCalledWith(
+      "Stripe request failed: invalid_request_error / StripeInvalidRequestError (req_123): You can only create new accounts if you've signed up for Connect (merchant [email])",
+    );
+    warn.mockRestore();
   });
 
   it('falls back to the error class when Stripe sends no code (e.g. a network failure)', async () => {
