@@ -8,7 +8,7 @@ to restore the database. Secrets live only in each provider's dashboard and neve
 | | staging | production |
 |---|---|---|
 | Web (Vercel, one project, root `frontend`) | `staging.tagalong.nz`, `admin-staging.tagalong.nz` | `tagalong.nz`, `admin.tagalong.nz` |
-| API (Render, Singapore, `render.yaml`) | `tagalong-api-staging` → `api-staging.tagalong.nz` | `tagalong-api` → `api.tagalong.nz` |
+| API (Render, Singapore, `render.yaml`) | `tagalong-api-staging` (free instance) → `api-staging.tagalong.nz` | `tagalong-api` (paid) → `api.tagalong.nz` |
 | Postgres (Neon, aws-ap-southeast-1) | project `tagalong-staging` | project `tagalong-prod`, history retention ≥ 7 days |
 | Clerk | a second Development instance | Production instance on `tagalong.nz` |
 | Stripe | test mode, fixed webhooks | live mode |
@@ -54,13 +54,19 @@ name), `NEXT_PUBLIC_APP_ENV`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET
 
 1. Merge to `main`. CI (lint, typecheck, unit, e2e, build) must pass.
 2. **Staging deploys itself:**
-   - Render deploys `tagalong-api-staging` once checks pass. Its pre-deploy step (`pnpm prisma:deploy`) applies new
-     migrations before the new version takes traffic; a failed migration stops the deploy, and the old version keeps
-     serving.
+   - Render deploys `tagalong-api-staging` once checks pass. Staging is a **free instance**, which has no pre-deploy
+     step: its start command (`scripts/start-with-migrations.sh`) applies new migrations, then starts the API. A failed
+     migration stops the new instance from starting; Render routes traffic to a new instance only once it passes its
+     health check, and otherwise cancels the deploy after 15 minutes with the old version still serving (Render docs,
+     "Zero-downtime deploys" and "Health checks"; not yet seen on this free instance: confirm on the first failed
+     deploy). Migrations also run (as a no-op) on every wake-up.
+   - The free instance sleeps after 15 idle minutes; the next request waits about a minute, and the in-process jobs
+     pause meanwhile (a daily job due during sleep is skipped that day). Acceptable for the internal trial only.
    - Vercel deploys the staging web.
 3. Run `scripts/smoke.sh staging https://api-staging.tagalong.nz https://staging.tagalong.nz https://admin-staging.tagalong.nz`.
 4. **Production, by hand:**
-   - Render → `tagalong-api` → Manual Deploy of the same commit. Migrations run first, as on staging.
+   - Render → `tagalong-api` → Manual Deploy of the same commit. Its pre-deploy step (`prisma migrate deploy`, paid
+     plan) applies migrations before the new version takes traffic.
    - Then promote the Vercel deployment.
    - Then run `scripts/smoke.sh production https://api.tagalong.nz https://tagalong.nz https://admin.tagalong.nz`.
    - `/api/v1/health` must report `env` and the expected `release` commit.

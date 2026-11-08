@@ -253,7 +253,9 @@ Merchants and admins share **one Clerk application** and are distinguished by ro
 ## Deployment
 
 - `Dockerfile` (build from the repo root: `docker build -f backend/Dockerfile .`): one stage that keeps the Prisma CLI,
-  because Render's pre-deploy step runs `pnpm prisma:deploy` in the image before the new version takes traffic.
+  because migrations run from the image: production's Render pre-deploy step runs `prisma migrate deploy` before the
+  new version takes traffic; staging (a free instance, which has no pre-deploy step) starts with
+  `scripts/start-with-migrations.sh`, which migrates and then `exec`s the API.
 - `render.yaml` (repo root) defines staging and production in Singapore, next to Neon. `/api/v1/health` reports
   `{ status, env: APP_ENV, release: RENDER_GIT_COMMIT }`; `scripts/smoke.sh` checks it. Details: `docs/RUNBOOK.md`.
 

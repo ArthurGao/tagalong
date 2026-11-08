@@ -6,11 +6,13 @@ services:
     name: tagalong-api-staging
     runtime: docker
     region: singapore
-    plan: starter
+    # Free instance for the internal trial: it sleeps after 15 idle minutes (jobs pause with it) and has no
+    # pre-deploy step, so migrations run at start-up instead (RUNBOOK §3). Production keeps a paid plan.
+    plan: free
     dockerfilePath: ./backend/Dockerfile
     dockerContext: .
     healthCheckPath: /api/v1/health
-    preDeployCommand: node_modules/.bin/prisma migrate deploy
+    dockerCommand: sh scripts/start-with-migrations.sh
     autoDeployTrigger: checksPass
     envVars:
       - key: APP_ENV

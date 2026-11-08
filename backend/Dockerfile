@@ -1,5 +1,6 @@
 # The API image (DESIGN §13: Docker on Render). Build from the repo root: docker build -f backend/Dockerfile .
-# One stage: the runtime keeps the Prisma CLI, which Render's pre-deploy step runs (prisma migrate deploy).
+# One stage: the runtime keeps the Prisma CLI for `prisma migrate deploy` (production: Render's pre-deploy step;
+# staging, a free instance without one: scripts/start-with-migrations.sh at start-up).
 FROM node:22-slim
 
 # OpenSSL for Prisma's schema engine (migrate deploy).
