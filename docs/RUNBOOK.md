@@ -10,7 +10,7 @@ to restore the database. Secrets live only in each provider's dashboard and neve
 | Web (Vercel, one project, root `frontend`) | `staging.tagalong.nz`, `admin-staging.tagalong.nz` | `tagalong.nz`, `admin.tagalong.nz` |
 | API (Render, Singapore, `render.yaml`) | `tagalong-api-staging` (free instance) → `api-staging.tagalong.nz` | `tagalong-api` (paid) → `api.tagalong.nz` |
 | Postgres (Neon, aws-ap-southeast-1) | project `tagalong-staging` | project `tagalong-prod`, history retention ≥ 7 days |
-| Clerk | a second Development instance | Production instance on `tagalong.nz` |
+| Clerk | the same Development instance as local development (owner's decision, 2026-11-09) | Production instance on `tagalong.nz` |
 | Stripe | test mode, fixed webhooks | live mode |
 | Email (Resend) | `staging.tagalong.nz` sender | `tagalong.nz` sender |
 | Images (Cloudflare R2) | bucket `tagalong-staging` | bucket `tagalong-prod`, versioning on |
@@ -99,7 +99,8 @@ name), `NEXT_PUBLIC_APP_ENV`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET
   done (Clerk Pro with MFA for admins).
 
 **Clerk.**
-- Staging uses a second Development instance. Production uses a Production instance on `tagalong.nz`: add its DNS
+- Staging shares the local Development instance (same test keys): local and staging see the same Clerk users, each
+  with its own DB row, and a staging webhook also receives local sign-ups. Production uses a Production instance on `tagalong.nz`: add its DNS
   records (Frontend API and email CNAMEs) and wait for verification.
 - Webhook: `https://api…/api/v1/webhooks/clerk` for `user.created`, `user.updated`, `user.deleted` and
   `session.created`. Its Svix secret goes into `CLERK_WEBHOOK_SIGNING_SECRET`.
