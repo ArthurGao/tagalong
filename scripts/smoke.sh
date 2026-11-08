@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Post-deploy smoke (docs/RUNBOOK.md): asserts WHICH build answered and that the doors that must be shut are shut.
 # Usage: scripts/smoke.sh <env> <api-base> [<web-base> <admin-base>]
-#   scripts/smoke.sh staging https://api-staging.tagalong.nz https://staging.tagalong.nz https://admin-staging.tagalong.nz
+#   scripts/smoke.sh staging https://tagalong-api-staging.onrender.com https://tagalong-staging.vercel.app https://tagalong-admin-staging.vercel.app
 # Exits non-zero on the first failure. Read-only: no request changes anything.
 set -euo pipefail
 

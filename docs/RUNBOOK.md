@@ -7,12 +7,12 @@ to restore the database. Secrets live only in each provider's dashboard and neve
 
 | | staging | production |
 |---|---|---|
-| Web (Vercel, one project, root `frontend`) | `staging.tagalong.nz`, `admin-staging.tagalong.nz` | `tagalong.nz`, `admin.tagalong.nz` |
-| API (Render, Singapore, `render.yaml`) | `tagalong-api-staging` (free instance) → `api-staging.tagalong.nz` | `tagalong-api` (paid) → `api.tagalong.nz` |
+| Web (Vercel, one project, root `frontend`) | `tagalong-staging.vercel.app`, `tagalong-admin-staging.vercel.app` | `tagalong.nz`, `admin.tagalong.nz` |
+| API (Render, Singapore, `render.yaml`) | `tagalong-api-staging` (free instance) → `tagalong-api-staging.onrender.com` | `tagalong-api` (paid) → `api.tagalong.nz` |
 | Postgres (Neon, aws-ap-southeast-1) | project `tagalong-staging` | project `tagalong-prod`, history retention ≥ 7 days |
 | Clerk | the same Development instance as local development (owner's decision, 2026-11-09) | Production instance on `tagalong.nz` |
 | Stripe | test mode, fixed webhooks | live mode |
-| Email (Resend) | `staging.tagalong.nz` sender | `tagalong.nz` sender |
+| Email (Resend) | Resend's shared sender `onboarding@resend.dev`: delivers only to the Resend account's own address | `tagalong.nz` sender |
 | Images (Cloudflare R2) | bucket `tagalong-staging` | bucket `tagalong-prod`, versioning on |
 | Turnstile | its own widget | its own widget |
 | Sentry | one project per app, environment `staging` | the same projects, environment `production` |
@@ -63,7 +63,7 @@ name), `NEXT_PUBLIC_APP_ENV`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET
    - The free instance sleeps after 15 idle minutes; the next request waits about a minute, and the in-process jobs
      pause meanwhile (a daily job due during sleep is skipped that day). Acceptable for the internal trial only.
    - Vercel deploys the staging web.
-3. Run `scripts/smoke.sh staging https://api-staging.tagalong.nz https://staging.tagalong.nz https://admin-staging.tagalong.nz`.
+3. Run `scripts/smoke.sh staging https://tagalong-api-staging.onrender.com https://tagalong-staging.vercel.app https://tagalong-admin-staging.vercel.app`.
 4. **Production, by hand:**
    - Render → `tagalong-api` → Manual Deploy of the same commit. Its pre-deploy step (`prisma migrate deploy`, paid
      plan) applies migrations before the new version takes traffic.
@@ -111,8 +111,10 @@ name), `NEXT_PUBLIC_APP_ENV`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET
 - **Session token claim** (Sessions → Customize session token → Claims): `{"metadata": "{{user.public_metadata}}"}`.
   The proxy's admin check reads `sessionClaims.metadata.role`; Clerk's default token has no metadata, so without this
   every admin, granted or not, gets 404 on the admin host. The backend still decides from the DB role.
-- **Check the admin-subdomain session** (DESIGN §16-8): sign in on `admin…` and open the console. If the session does
-  not hold, move admin to `/admin` on the main host (DESIGN §13 fallback) before going on.
+- **Check the admin-host session** (DESIGN §16-8): sign in on the admin host's own `/login` and open the console. If
+  the session does not hold, move admin to `/admin` on the main host (DESIGN §13 fallback) before going on.
+  - Production (`admin.tagalong.nz`) shares the main site's session.
+  - Staging's two `*.vercel.app` hosts are unrelated sites, so they share nothing. Sign in on each host separately.
 - Grant the first admin with `pnpm admin:grant <email>`, run from a machine with the environment's `.env`; the email
   must be in `ADMIN_EMAIL_ALLOWLIST` and must have a Clerk account (signed up once). The command creates our user row
   from the Clerk account if it does not exist yet (the admin host answers 404 to non-admins, so signing in there cannot

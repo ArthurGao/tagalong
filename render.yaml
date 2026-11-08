@@ -19,14 +19,15 @@ services:
         value: staging
       - key: PAID_LISTINGS_ENABLED
         value: 'false' # internal trial on Stripe test keys: free listings only (DESIGN §13)
+      # Platform domains for the internal trial, no own domain yet (DESIGN §13).
       - key: APP_URL
-        value: https://staging.tagalong.nz
+        value: https://tagalong-staging.vercel.app
       - key: CLERK_AUTHORIZED_PARTIES
-        value: https://staging.tagalong.nz,https://admin-staging.tagalong.nz
+        value: https://tagalong-staging.vercel.app,https://tagalong-admin-staging.vercel.app
       - key: EMAIL_PROVIDER
         value: resend
       - key: EMAIL_FROM
-        value: TagAlong Staging <orders@staging.tagalong.nz>
+        value: TagAlong Staging <onboarding@resend.dev> # Resend's shared sender: delivers only to the account owner
       - key: TRUST_PROXY
         value: '1' # Render's load balancer only; the buyer IP behind the web app comes with EDGE_SECRET (RUNBOOK §2)
       - key: DATABASE_URL

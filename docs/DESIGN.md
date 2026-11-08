@@ -64,7 +64,7 @@
 | D15 | **接龙页默认 `noindex`**，商家可以在设置里允许搜索引擎收录 | 接龙链接是半私密的，大多数商家只想发给自己的群。 |
 | D16 | **所有邮件通过 Outbox 表异步发送**，webhook 和业务代码只写记录，不直接调用邮件服务 | 邮件服务超时不能影响 Stripe webhook 的处理，也不能丢失付款确认。 |
 | D17 | **接龙取消的批量退款走异步任务**，逐笔记录结果 | 几十笔退款同步执行会超时，Stripe 也可能部分失败，必须可重试、可查看进度。 |
-| D13 | **商家和 admin 都使用同一个 Clerk 应用（免费的 Hobby 档）**，通过角色区分。Clerk 负责注册、登录、会话和 JWT 签发，后端只负责验证 JWT 并做角色授权。**买家不注册**（继续以访客身份下单） | 只维护一套登录体系，商家和管理员的登录体验一致。免费档每个应用含 50,000 MRU，只有商家和管理员占用配额。**代价**是免费档没有 MFA，而 admin 权限很高（可以停用商家、退款），所以在接入真实资金之前，**必须升级到 Pro 并对 admin 强制开启 MFA**（见第 10 节和第 16 节）。admin 使用 `admin.tagalong.nz` 子域名，与主站同一个根域名，可以直接共享 Clerk 会话，不需要付费的 satellite domain 功能。 |
+| D13 | **商家和 admin 都使用同一个 Clerk 应用（免费的 Hobby 档）**，通过角色区分。Clerk 负责注册、登录、会话和 JWT 签发，后端只负责验证 JWT 并做角色授权。**买家不注册**（继续以访客身份下单） | 只维护一套登录体系，商家和管理员的登录体验一致。免费档每个应用含 50,000 MRU，只有商家和管理员占用配额。**代价**是免费档没有 MFA，而 admin 权限很高（可以停用商家、退款），所以在接入真实资金之前，**必须升级到 Pro 并对 admin 强制开启 MFA**（见第 10 节和第 16 节）。admin 使用 `admin.tagalong.nz` 子域名，与主站同一个根域名，可以直接共享 Clerk 会话，不需要付费的 satellite domain 功能。staging 暂无自有域名，主站和 admin 是两个互不相关的 `*.vercel.app` 域名，不共享会话：管理员直接在 admin 域名的 `/login` 登录（该页不需要先登录），两边各登录一次。 |
 
 > ✅ 已核对（M2，Stripe 文档 `connect/migrate-to-controller-properties`）：D2 的 controller 组合（`stripe_dashboard=full`、`fees.payer=account`、`losses.payments=stripe`、`requirement_collection=stripe`）就是原 Standard 账户。这类账户**不能**生成 login link（只有 Express 可以），商家直接登录 dashboard.stripe.com。
 
@@ -431,7 +431,7 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 - `GET /public/orders/:publicCode`（请求头 `X-Order-Token: {accessToken}`）：返回订单状态；`PENDING_PAYMENT` 且带有 `stripeCheckoutSessionId` 时，前端据此显示「正在确认付款」
 - `POST /public/orders/recover` {email, turnstileToken, locale?}：**找回订单**。把该邮箱最近 90 天内所有有效订单（PAID / CONFIRMED / FULFILLED）的链接汇总成一封邮件发送；无论邮箱是否存在，接口都返回相同的 `202 { ok: true }`，且做的事完全一样：只把请求写入 `order_recovery_request` 队列，查订单和限流由 `recovery.job.ts`（每 10 秒）异步完成，所以响应时间也不泄露邮箱是否有订单；限流为同一邮箱每个整点小时（按请求时间）3 次（第 n 封的去重键是 `ORDER_RECOVERY:{email}:{小时}:{n}`，并发时由唯一键保证；超出或没有订单时不发），另有按 IP 的限流和 Turnstile
 - `GET /public/orders/:publicCode/calendar.ics`（请求头 `X-Order-Token`）：活动/课程订单（PAID / CONFIRMED / FULFILLED，且有开始时间的场次）的 .ics 日历文件，其它情况 404；订单接口的 `hasCalendar` 表示是否可用
-- **Origin 校验（CSRF 补充防线，全局 `OriginGuard`）**：所有公开写接口，以及所有带 cookie 的写请求（POST/PUT/PATCH/DELETE），`Origin` 请求头都必须是我们自己的域名（`APP_URL` 和 `CLERK_AUTHORIZED_PARTIES`），否则返回 403。Clerk 的 `__session` 是 SameSite=Lax，但 admin 子域名与主站同站，所以仍需这道检查；不带 cookie 的调用（webhook、Bearer 客户端）不受影响
+- **Origin 校验（CSRF 补充防线，全局 `OriginGuard`）**：所有公开写接口，以及所有带 cookie 的写请求（POST/PUT/PATCH/DELETE），`Origin` 请求头都必须是我们自己的域名（`APP_URL` 和 `CLERK_AUTHORIZED_PARTIES`），否则返回 403。Clerk 的 `__session` 是 SameSite=Lax，但 admin 子域名与主站同站（production），所以仍需这道检查；staging 的两个 `*.vercel.app` 域名不同站，检查照样生效；不带 cookie 的调用（webhook、Bearer 客户端）不受影响
 - `POST /public/orders/:publicCode/cancel`（同样用 `X-Order-Token` 请求头）。买家看到的链接仍是 `/o/{publicCode}?t=`，但 API 不接受查询串里的 token，避免它出现在代理和平台的请求日志里；订单页设置 `Referrer-Policy: no-referrer`
   - 付费订单：仅限 `PENDING_PAYMENT` 状态
   - 免费订单：`CONFIRMED` 状态，且 `allowSelfCancel` 为 true、当前时间早于 `selfCancelUntil`
@@ -629,13 +629,13 @@ PENDING_PAYMENT ──(checkout.session.completed)──▶ PAID ──(商家�
 
 | | local | staging | production |
 |---|---|---|---|
-| 主站域名 | localhost:3800 | staging.tagalong.nz | tagalong.nz |
-| admin 域名 | admin.localhost:3800 | admin-staging.tagalong.nz | admin.tagalong.nz |
-| 后端 | localhost:3810 | api-staging.tagalong.nz | api.tagalong.nz |
-| Clerk | Development 实例 | Development 实例（第二个） | Production 实例 |
+| 主站域名 | localhost:3800 | tagalong-staging.vercel.app（内部试用，暂无自有域名） | tagalong.nz |
+| admin 域名 | admin.localhost:3800 | tagalong-admin-staging.vercel.app | admin.tagalong.nz |
+| 后端 | localhost:3810 | tagalong-api-staging.onrender.com（Render 免费实例） | api.tagalong.nz |
+| Clerk | Development 实例 | 与 local 共用同一个 Development 实例 | Production 实例 |
 | Stripe | test mode + Stripe CLI 转发 | test mode + 固定 webhook | live mode |
 | 数据库 | docker compose | Neon 新加坡（独立项目） | Neon 新加坡（history retention ≥ 7 天，即 PITR） |
-| 邮件 | Mailpit | Resend 测试域名 | Resend 正式域名 |
+| 邮件 | Mailpit | Resend 测试发件地址（无自有域名时只能发给 Resend 账户本人） | Resend 正式域名 |
 | Turnstile | 测试 site key（总是通过） | 正式 | 正式 |
 
   - 本地端口刻意避开默认值（同一台开发机上 3000 / 4000 / 5432 / 8025 已被其他项目占用）：前端 3800（Playwright e2e 用 3801）、后端 3810、Postgres 5442、Mailpit UI 8026 / SMTP 1026。
