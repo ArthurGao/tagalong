@@ -16,12 +16,14 @@ trap 'rm -f "$tmp"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 ok() { echo "ok:   $*"; }
 
-# check <expected-status> <method> <url> [curl args…]; the response body lands in $body.
+# check <expected-status> <method> <url> [curl args…]; the response body lands in $body, a redirect target in $location.
 check() {
   local expected=$1 method=$2 url=$3
   shift 3
   local out
-  out=$(curl -sS -o "$tmp" -w '%{http_code}' -X "$method" "$@" "$url") || fail "$method $url: no answer"
+  out=$(curl -sS -o "$tmp" -w '%{http_code} %{redirect_url}' -X "$method" "$@" "$url") || fail "$method $url: no answer"
+  location=${out#* }
+  out=${out%% *}
   body=$(cat "$tmp")
   [[ $out == "$expected" ]] || fail "$method $url: expected $expected, got $out: $body"
 }
@@ -58,7 +60,10 @@ fi
 if [[ -n $admin ]]; then
   check 200 GET "$admin/en/login"
   ok "admin host: login page 200"
-  check 404 GET "$admin/en/l/smoke-none"
-  ok "admin host: public pages are 404"
+  # Every admin-host page but /login is admin-only: an anonymous visitor is sent to the admin host's own login
+  # (a signed-in non-admin would get 404; proxy.ts), never shown the public page.
+  check 307 GET "$admin/en/l/smoke-none"
+  [[ $location == "$admin/en/login" ]] || fail "admin host, public path: redirected to $location, expected $admin/en/login"
+  ok "admin host: public pages need an admin sign-in"
 fi
 echo "smoke passed: $env_name"
